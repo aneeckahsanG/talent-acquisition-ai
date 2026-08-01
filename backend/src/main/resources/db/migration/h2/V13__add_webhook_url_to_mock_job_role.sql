@@ -1,0 +1,1 @@
+ALTER TABLE mock_job_role ADD COLUMN IF NOT EXISTS webhook_url VARCHAR(500);

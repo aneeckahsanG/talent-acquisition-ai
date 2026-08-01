@@ -1,0 +1,2 @@
+ALTER TABLE referral ADD COLUMN IF NOT EXISTS referrer_name VARCHAR(255);
+ALTER TABLE referral ADD COLUMN IF NOT EXISTS referrer_position VARCHAR(255);

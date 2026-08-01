@@ -1,0 +1,32 @@
+# Logs & temp
+*.log
+*.tmp
+response.txt
+
+# Data directory (H2 DB files — generated at runtime)
+data/
+
+# Frontend build artifacts
+frontend/node_modules/
+frontend/dist/
+
+# Backend build artifacts
+backend/target/
+
+# Dummy/test files
+dummy_resume_*.txt
+sample_resume.txt
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Claude Code — exclude memory and local settings (may contain secrets)
+.claude/projects/
+.claude/memory/
+.claude/settings.local.json

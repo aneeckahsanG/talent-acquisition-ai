@@ -1,0 +1,62 @@
+spring:
+  application:
+    name: talent-sourcing-agent
+
+  datasource:
+    url: jdbc:h2:file:./data/talentai;DB_CLOSE_DELAY=-1;MODE=PostgreSQL
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+        format_sql: false
+    open-in-view: false
+
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration/h2
+    baseline-on-migrate: true
+
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: aneeckahsan@gmail.com
+    password: ljgvkopjiaezbqvx
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
+
+server:
+  port: 8080
+
+claude:
+  api:
+    key: ${CLAUDE_API_KEY:}
+    base-url: https://api.anthropic.com/v1/messages
+    model: claude-sonnet-4-6
+    version: "2023-06-01"
+    max-tokens: 2048
+
+app:
+  jwt:
+    secret: ${JWT_SECRET:change-this-to-a-long-random-secret-in-production-min-256-bits}
+    expirationMs: 86400000

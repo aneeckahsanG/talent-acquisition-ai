@@ -1,0 +1,6 @@
+-- ============================================================
+-- V2: Seed data placeholder for H2 dev profile
+-- Demo users and job requisitions are seeded on startup
+-- by DataInitializer.java using BCryptPasswordEncoder.
+-- Default password for all demo users: password123
+-- ============================================================
