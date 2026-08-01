@@ -1,0 +1,28 @@
+KEVIN FERNANDEZ
+kevin.fernandez@email.com | +60 17-890 3456
+Bangsar, Kuala Lumpur
+
+SUMMARY
+Data Analyst with 3 years of experience in supply chain and logistics analytics.
+Strong in SQL and Excel; working knowledge of Power BI and Tableau. Good at root cause
+analysis and operational reporting. Looking to transition into a broader analytics role
+with exposure to product or marketing data.
+
+EXPERIENCE
+
+Data Analyst — DHL Supply Chain Malaysia (2022 – Present)
+- Produced daily, weekly, and monthly operational reports for 12 warehouse sites
+- Built SQL queries to extract and reconcile shipment data from SAP and internal WMS
+- Identified route inefficiencies saving 8% in last-mile delivery costs through data analysis
+- Created Power BI dashboards for warehouse KPIs used by operations directors
+
+Operations Analyst — FedEx Malaysia (2021 – 2022)
+- Monitored on-time delivery performance using Excel pivot tables and Power Query
+- Automated 4 manual weekly reports using Excel macros, saving 6 hours/week
+
+SKILLS
+SQL · Excel (advanced, Power Query, VBA macros) · Power BI · Tableau (basic)
+SAP reporting · Supply Chain Analytics · Data Reconciliation · Operational Reporting
+
+EDUCATION
+Bachelor of Business (Logistics & Supply Chain) — Taylor's University (2021)

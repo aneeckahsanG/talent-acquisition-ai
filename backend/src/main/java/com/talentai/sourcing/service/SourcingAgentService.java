@@ -607,7 +607,13 @@ public class SourcingAgentService {
                 .ifPresent(sr -> builder
                         .screeningResultId(sr.getId())
                         .screeningRecommendation(sr.getRecommendation())
-                        .screeningScore(sr.getOverallScore()));
+                        .screeningScore(sr.getOverallScore())
+                        .screeningSkillsScore(sr.getSkillsScore())
+                        .screeningExperienceScore(sr.getExperienceScore())
+                        .screeningCultureFitScore(sr.getCultureFitScore())
+                        .screeningStrengths(sr.getStrengths())
+                        .screeningGaps(sr.getGaps())
+                        .screeningRationale(sr.getRationale()));
 
         pipelineStageRepository
                 .findByCandidateIdAndRequisitionId(match.getCandidateId(), match.getRequisitionId())

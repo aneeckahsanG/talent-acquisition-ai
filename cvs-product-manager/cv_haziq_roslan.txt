@@ -1,0 +1,36 @@
+AHMAD HAZIQ BIN ROSLAN
+haziq.roslan@email.com | +60 18-321 4567
+Shah Alam, Selangor
+
+SUMMARY
+Junior Product Manager at Carsome with 1 year of experience. Transitioned from a
+Business Analyst background and recently CSPO certified. Eager to grow in a fast-paced
+product environment. Strong in analytical thinking and documentation; still developing
+strategic product leadership skills.
+
+EXPERIENCE
+
+Junior Product Manager — Carsome (2025 – Present)
+- Manages the car listing creation flow for Carsome's seller-side product
+- Works with 2 engineers and 1 designer to ship incremental improvements
+- Writes user stories and acceptance criteria in Confluence; tracks delivery in JIRA
+- Shadowing senior PM on pricing engine product to learn roadmap prioritisation
+
+Business Analyst — AmBank Group (2023 – 2025)
+- Gathered and documented requirements for AmBank's internet banking portal
+- Liaised between IT and business stakeholders for 4 system enhancement projects
+- Produced BRDs and process flow diagrams; supported UAT and go-live activities
+
+Intern — Maybank (2022)
+- Supported digital banking team in compiling competitor benchmarking reports
+- Assisted in preparing presentation decks for management review
+
+SKILLS
+Product Management · Agile · User Research · Wireframing (basic Figma)
+JIRA · Confluence · Data Analysis · Microsoft Excel · Business Requirements Documentation
+
+EDUCATION
+Bachelor of Business Administration (Finance) — Universiti Kebangsaan Malaysia (2023)
+
+CERTIFICATIONS
+Certified Scrum Product Owner (CSPO) — Scrum Alliance, 2025

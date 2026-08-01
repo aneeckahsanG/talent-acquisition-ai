@@ -1,0 +1,31 @@
+TAN JIA WEI
+tan.jiawei@email.com | +60 18-234 5670 | github.com/tanjiawei
+Petaling Jaya, Selangor
+
+SUMMARY
+Junior ML Engineer with 2 years of experience. Solid foundation in Python, scikit-learn,
+and PyTorch from university and internship. Currently working on NLP features at a
+Malaysian startup. Looking to grow in a team with strong ML culture and mentorship.
+
+EXPERIENCE
+
+Junior ML Engineer — Tapway Sdn Bhd (2024 – Present)
+- Building people-counting and dwell-time analytics features using YOLOv8 object detection
+- Pre-processing video frame data and maintaining training datasets in a Google Cloud bucket
+- Assisted in deploying a FastAPI inference endpoint on GCP Cloud Run
+- Writing unit tests and model evaluation scripts; learning MLflow for experiment tracking
+
+ML Intern — Petronas Digital (2023)
+- Built a text classification model to categorise safety incident reports using scikit-learn (TF-IDF + SVM)
+- Cleaned and labelled 5,000+ incident records for the training dataset
+- Presented model performance metrics to the analytics lead; model piloted in one business unit
+
+SKILLS
+Python · PyTorch · scikit-learn · YOLOv8 · NLP · Computer Vision
+FastAPI · Docker (basic) · Google Cloud (basic) · MLflow (learning) · SQL · Git
+
+EDUCATION
+Bachelor of Computer Science (Data Science) — Universiti Putra Malaysia (2023), CGPA 3.71/4.00
+
+CERTIFICATIONS
+TensorFlow Developer Certificate — Google, 2023

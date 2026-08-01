@@ -1,0 +1,35 @@
+DANIEL CHONG ZHI MING
+daniel.chong@email.com | +60 16-234 8901
+Penang, Malaysia
+
+SUMMARY
+Senior Data Analyst with 6 years of experience in fintech and banking analytics.
+Expert in SQL, Python, and Power BI. Experienced building end-to-end analytics pipelines
+and presenting insights at board level. Comfortable working independently and leading
+a small analytics team.
+
+EXPERIENCE
+
+Senior Data Analyst — CIMB Bank (2021 – Present)
+- Led a team of 3 analysts supporting the retail banking product division
+- Built an automated credit risk dashboard using Python and Power BI, reducing manual reporting effort by 70%
+- Designed and maintained data pipelines (Python + SQL) feeding 8 business dashboards
+- Presented monthly KPI reviews to the Head of Retail Banking and CFO
+- Mentored junior analysts and established team SQL coding standards
+
+Data Analyst — Touch 'n Go eWallet (2019 – 2021)
+- Owned transaction analytics for TNG eWallet's merchant payment product
+- Built cohort analysis models tracking user retention across 12-month windows
+- Worked with engineering to instrument new event tracking in the mobile app
+- Delivered weekly growth metrics reports consumed by the CEO's office
+
+Data Analyst — RHB Bank (2018 – 2019)
+- Supported the customer analytics team with churn prediction modelling
+- Used logistic regression to identify at-risk customers; model adopted by the CRM team
+
+SKILLS
+SQL (expert) · Python (pandas, scikit-learn, seaborn) · Power BI · Tableau
+Statistical Modelling · Cohort Analysis · Data Pipeline · ETL · Excel · Presentations
+
+EDUCATION
+Bachelor of Science in Actuarial Science — Universiti Putra Malaysia (2018)

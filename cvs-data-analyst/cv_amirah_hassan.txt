@@ -1,0 +1,32 @@
+AMIRAH BINTI HASSAN
+amirah.hassan@email.com | +60 12-678 9012
+Kuala Lumpur, Malaysia
+
+SUMMARY
+Data Analyst with 4 years of experience turning raw data into actionable business insights.
+Proficient in SQL, Power BI, and Python. Background in e-commerce and retail analytics.
+Strong communicator who translates complex findings into clear recommendations for non-technical stakeholders.
+
+EXPERIENCE
+
+Data Analyst — Lazada Malaysia (2022 – Present)
+- Built and maintained 15+ Power BI dashboards tracking GMV, conversion, and seller performance
+- Wrote complex SQL queries against a 500M+ row data warehouse to answer ad-hoc business questions
+- Identified a pricing anomaly in the flash sale engine saving an estimated RM 800K per quarter
+- Collaborated with marketing and category teams weekly to deliver campaign performance reports
+
+Junior Data Analyst — Parkson Retail Group (2021 – 2022)
+- Analysed POS transaction data to track store-level sales trends across 40+ outlets
+- Created weekly Excel-based reports for senior management; later migrated to Tableau
+- Assisted in building a customer segmentation model using RFM analysis
+
+Data Intern — MDEC (2020)
+- Supported the digital economy analytics team with data cleaning and visualisation tasks
+- Produced a report on SME digitalisation adoption rates published on MDEC's website
+
+SKILLS
+SQL · Power BI · Tableau · Python (pandas, matplotlib) · Excel · Data Visualisation
+Statistical Analysis · RFM Analysis · ETL · Google Analytics · Stakeholder Reporting
+
+EDUCATION
+Bachelor of Science in Statistics — Universiti Malaya (2021)

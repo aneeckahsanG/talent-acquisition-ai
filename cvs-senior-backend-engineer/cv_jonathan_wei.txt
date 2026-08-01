@@ -1,0 +1,37 @@
+JONATHAN WEI JIA HAN
+jonathan.wei@email.com | +60 12-456 7890 | github.com/jonathanwei
+Kuala Lumpur, Malaysia
+
+SUMMARY
+Senior Java Backend Engineer with 8 years of experience building high-throughput
+microservices for fintech and e-commerce platforms. Deep expertise in Spring Boot,
+distributed systems, and AWS. Led backend teams of up to 6 engineers. Passionate
+about clean architecture, performance tuning, and developer experience.
+
+EXPERIENCE
+
+Senior Backend Engineer — PayNet Malaysia (2021 – Present)
+- Tech lead for the DuitNow real-time payment rails — processing 5M+ transactions/day
+- Designed and implemented event-driven microservices using Spring Boot + Kafka
+- Reduced P99 API latency from 420ms to 85ms through connection pool tuning and query optimisation
+- Mentored 4 junior engineers; introduced ADR (Architecture Decision Records) practice
+- Led migration from on-premise Oracle DB to AWS RDS PostgreSQL with zero downtime
+
+Backend Engineer — Shopback Malaysia (2018 – 2021)
+- Built cashback calculation and payout microservices handling RM 50M+ monthly disbursements
+- Implemented idempotent payment APIs to prevent duplicate payout issues at scale
+- Designed REST and GraphQL APIs consumed by web and mobile frontends
+- Improved CI/CD pipeline build time by 40% using parallel test execution in Jenkins
+
+Junior Java Developer — Silverlake Axis (2016 – 2018)
+- Maintained and extended core banking modules in Java EE
+- Fixed critical production bugs in the GL reconciliation engine
+- Wrote JUnit tests increasing code coverage from 42% to 78%
+
+SKILLS
+Java 17/21 · Spring Boot · Spring Security · Microservices · REST APIs · GraphQL
+Kafka · PostgreSQL · MySQL · Redis · Docker · Kubernetes · AWS (EC2, RDS, SQS, Lambda)
+JUnit · Mockito · CI/CD (Jenkins, GitHub Actions) · System Design
+
+EDUCATION
+Bachelor of Computer Science — Universiti Malaya (2016)

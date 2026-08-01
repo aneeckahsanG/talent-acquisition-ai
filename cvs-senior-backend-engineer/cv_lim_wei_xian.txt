@@ -1,0 +1,41 @@
+LIM WEI XIAN
+lim.weixian@email.com | +60 16-789 0123
+Georgetown, Penang
+
+SUMMARY
+Senior Backend Engineer with 9 years of Java experience, specialising in high-scale
+distributed systems and microservices architecture. Proven track record of designing
+systems that handle millions of daily users. AWS Certified Solutions Architect.
+Strong mentor and technical leader.
+
+EXPERIENCE
+
+Principal Backend Engineer — Grab (2019 – Present)
+- Technical lead for Grab's driver incentives platform, serving 3M+ drivers across SEA
+- Architected a distributed real-time incentive calculation engine using Java 17, Spring Boot, Kafka, and Redis
+- System handles 80,000+ requests/second at peak with 99.99% uptime SLA
+- Led a squad of 8 backend engineers across KL and Singapore
+- Drove adoption of hexagonal architecture across 4 Grab backend squads
+- Conducted system design interviews and onboarded 6 new engineers
+
+Senior Backend Engineer — Agoda (2016 – 2019)
+- Built and scaled the hotel pricing and availability API serving 10M+ searches/day
+- Reduced API response time by 60% through caching strategy redesign using Redis Cluster
+- Migrated monolithic pricing service to microservices with zero downtime over 6 months
+- Champion of the Agoda internal Java guild — ran monthly tech talks
+
+Backend Engineer — Intel Malaysia (2014 – 2016)
+- Developed internal manufacturing data collection APIs in Java EE
+- Built ETL pipelines processing factory sensor data into Oracle DB
+
+SKILLS
+Java 17/21 · Spring Boot · Spring Cloud · Microservices · System Design · Kafka
+Redis · PostgreSQL · MySQL · Cassandra · Docker · Kubernetes · AWS (certified)
+Hexagonal Architecture · DDD · JUnit · Mockito · Performance Tuning · Technical Leadership
+
+EDUCATION
+Bachelor of Computer Engineering — Universiti Sains Malaysia (2014)
+
+CERTIFICATIONS
+AWS Certified Solutions Architect – Professional (2022)
+AWS Certified Developer – Associate (2020)

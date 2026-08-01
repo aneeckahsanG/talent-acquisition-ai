@@ -1,0 +1,34 @@
+PRIYA NAIR
+priya.nair@email.com | +60 17-456 7890
+Mont Kiara, Kuala Lumpur
+
+SUMMARY
+Product Lead with 6 years in fintech and lending. Owns borrower product end-to-end at
+Funding Societies — SEA's largest SME lending platform. Combines strong product intuition
+with quantitative skills (Python, SQL) to make fast, evidence-based decisions. Excited by
+companies tackling real business problems with technology.
+
+EXPERIENCE
+
+Product Lead — Funding Societies (2020 – Present)
+- End-to-end ownership of the borrower product across MY, SG, and ID
+- Launched a fully digital loan application flow, reducing time-to-approval from 5 days to 6 hours
+- Drove 40% YoY growth in loan disbursement volume through product-led growth and UX improvements
+- Built internal analytics dashboards using Python + Metabase to track funnel health daily
+- Managed a team of 2 junior PMs; introduced structured PRD and sprint review process
+
+Product Manager — BigPay (2018 – 2020)
+- Owned the money transfer and remittance product for BigPay (AirAsia's fintech arm)
+- Shipped real-time SGD and THB corridors, growing transfer GMV by 3x in 12 months
+- Coordinated regulatory submissions with compliance and legal teams across 3 countries
+
+Product Analyst — RinggitPlus (2017 – 2018)
+- Analysed user journeys and drop-off points using Google Analytics and Mixpanel
+- Produced weekly product reports; surfaced insights that led to a homepage redesign increasing conversion by 18%
+
+SKILLS
+Product Vision · Roadmapping · Agile · Customer Development · Growth · Fintech
+Python · SQL · Mixpanel · Metabase · Figma · JIRA · Cross-functional Leadership
+
+EDUCATION
+Bachelor of Science in Mathematics — University of Nottingham Malaysia (2017)

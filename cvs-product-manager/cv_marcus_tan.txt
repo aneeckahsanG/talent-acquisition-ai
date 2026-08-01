@@ -1,0 +1,35 @@
+MARCUS TAN WEI LIANG
+marcus.tan@email.com | +60 16-234 5678 | linkedin.com/in/marcustan
+Kuala Lumpur, Malaysia
+
+SUMMARY
+Senior Product Manager with 7 years of experience building B2B SaaS and API products
+in telco and fintech. Proven ability to align engineering, sales, and C-suite on a shared
+product vision. Launched enterprise products generating over RM 12M ARR. Looking to bring
+deep B2B expertise to a fast-growing SaaS company.
+
+EXPERIENCE
+
+Senior Product Manager — Axiata Digital (2020 – Present)
+- Led the API product portfolio for Axiata's enterprise B2B platform (used by 300+ enterprise clients)
+- Defined and executed go-to-market strategy for a new API monetisation product, achieving RM 12M ARR in year 1
+- Managed a squad of 10 (engineering, QA, DevOps) across KL and Colombo
+- Championed shift to product-led growth: introduced self-serve onboarding, cutting sales cycle from 45 to 12 days
+- Reported directly to CPO; presented quarterly business reviews to Group CEO
+
+Product Manager — Maxis Business (2018 – 2020)
+- Owned the CRM and customer portal product for Maxis enterprise segment
+- Delivered 3 major platform releases on schedule; improved NPS from 34 to 61
+- Worked with sales team to prioritise enterprise feature requests and build custom SLAs into the product
+
+Junior Product Manager — Revenue Monster (2017 – 2018)
+- Supported senior PMs in building a merchant-facing payments dashboard
+- Wrote user stories and coordinated UAT sessions with merchant partners
+
+SKILLS
+B2B SaaS · API Products · Product Strategy · Go-to-Market · Agile · OKRs
+CRM · Stakeholder Management · SQL · JIRA · Confluence · Product-Led Growth
+
+EDUCATION
+Bachelor of Engineering (Electrical) — Universiti Putra Malaysia (2017)
+MBA — INSEAD (Executive Programme, 2022)

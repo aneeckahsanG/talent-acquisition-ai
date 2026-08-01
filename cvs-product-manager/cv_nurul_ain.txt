@@ -1,0 +1,31 @@
+NURUL AIN BINTI ZULKIFLI
+nurulain@email.com | +60 11-987 6543
+Petaling Jaya, Selangor
+
+SUMMARY
+Associate Product Manager at Grab with 3 years of experience in mobility and
+driver engagement products. Data-driven decision maker with UX research background.
+Keen interest in growth product management and experimentation frameworks.
+
+EXPERIENCE
+
+Associate Product Manager — Grab Malaysia (2022 – Present)
+- Responsible for driver onboarding and engagement features on the Grab Driver app (MY & SG)
+- Designed and executed 20+ A/B experiments; top initiative improved driver weekly retention by 15%
+- Partnered with data science team to build predictive churn model, reducing driver inactivity by 9%
+- Wrote detailed PRDs, user stories, and acceptance criteria reviewed by engineering leads
+
+UX Researcher — Fave (2021 – 2022)
+- Conducted usability tests, user interviews, and surveys for the Fave merchant portal
+- Translated qualitative findings into product recommendations adopted by the PM team
+- Built persona frameworks and journey maps used across 3 product squads
+
+SKILLS
+Product Roadmap · User Stories · A/B Testing · SQL (basic) · Figma · Agile
+Market Research · UX Research · JIRA · Amplitude · Stakeholder Communication
+
+EDUCATION
+Bachelor of Computer Science (Human-Computer Interaction) — Universiti Teknologi Malaysia (2021)
+
+CERTIFICATIONS
+Google UX Design Certificate — Coursera, 2021

@@ -172,6 +172,12 @@ public class SourcingDtos {
         private Long screeningResultId;
         private String screeningRecommendation; // ADVANCE, REJECT, REVIEW, or null
         private BigDecimal screeningScore;
+        private BigDecimal screeningSkillsScore;
+        private BigDecimal screeningExperienceScore;
+        private BigDecimal screeningCultureFitScore;
+        private String screeningStrengths;
+        private String screeningGaps;
+        private String screeningRationale;
         private String pipelineStage;
     }
 }

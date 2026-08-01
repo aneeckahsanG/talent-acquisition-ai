@@ -1,0 +1,28 @@
+NADIA BINTI IBRAHIM
+nadia.ibrahim@email.com | +60 13-567 8901
+Cyberjaya, Selangor
+
+SUMMARY
+Mid-level Data Analyst with 4 years of experience in healthcare and insurance analytics.
+Solid SQL and Power BI skills with exposure to predictive modelling. Detail-oriented with
+a strong sense of data governance and accuracy. Looking for a role in a tech-forward company.
+
+EXPERIENCE
+
+Data Analyst — Great Eastern Life Malaysia (2021 – Present)
+- Built and owned 10+ Power BI dashboards monitoring claims, lapse rates, and agent performance
+- Wrote stored procedures and views in SQL Server to standardise data extraction across 5 departments
+- Developed a lapse prediction model using Python that flagged 3,000+ at-risk policies per month
+- Worked with actuarial and product teams to produce regulatory data submissions
+
+Data Analyst — KPJ Healthcare (2020 – 2021)
+- Analysed patient flow and bed utilisation data across 3 hospitals
+- Produced weekly Excel reports for hospital management; automated using Python scripts
+- Maintained data quality checks on the hospital information system
+
+SKILLS
+SQL (SQL Server, MySQL) · Power BI · Python (pandas, scikit-learn) · Excel
+Predictive Modelling · Data Governance · Healthcare Analytics · Insurance Analytics · Tableau
+
+EDUCATION
+Bachelor of Information Technology (Business Intelligence) — Multimedia University (2020)

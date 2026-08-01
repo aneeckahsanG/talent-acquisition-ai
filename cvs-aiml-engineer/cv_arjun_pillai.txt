@@ -1,0 +1,37 @@
+ARJUN PILLAI
+arjun.pillai@email.com | +60 12-901 2345 | github.com/arjunpillai
+Mont Kiara, Kuala Lumpur
+
+SUMMARY
+Senior AI/ML Engineer with 6 years of experience building and deploying machine learning
+systems in production. Deep expertise in LLMs, NLP, and MLOps. Contributed to
+large-scale recommendation and ranking systems at a top SEA tech company.
+Passionate about building AI products that are reliable, explainable, and impactful.
+
+EXPERIENCE
+
+Senior ML Engineer — Sea Group (Shopee AI) (2021 – Present)
+- Led the development of Shopee MY's product recommendation engine serving 5M+ daily users
+- Fine-tuned a multilingual BERT model for product categorisation achieving 94% accuracy across 12 categories
+- Built and deployed LLM-powered product description generation using GPT-4 API and LangChain
+- Designed end-to-end MLOps pipeline: training on AWS SageMaker, deployment via Docker + FastAPI, monitoring with Evidently AI
+- Reduced model inference latency from 320ms to 40ms using ONNX quantisation and batching
+- Mentored 2 junior ML engineers; led bi-weekly ML reading group
+
+ML Engineer — Fusionex International (2019 – 2021)
+- Built NLP pipelines for sentiment analysis and document classification for enterprise clients
+- Trained and deployed PyTorch models on Azure ML; built REST APIs using FastAPI
+- Delivered a churn prediction model for a telco client — deployed to production with 87% AUC
+
+Data Scientist — Accenture Malaysia (2018 – 2019)
+- Built predictive models for banking and insurance clients using scikit-learn and XGBoost
+- Ran feature engineering experiments and communicated results to client stakeholders
+
+SKILLS
+Python · PyTorch · TensorFlow · scikit-learn · LLMs · LangChain · Hugging Face
+NLP · Fine-tuning · RAG · MLOps · AWS SageMaker · FastAPI · Docker · ONNX
+SQL · Spark · Evidently AI · A/B Testing · System Design
+
+EDUCATION
+Master of Science in Artificial Intelligence — University of Edinburgh (2018)
+Bachelor of Engineering (Computer Science) — Universiti Malaya (2016)

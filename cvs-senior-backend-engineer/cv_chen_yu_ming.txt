@@ -1,0 +1,38 @@
+CHEN YU MING
+chen.yuming@email.com | +60 17-321 6540 | github.com/chenyuming
+Cheras, Kuala Lumpur
+
+SUMMARY
+Senior Backend Engineer with 7 years of Java experience across logistics, healthtech, and
+fintech domains. Specialises in microservices, API design, and cloud-native development on AWS.
+Experienced in leading technical delivery for cross-border integrations. AWS Certified Developer.
+
+EXPERIENCE
+
+Senior Backend Engineer — Ninja Van Malaysia (2020 – Present)
+- Led backend development for Ninja Van's cross-border shipping API used by 500+ e-commerce merchants
+- Designed a rate-card engine in Spring Boot handling 200+ shipping zones and carrier rules
+- Integrated with 8 third-party logistics carriers via REST and SOAP APIs
+- Built an async order processing pipeline using AWS SQS + Lambda, reducing processing time from 4 minutes to 18 seconds
+- Collaborated with frontend and mobile teams to define API contracts using OpenAPI 3.0
+- Managed PostgreSQL performance: query tuning, indexing strategy, connection pooling
+
+Backend Engineer — BookDoc (2018 – 2020)
+- Developed appointment booking and doctor availability APIs (Spring Boot + MySQL)
+- Built HL7 FHIR-compliant endpoints for hospital EHR integrations
+- Implemented OAuth 2.0 login with Google and Apple Sign-In
+
+Junior Java Developer — GHL Systems (2017 – 2018)
+- Maintained payment processing modules in Java for POS terminal networks
+- Fixed critical bugs in the settlement batch job affecting 1,000+ merchants
+
+SKILLS
+Java 11/17 · Spring Boot · Spring Security · REST APIs · OpenAPI · AWS (SQS, Lambda, EC2, RDS)
+PostgreSQL · MySQL · Microservices · Docker · CI/CD (GitHub Actions) · JUnit · Mockito
+System Design · API Integration · Agile
+
+EDUCATION
+Bachelor of Information Technology — Tunku Abdul Rahman University College (2017)
+
+CERTIFICATIONS
+AWS Certified Developer – Associate (2021)

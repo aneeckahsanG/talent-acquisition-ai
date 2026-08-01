@@ -1,0 +1,35 @@
+DIVYA MENON
+divya.menon@email.com | +60 12-345 9876
+KLCC, Kuala Lumpur
+
+SUMMARY
+AI/ML Engineer with 7 years of experience and a strong research background. PhD in Machine
+Learning from NUS. Expert in deep learning, LLMs, and scalable ML system design.
+Published researcher with 4 papers in top-tier conferences (NeurIPS, ICML, ACL).
+Seeking an industry role applying cutting-edge ML research to real-world products.
+
+EXPERIENCE
+
+Research Engineer — NUS-Industry Joint Lab (2022 – Present)
+- Led applied research on multilingual LLM alignment for SEA languages (Malay, Thai, Bahasa Indonesia)
+- Built and released an open-source fine-tuned Llama 3 model for SEA NLP tasks (2,000+ GitHub stars)
+- Collaborated with industry partners (Grab, Tokopedia) to productionise research models
+- Developed scalable training pipelines on A100 GPU clusters using DeepSpeed and FSDP
+
+ML Research Engineer — AI Singapore (AISG) (2019 – 2022)
+- Part of the 100E (100 Experiments) programme — built ML prototypes for 6 Singapore and Malaysian companies
+- Delivered a fraud detection system for a Malaysian bank using Graph Neural Networks (AUC 0.96)
+- Built a Malay speech recognition model using Wav2Vec2 fine-tuning; deployed via HuggingFace Spaces
+
+Research Assistant — NUS (2017 – 2019)
+- Conducted research on attention mechanisms and transformer architectures
+- Published 2 first-author papers at ACL 2019 and NeurIPS 2019 workshops
+
+SKILLS
+Python · PyTorch · JAX · Hugging Face · LLMs · Fine-tuning · RLHF · RAG
+DeepSpeed · FSDP · Distributed Training · MLOps · FastAPI · Docker · Kubernetes
+Graph Neural Networks · NLP · Computer Vision · Research · Technical Writing
+
+EDUCATION
+PhD in Machine Learning — National University of Singapore (2022)
+Bachelor of Science in Mathematics & Computer Science — Universiti Malaya (2017), First Class Honours

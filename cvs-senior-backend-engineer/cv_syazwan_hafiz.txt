@@ -1,0 +1,28 @@
+SYAZWAN HAFIZ BIN MOHD NOOR
+syazwan.hafiz@email.com | +60 11-456 7812
+Petaling Jaya, Selangor
+
+SUMMARY
+Mid-level Java developer with 3 years of experience in Spring Boot and REST API development.
+Comfortable with relational databases and basic cloud deployment. Looking for a senior role
+to grow into. Strong work ethic and eager to take on more system design responsibility.
+
+EXPERIENCE
+
+Backend Developer — Revenue Monster Sdn Bhd (2022 – Present)
+- Developed payment gateway integration APIs in Spring Boot for merchants across MY and SG
+- Maintained PostgreSQL schemas and wrote stored procedures for transaction reconciliation
+- Implemented webhook retry logic for failed payment callbacks
+- Wrote unit tests with JUnit 5; maintained ~65% code coverage
+
+Software Developer — Fusionex International (2021 – 2022)
+- Built CRUD REST APIs for a data management platform using Spring Boot + MySQL
+- Worked in a scrum team of 5 developers; participated in sprint planning and retrospectives
+- Fixed production bugs and supported UAT for client deliveries
+
+SKILLS
+Java 11 · Spring Boot · Spring MVC · REST APIs · PostgreSQL · MySQL
+JUnit 5 · Git · Docker (basic) · AWS EC2 (basic) · JIRA · Agile
+
+EDUCATION
+Bachelor of Computer Science (Software Engineering) — Universiti Teknologi MARA (2021)

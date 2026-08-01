@@ -1,0 +1,35 @@
+RAJESH KUMAR
+rajesh.kumar@email.com | +60 12-345 6789 | LinkedIn: linkedin.com/in/rajeshkumar
+Kuala Lumpur, Malaysia
+
+SUMMARY
+Product Manager with 5 years of experience building consumer and commerce products across
+Southeast Asia. Track record of leading cross-functional teams and delivering measurable
+business outcomes at scale. Passionate about data-driven product development and customer-centric design.
+
+EXPERIENCE
+
+Product Manager — Shopee Malaysia (2021 – Present)
+- Owned the buyer checkout and payments product for Shopee MY, serving 2M+ monthly active users
+- Reduced checkout drop-off by 22% through a streamlined 2-step payment flow
+- Collaborated with engineering (8 devs), design, and regional stakeholders to ship 3 major features per quarter
+- Ran weekly sprint planning, backlog grooming, and quarterly OKR reviews
+
+Associate Product Manager — AirAsia Digital (2019 – 2021)
+- Managed the loyalty rewards module for AirAsia Super App
+- Worked with data team to build funnel dashboards in Metabase; identified and fixed a points redemption bug costing RM 200K/month
+- Wrote PRDs and user stories for 15+ features across iOS and Android
+
+Business Analyst — CIMB Bank (2018 – 2019)
+- Analysed digital banking adoption metrics and presented findings to senior management
+- Supported product team in requirements gathering for CIMB Octo app redesign
+
+SKILLS
+Product Strategy · Agile / Scrum · Roadmapping · OKRs · User Research · A/B Testing
+Stakeholder Management · SQL (intermediate) · Figma · JIRA · Confluence · Data Analysis
+
+EDUCATION
+Bachelor of Business Administration — Universiti Malaya (2018)
+
+CERTIFICATIONS
+Certified Scrum Product Owner (CSPO) — Scrum Alliance, 2020

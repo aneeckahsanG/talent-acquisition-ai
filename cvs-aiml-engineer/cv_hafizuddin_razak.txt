@@ -1,0 +1,38 @@
+HAFIZUDDIN BIN RAZAK
+hafizuddin@email.com | +60 13-678 0123
+Cyberjaya, Selangor
+
+SUMMARY
+AI/ML Engineer with 5 years of experience across computer vision, time-series forecasting,
+and NLP. Worked on production ML systems at a telco and a healthtech company. Recently
+upskilled in LLMs and generative AI. Looking for a role where I can own the full ML lifecycle
+from research to production.
+
+EXPERIENCE
+
+ML Engineer — CelcomDigi (2022 – Present)
+- Built a network anomaly detection system using LSTM and Isolation Forest on time-series KPI data
+- Reduced false positive alerts by 60% compared to the previous rule-based system
+- Developed a customer intent classification model (BERT fine-tuned on support tickets) achieving 91% accuracy
+- Set up an MLOps workflow using MLflow for experiment tracking and model versioning
+- Deployed models as REST APIs using Flask on Azure ML
+
+ML Engineer — Naluri (2020 – 2022)
+- Built mood and stress prediction models from user self-reported data using scikit-learn and XGBoost
+- Developed an NLP-based journaling sentiment analyser for the Naluri mental health app
+- Maintained data preprocessing pipelines in Python feeding daily model retraining jobs
+
+Data Scientist — Telekom Malaysia (2019 – 2020)
+- Analysed customer usage data to build a broadband churn prediction model
+- Model adopted by the CRM team; saved an estimated RM 2M in churn-related costs annually
+
+SKILLS
+Python · PyTorch · TensorFlow · scikit-learn · XGBoost · LLMs · BERT · LangChain
+Time-Series · Computer Vision · NLP · MLflow · Flask · FastAPI · Azure ML · Docker · SQL
+
+EDUCATION
+Bachelor of Engineering (Electrical & Electronics) — Universiti Tenaga Nasional (2019)
+
+CERTIFICATIONS
+Deep Learning Specialisation — Coursera (Andrew Ng), 2020
+Microsoft Azure AI Engineer Associate (AI-102), 2023

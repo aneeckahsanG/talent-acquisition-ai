@@ -1,0 +1,31 @@
+SOO HUI LING
+soohuilng@email.com | +60 11-345 2109
+Subang Jaya, Selangor
+
+SUMMARY
+Fresh graduate with strong academic background in data science. Proficient in Python and SQL
+from coursework and internship. Looking for a first analyst role where I can apply statistical
+skills and grow into a data-driven business environment.
+
+EXPERIENCE
+
+Data Analyst Intern — Digi Telecommunications (2024)
+- Cleaned and processed customer churn datasets using Python (pandas)
+- Built a simple churn prediction model achieving 78% accuracy using logistic regression
+- Created visualisations in Matplotlib and presented findings to the analytics manager
+- Assisted in migrating legacy Excel reports to Power BI
+
+Student Research Assistant — Sunway University (2023)
+- Collected and analysed survey data for a consumer behaviour research project
+- Used SPSS for statistical testing; co-authored a conference paper on online purchasing habits
+
+SKILLS
+Python (pandas, NumPy, Matplotlib, scikit-learn) · SQL (intermediate) · Power BI (basic)
+Excel · SPSS · Statistical Analysis · Data Cleaning · Presentation
+
+EDUCATION
+Bachelor of Science in Data Science — Sunway University (2024), CGPA 3.78/4.00
+
+CERTIFICATIONS
+Google Data Analytics Certificate — Coursera, 2024
+Microsoft Power BI Data Analyst Associate (PL-300) — 2024

@@ -981,6 +981,7 @@ function WebhookUrlCard({ requisitionId }) {
 function ApplicantsPanel({ requisitionId }) {
   const { data, loading, reload } = useApi(`/requisitions/${requisitionId}/applicants`, [requisitionId]);
   const [acting, setActing] = useState(null);
+  const [expanded, setExpanded] = useState({});
 
   const applicants = data || [];
 
@@ -1070,11 +1071,59 @@ function ApplicantsPanel({ requisitionId }) {
                 </div>
 
                 {rec && (
-                  <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium"
-                    style={{ backgroundColor: rec.bg, color: rec.color }}>
-                    <Sparkles size={12} />
-                    AI Screening: <strong>{rec.label}</strong>
-                    {a.screeningScore != null && <span className="ml-1 opacity-70">({Math.round(a.screeningScore)}/100)</span>}
+                  <div>
+                    <button
+                      onClick={() => setExpanded(e => ({ ...e, [a.id]: !e[a.id] }))}
+                      className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-xs font-medium"
+                      style={{ backgroundColor: rec.bg, color: rec.color }}>
+                      <span className="flex items-center gap-2">
+                        <Sparkles size={12} />
+                        AI Screening: <strong>{rec.label}</strong>
+                        {a.screeningScore != null && <span className="opacity-70">({Math.round(a.screeningScore)}/100)</span>}
+                      </span>
+                      <span style={{ fontSize: "10px" }}>{expanded[a.id] ? "▲ Hide" : "▼ Report"}</span>
+                    </button>
+
+                    {expanded[a.id] && (
+                      <div className="mt-2 rounded-lg border p-4 space-y-3 text-xs" style={{ borderColor: C.border }}>
+                        {/* Score breakdown */}
+                        {(a.screeningSkillsScore != null || a.screeningExperienceScore != null || a.screeningCultureFitScore != null) && (
+                          <div className="grid grid-cols-3 gap-2">
+                            {[
+                              { label: "Skills", val: a.screeningSkillsScore },
+                              { label: "Experience", val: a.screeningExperienceScore },
+                              { label: "Culture Fit", val: a.screeningCultureFitScore },
+                            ].map(({ label, val }) => val != null && (
+                              <div key={label} className="text-center rounded-lg p-2" style={{ backgroundColor: `${C.accent}08` }}>
+                                <div className="text-lg font-bold" style={{ color: C.accent }}>{Math.round(val)}</div>
+                                <div style={{ color: C.muted }}>{label}</div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {/* Strengths */}
+                        {a.screeningStrengths && (
+                          <div>
+                            <p className="font-semibold mb-1" style={{ color: "#16a34a" }}>✓ Strengths</p>
+                            <p style={{ color: C.text, lineHeight: "1.5" }}>{a.screeningStrengths}</p>
+                          </div>
+                        )}
+                        {/* Gaps */}
+                        {a.screeningGaps && (
+                          <div>
+                            <p className="font-semibold mb-1" style={{ color: "#dc2626" }}>✗ Gaps</p>
+                            <p style={{ color: C.text, lineHeight: "1.5" }}>{a.screeningGaps}</p>
+                          </div>
+                        )}
+                        {/* Rationale */}
+                        {a.screeningRationale && (
+                          <div>
+                            <p className="font-semibold mb-1" style={{ color: C.muted }}>Recommendation Rationale</p>
+                            <p style={{ color: C.text, lineHeight: "1.5" }}>{a.screeningRationale}</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
 
