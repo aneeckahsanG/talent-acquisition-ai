@@ -24,7 +24,7 @@ talent-acquisition-ai/
 │       │       ├── MockJobRole.java
 │       │       └── SourcingMatch.java
 │       └── config/                   # Security, exception handling
-├── talent-ops-frontend-final/        # React + Vite frontend (port 5173)
+├── frontend/                         # React + Vite frontend (port 5173)
 │   └── src/
 │       ├── components/               # Dashboard UI components
 │       └── pages/                    # Main app pages
@@ -65,14 +65,14 @@ mvn spring-boot:run
 
 Backend starts on **http://localhost:8080**
 
-Default admin credentials (set in `application.properties`):
+Default admin credentials (set in `application.yml`):
 - Email: `admin@talentai.com`
 - Password: `admin123`
 
 ### Frontend
 
 ```bash
-cd talent-ops-frontend-final
+cd frontend
 npm install
 npm run dev
 ```
