@@ -684,14 +684,20 @@ load();
             Object reqId = body.get("requisitionId");
             Object customWebhook = body.get("webhookUrl");
 
-            if (reqId != null && !reqId.toString().isBlank()) {
+            boolean hasReqId = reqId != null && !reqId.toString().isBlank();
+            boolean hasCustomUrl = customWebhook != null && !customWebhook.toString().isBlank();
+
+            if (hasReqId) {
                 Long requisitionId = Long.valueOf(reqId.toString());
                 role.setRequisitionId(requisitionId);
-                // Auto-generate TalentAI inbound webhook URL for this requisition
-                String webhookUrl = customWebhook != null && !customWebhook.toString().isBlank()
+                String webhookUrl = hasCustomUrl
                         ? customWebhook.toString()
                         : "http://localhost:" + serverPort + "/api/inbound/applications/" + requisitionId;
                 role.setWebhookUrl(webhookUrl);
+            } else if (hasCustomUrl) {
+                // Custom URL only — no requisition selected from dropdown
+                role.setRequisitionId(null);
+                role.setWebhookUrl(customWebhook.toString());
             } else {
                 // Unlink — clear both
                 role.setRequisitionId(null);
