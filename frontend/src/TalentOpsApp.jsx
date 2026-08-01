@@ -705,6 +705,7 @@ function RolesView({ setActive }) {
                 <span className="text-sm font-bold" style={{ color: C.accent }}>{detail.requiredInterviewRounds ?? 2}</span>
               </div>
             </Card>
+            <WebhookUrlCard requisitionId={detail.id} />
             <Card className="p-5 space-y-3">
               <p className="text-xs font-bold uppercase tracking-wide" style={{ color: C.muted }}>Actions</p>
               <button onClick={() => { setActive("pipeline"); setDetail(null); }}
@@ -939,6 +940,40 @@ function RolesView({ setActive }) {
 
 // ============================================================
 // PIPELINE (ORCHESTRATOR)
+// ============================================================
+// WEBHOOK URL CARD
+// ============================================================
+function WebhookUrlCard({ requisitionId }) {
+  const webhookUrl = `${window.location.protocol}//${window.location.hostname}:8080/api/inbound/applications/${requisitionId}`;
+  const [copied, setCopied] = useState(false);
+
+  function copyUrl() {
+    navigator.clipboard.writeText(webhookUrl).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
+  return (
+    <Card className="p-5 space-y-3">
+      <p className="text-xs font-bold uppercase tracking-wide" style={{ color: C.muted }}>Inbound Webhook URL</p>
+      <p className="text-xs leading-relaxed" style={{ color: C.muted }}>
+        Paste this URL into any external job board to forward applications directly into TalentAI.
+      </p>
+      <div className="rounded-lg p-3 text-xs font-mono break-all" style={{ backgroundColor: `${C.accent}10`, color: C.accent }}>
+        {webhookUrl}
+      </div>
+      <button
+        onClick={copyUrl}
+        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold border transition-colors"
+        style={{ borderColor: copied ? C.success : C.accent, color: copied ? C.success : C.accent, backgroundColor: copied ? `${C.success}10` : `${C.accent}10` }}
+      >
+        {copied ? "✓ Copied!" : "Copy URL"}
+      </button>
+    </Card>
+  );
+}
+
 // ============================================================
 // ============================================================
 // APPLICANTS PANEL — direct applications from public careers page
