@@ -1,9 +1,13 @@
 package com.talentai.sourcing.controller;
 
+import com.talentai.common.repository.CandidateRepository;
+import com.talentai.common.repository.PipelineStageRepository;
 import com.talentai.screening.dto.ScreeningDtos.ScreenByTextRequest;
 import com.talentai.screening.dto.ScreeningDtos.ScreeningResultResponse;
+import com.talentai.screening.repository.ScreeningResultRepository;
 import com.talentai.screening.service.ScreeningAgentService;
 import com.talentai.sourcing.dto.SourcingDtos.*;
+import com.talentai.sourcing.repository.SourcingMatchRepository;
 import com.talentai.sourcing.service.LinkedInParseService;
 import com.talentai.sourcing.service.SourcingAgentService;
 import com.talentai.sourcing.service.SourcingAgentService.MatchScreeningContext;
@@ -24,6 +28,10 @@ public class SourcingController {
     private final SourcingAgentService sourcingAgentService;
     private final ScreeningAgentService screeningAgentService;
     private final LinkedInParseService linkedInParseService;
+    private final SourcingMatchRepository sourcingMatchRepository;
+    private final ScreeningResultRepository screeningResultRepository;
+    private final CandidateRepository candidateRepository;
+    private final PipelineStageRepository pipelineStageRepository;
 
     /** Add a candidate to the talent pool and match against all open requisitions. */
     @PostMapping("/talent-pool")
@@ -141,5 +149,24 @@ public class SourcingController {
     public ResponseEntity<Void> sendOutreach(@PathVariable Long matchId, @RequestBody Map<String, String> body) {
         sourcingAgentService.sendOutreach(matchId, body.get("emailBody"));
         return ResponseEntity.noContent().build();
+    }
+
+    /** Delete all applications, screening results, pipeline stages, and candidates. */
+    @DeleteMapping("/all-applications")
+    public ResponseEntity<Map<String, Object>> deleteAllApplications() {
+        long matches = sourcingMatchRepository.count();
+        long screenings = screeningResultRepository.count();
+        long candidates = candidateRepository.count();
+        pipelineStageRepository.deleteAll();
+        screeningResultRepository.deleteAll();
+        sourcingMatchRepository.deleteAll();
+        candidateRepository.deleteAll();
+        return ResponseEntity.ok(Map.of(
+                "deleted", Map.of(
+                        "matches", matches,
+                        "screeningResults", screenings,
+                        "candidates", candidates
+                )
+        ));
     }
 }
