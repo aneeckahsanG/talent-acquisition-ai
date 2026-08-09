@@ -62,7 +62,7 @@ Open a terminal in the project root and run:
 
 ```bash
 cd backend
-"C:\Program Files\Eclipse Adoptium\jdk-21.0.11.10-hotspot\bin\java.exe" -jar target\talent-sourcing-agent-1.0.0.jar
+java -jar target/talent-sourcing-agent-1.0.0.jar
 ```
 
 Backend starts on **http://localhost:8080**
@@ -70,7 +70,7 @@ Backend starts on **http://localhost:8080**
 > **If you changed backend code**, rebuild the JAR first:
 > ```bash
 > cd backend
-> "C:\Program Files\apache-maven-3.9.15\bin\mvn.cmd" package -DskipTests
+> mvn package -DskipTests
 > ```
 > Then start the JAR again.
 
