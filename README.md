@@ -56,28 +56,41 @@ talent-acquisition-ai/
 
 ## Running Locally
 
-### Backend
+### 1. Backend (Spring Boot)
+
+Open a terminal in the project root and run:
 
 ```bash
 cd backend
-mvn spring-boot:run
+"C:\Program Files\Eclipse Adoptium\jdk-21.0.11.10-hotspot\bin\java.exe" -jar target\talent-sourcing-agent-1.0.0.jar
 ```
 
 Backend starts on **http://localhost:8080**
 
-Default admin credentials (set in `application.yml`):
-- Email: `admin@talentai.com`
-- Password: `admin123`
+> **If you changed backend code**, rebuild the JAR first:
+> ```bash
+> cd backend
+> "C:\Program Files\apache-maven-3.9.15\bin\mvn.cmd" package -DskipTests
+> ```
+> Then start the JAR again.
 
-### Frontend
+Default login credentials:
+- Username: `recruiter1`
+- Password: `password123`
+
+### 2. Frontend (Vite / React)
+
+Open a **separate terminal** and run:
 
 ```bash
 cd frontend
-npm install
+npm install   # only needed on first run
 npm run dev
 ```
 
-Frontend starts on **http://localhost:5173** and proxies `/api` to the backend.
+Frontend starts on **http://localhost:5173** and proxies `/api` requests to the backend.
+
+Open **http://localhost:5173** in your browser to use the app.
 
 ---
 
