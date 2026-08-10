@@ -57,6 +57,11 @@ public class SecurityConfig {
 						.requestMatchers("/h2-console/**").permitAll()
 						.anyRequest().authenticated()
 				)
+				// Unauthenticated requests (missing/expired token) → 401 so the
+				// frontend can redirect to login (Spring's default is 403)
+				.exceptionHandling(ex -> ex.authenticationEntryPoint(
+						(request, response, authException) ->
+								response.sendError(jakarta.servlet.http.HttpServletResponse.SC_UNAUTHORIZED, "Unauthorized")))
 				// H2 console uses iframes - must allow same-origin framing
 				.headers(headers -> headers
 						.frameOptions(frame -> frame.sameOrigin()))
