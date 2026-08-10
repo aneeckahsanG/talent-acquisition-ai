@@ -696,6 +696,7 @@ function RolesView({ setActive }) {
               </Card>
             )}
             <ApplicantsPanel requisitionId={detail.id} />
+            <AgentActivityPanel requisitionId={detail.id} />
           </div>
           <div className="space-y-4">
             <Card className="p-5 space-y-3">
@@ -970,6 +971,136 @@ function WebhookUrlCard({ requisitionId }) {
       >
         {copied ? "✓ Copied!" : "Copy URL"}
       </button>
+    </Card>
+  );
+}
+
+// ============================================================
+// AGENT ACTIVITY PANEL — agentic orchestrator runs, traces, and approvals
+// ============================================================
+function AgentActivityPanel({ requisitionId }) {
+  const { data: runs, loading, reload } = useApi(`/agent/requisition/${requisitionId}/runs`, [requisitionId]);
+  const [openRun, setOpenRun] = useState(null);
+  const [steps, setSteps] = useState({});
+  const [acting, setActing] = useState(null);
+
+  const RUN_STYLE = {
+    RUNNING:             { bg: "#dbeafe", color: "#1d4ed8", label: "Running" },
+    PAUSED_FOR_APPROVAL: { bg: "#fef9c3", color: "#ca8a04", label: "Awaiting Approval" },
+    COMPLETED:           { bg: "#dcfce7", color: "#16a34a", label: "Completed" },
+    FAILED:              { bg: "#fee2e2", color: "#dc2626", label: "Failed" },
+    CANCELLED:           { bg: "#f1f5f9", color: "#64748b", label: "Cancelled" },
+  };
+
+  const STEP_ICON = {
+    THOUGHT: "💭", TOOL_CALL: "🔧", TOOL_RESULT: "📄",
+    APPROVAL_REQUEST: "✋", APPROVAL_DECISION: "👤", FINAL: "✅", ERROR: "⚠️",
+  };
+
+  async function toggleRun(runId) {
+    if (openRun === runId) { setOpenRun(null); return; }
+    setOpenRun(runId);
+    if (!steps[runId]) {
+      const s = await apiFetch(`/agent/runs/${runId}/steps`);
+      setSteps(prev => ({ ...prev, [runId]: s }));
+    }
+  }
+
+  async function decide(runId, action) {
+    setActing(runId);
+    try {
+      await apiFetch(`/agent/runs/${runId}/${action}`, { method: "POST" });
+      setSteps(prev => ({ ...prev, [runId]: undefined }));
+      setOpenRun(null);
+      reload();
+    } finally { setActing(null); }
+  }
+
+  const runList = runs || [];
+  if (!loading && runList.length === 0) return null;
+
+  return (
+    <Card className="p-6">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wide" style={{ color: C.muted }}>Agent Activity</p>
+          <p className="text-xs mt-0.5" style={{ color: C.muted }}>
+            AI orchestrator runs for inbound applications · {runList.length} run{runList.length !== 1 ? "s" : ""}
+          </p>
+        </div>
+        <button onClick={reload} className="p-1.5 rounded-lg hover:bg-gray-100 text-xs font-semibold" style={{ color: C.accent }} title="Refresh">
+          ↻ Refresh
+        </button>
+      </div>
+
+      <div className="space-y-3">
+        {runList.map(run => {
+          const st = RUN_STYLE[run.status] || RUN_STYLE.CANCELLED;
+          return (
+            <div key={run.id} className="border rounded-xl overflow-hidden" style={{ borderColor: C.border }}>
+              <button onClick={() => toggleRun(run.id)}
+                className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-gray-50">
+                <div className="flex items-center gap-3 min-w-0">
+                  <span className="text-xs font-bold px-2.5 py-1 rounded-full shrink-0" style={{ backgroundColor: st.bg, color: st.color }}>
+                    {st.label}
+                  </span>
+                  <span className="text-xs truncate" style={{ color: C.text }}>{run.goal}</span>
+                </div>
+                <span className="text-xs shrink-0 ml-2" style={{ color: C.muted }}>
+                  {openRun === run.id ? "▲" : "▼"}
+                </span>
+              </button>
+
+              {run.status === "PAUSED_FOR_APPROVAL" && (
+                <div className="px-4 py-3 border-t flex items-center justify-between gap-3"
+                  style={{ borderColor: C.border, backgroundColor: "#fefce8" }}>
+                  <p className="text-xs font-medium" style={{ color: "#854d0e" }}>
+                    Agent wants to run <span className="font-mono font-bold">{run.pendingTool}</span> — your approval is required.
+                  </p>
+                  <div className="flex gap-2 shrink-0">
+                    <button disabled={acting === run.id} onClick={() => decide(run.id, "approve")}
+                      className="px-3 py-1.5 rounded-lg text-xs font-bold text-white"
+                      style={{ backgroundColor: "#16a34a", opacity: acting === run.id ? 0.5 : 1 }}>
+                      ✓ Approve
+                    </button>
+                    <button disabled={acting === run.id} onClick={() => decide(run.id, "reject")}
+                      className="px-3 py-1.5 rounded-lg text-xs font-bold text-white"
+                      style={{ backgroundColor: "#dc2626", opacity: acting === run.id ? 0.5 : 1 }}>
+                      ✕ Decline
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {openRun === run.id && (
+                <div className="border-t px-4 py-3 space-y-2" style={{ borderColor: C.border, backgroundColor: "#fafafa" }}>
+                  {!steps[run.id] ? (
+                    <p className="text-xs" style={{ color: C.muted }}>Loading trace…</p>
+                  ) : steps[run.id].map(step => (
+                    <div key={step.id} className="flex gap-2 text-xs">
+                      <span className="shrink-0">{STEP_ICON[step.stepType] || "•"}</span>
+                      <div className="min-w-0">
+                        <span className="font-bold" style={{ color: C.text }}>
+                          {step.stepType}{step.toolName ? ` · ${step.toolName}` : ""}
+                        </span>
+                        <pre className="whitespace-pre-wrap font-sans mt-0.5 max-h-40 overflow-y-auto" style={{ color: C.muted }}>
+                          {step.content}
+                        </pre>
+                      </div>
+                    </div>
+                  ))}
+                  {run.resultSummary && (
+                    <div className="mt-2 pt-2 border-t text-xs" style={{ borderColor: C.border }}>
+                      <span className="font-bold" style={{ color: C.text }}>Final summary: </span>
+                      <span style={{ color: C.muted }}>{run.resultSummary}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </Card>
   );
 }

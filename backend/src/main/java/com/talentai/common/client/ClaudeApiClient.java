@@ -91,10 +91,52 @@ public class ClaudeApiClient {
         }
     }
 
+    /**
+     * Sends a multi-turn conversation with tool definitions to Claude and returns
+     * the full parsed response (including any tool_use blocks and stop_reason).
+     * Used by the agentic orchestrator loop.
+     */
+    public JsonNode sendWithTools(String systemPrompt, ArrayNode messages, ArrayNode tools) {
+        if (apiKey == null || apiKey.isBlank()) {
+            log.error("CLAUDE_API_KEY is not configured.");
+            throw new IllegalStateException("Claude API key is not configured. Set CLAUDE_API_KEY environment variable.");
+        }
+
+        ObjectNode requestBody = objectMapper.createObjectNode();
+        requestBody.put("model", model);
+        requestBody.put("max_tokens", maxTokens);
+        requestBody.put("system", systemPrompt);
+        requestBody.set("messages", messages);
+        if (tools != null && !tools.isEmpty()) {
+            requestBody.set("tools", tools);
+        }
+
+        try {
+            String response = webClient.post()
+                    .uri("")
+                    .header("x-api-key", apiKey)
+                    .header("anthropic-version", apiVersion)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .bodyValue(requestBody.toString())
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .retryWhen(Retry.backoff(2, Duration.ofSeconds(1))
+                            .filter(this::isRetryable))
+                    .block(Duration.ofSeconds(60));
+
+            return objectMapper.readTree(response);
+        } catch (Exception e) {
+            log.error("Claude API tool-use call failed: {}", e.getMessage(), e);
+            throw new ClaudeApiException("Failed to call Claude API: " + e.getMessage(), e);
+        }
+    }
+
     private boolean isRetryable(Throwable throwable) {
         // Retry on transient/network errors; do not retry on 4xx client errors
         String message = throwable.getMessage();
-        return message != null && (message.contains("503") || message.contains("529") || message.contains("timeout"));
+        return message != null && (message.contains("503") || message.contains("529") || message.contains("timeout")
+                || message.contains("Connection reset") || message.contains("Connection refused")
+                || message.contains("Connection prematurely closed"));
     }
 
     private String extractText(String responseJson) {
