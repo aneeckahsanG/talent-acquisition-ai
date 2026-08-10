@@ -2850,13 +2850,18 @@ function SourcingView({ setActive }) {
           )}
           {(matches || []).map((m) => (
             <Card key={m.id} className="p-5 flex items-start gap-4" style={m.status === "DISMISSED" ? { opacity: 0.45 } : {}}>
-              <ScoreRing score={m.matchScore} />
+              <div className="text-center shrink-0">
+                <ScoreRing score={m.matchScore} />
+                <p className="text-[10px] mt-0.5" style={{ color: C.muted }}>profile match</p>
+              </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-start justify-between gap-2 mb-1">
                   <div>
                     <div className="flex items-center gap-2">
                       <p className="font-semibold" style={{ color: C.text }}>{m.candidateName}</p>
-                      {m.matchScore >= 70 && <Badge color={C.warning}>HIGH FIT</Badge>}
+                      {/* Only claim HIGH FIT when the deeper screening doesn't contradict it */}
+                      {m.matchScore >= 70 && (!m.screeningRecommendation || m.screeningRecommendation === "ADVANCE") &&
+                        <Badge color={C.warning}>HIGH FIT</Badge>}
                       <Badge color={m.status === "DISMISSED" ? C.muted : C.accent}>{m.status}</Badge>
                     </div>
                     {m.candidateHeadline && (
@@ -2876,7 +2881,7 @@ function SourcingView({ setActive }) {
                   return (
                     <>
                       <div className="flex items-center gap-2 mt-2">
-                        <span className="text-xs font-semibold" style={{ color: C.muted }}>Screening:</span>
+                        <span className="text-xs font-semibold" style={{ color: C.muted }}>Resume screening:</span>
                         <ScoreRing score={m.screeningScore} size={28} />
                         <Badge color={chipColor}>{label}</Badge>
                         <button
@@ -2912,7 +2917,17 @@ function SourcingView({ setActive }) {
 
                           {/* Strengths & Gaps */}
                           {(() => {
-                            const toList = v => !v ? [] : Array.isArray(v) ? v : typeof v === "string" ? v.split(/,\s*/).filter(Boolean) : [];
+                            // Split on newlines or bullet markers; fall back to sentence
+                            // boundaries. Never split on commas — that fragments prose.
+                            const toList = v => {
+                              if (!v) return [];
+                              if (Array.isArray(v)) return v;
+                              if (typeof v !== "string") return [];
+                              const strip = s => s.trim().replace(/^[•\-–]\s*/, "");
+                              const lines = v.split(/\n+/).map(strip).filter(Boolean);
+                              if (lines.length > 1) return lines;
+                              return v.split(/(?<=\.)\s+(?=[A-Z•])/).map(strip).filter(Boolean);
+                            };
                             const strengths = toList(report.strengths);
                             const gaps = toList(report.gaps);
                             return (strengths.length > 0 || gaps.length > 0) && (

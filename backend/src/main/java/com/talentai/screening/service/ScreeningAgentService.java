@@ -76,7 +76,8 @@ public class ScreeningAgentService {
             - strengths: 2-4 concise bullet points (as a single string with newline separators)
               highlighting the candidate's strongest matches.
             - gaps: 2-4 concise bullet points (as a single string with newline separators)
-              describing gaps versus the requisition.
+              describing gaps versus the requisition. Each bullet in strengths and gaps
+              must be a complete, self-contained sentence.
             - rationale: a short paragraph explaining the overall assessment.
             - recommendation: one of "ADVANCE", "REJECT", or "REVIEW".
               Use "REVIEW" for edge cases - e.g., borderline scores (roughly 45-65 overall),
