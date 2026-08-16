@@ -24,6 +24,7 @@ public class SourcingDtos {
         private String profileUrl;
         private String sourceChannel; // LINKEDIN, JOBSTREET, MANUAL
         private Boolean hasResume;    // false = LinkedIn profile only, skip auto-screening
+        private Long targetRequisitionId; // null = match against all open roles; set = match only this one
     }
 
     /** Structure Claude returns for a single candidate match. */

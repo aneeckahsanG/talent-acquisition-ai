@@ -108,9 +108,17 @@ public class SourcingAgentService {
                 : null;
 
         if (existing != null) {
-            List<JobRequisition> openReqs = jobRequisitionRepository.findByStatus("OPEN");
-            boolean alreadyMatched = openReqs.stream().anyMatch(req ->
-                    sourcingMatchRepository.findByCandidateIdAndRequisitionId(existing.getId(), req.getId()).isPresent());
+            boolean alreadyMatched;
+            if (request.getTargetRequisitionId() != null) {
+                // Scoped upload: only block if already matched against that specific role
+                alreadyMatched = sourcingMatchRepository
+                        .findByCandidateIdAndRequisitionId(existing.getId(), request.getTargetRequisitionId())
+                        .isPresent();
+            } else {
+                List<JobRequisition> openReqs = jobRequisitionRepository.findByStatus("OPEN");
+                alreadyMatched = openReqs.stream().anyMatch(req ->
+                        sourcingMatchRepository.findByCandidateIdAndRequisitionId(existing.getId(), req.getId()).isPresent());
+            }
             if (alreadyMatched) {
                 throw new IllegalArgumentException("Candidate with email " + request.getEmail()
                         + " has already been uploaded. Duplicate upload is not allowed.");
@@ -144,10 +152,18 @@ public class SourcingAgentService {
                 .details("Source channel: " + candidate.getSourceChannel())
                 .build());
 
-        List<JobRequisition> openRequisitions = jobRequisitionRepository.findByStatus("OPEN");
+        List<JobRequisition> targetRequisitions;
+        if (request.getTargetRequisitionId() != null) {
+            JobRequisition target = jobRequisitionRepository.findById(request.getTargetRequisitionId())
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "Requisition not found: " + request.getTargetRequisitionId()));
+            targetRequisitions = List.of(target);
+        } else {
+            targetRequisitions = jobRequisitionRepository.findByStatus("OPEN");
+        }
 
         boolean autoScreen = !Boolean.FALSE.equals(request.getHasResume());
-        return openRequisitions.stream()
+        return targetRequisitions.stream()
                 .map(req -> matchCandidateToRequisition(candidate, req, autoScreen))
                 .toList();
     }
@@ -460,13 +476,14 @@ public class SourcingAgentService {
      */
     @Transactional
     public List<SourcingMatchResponse> addCandidateFromFileAndMatch(
-            String fullName, String email, String sourceChannel, MultipartFile file) throws IOException {
+            String fullName, String email, String sourceChannel, MultipartFile file, Long targetRequisitionId) throws IOException {
         String resumeText = pdfTextExtractor.extractText(file);
         AddTalentPoolCandidateRequest req = new AddTalentPoolCandidateRequest();
         req.setFullName(fullName);
         req.setEmail(email);
         req.setResumeText(resumeText);
         req.setSourceChannel(sourceChannel != null && !sourceChannel.isBlank() ? sourceChannel : "MANUAL");
+        req.setTargetRequisitionId(targetRequisitionId);
         return addCandidateAndMatch(req);
     }
 
@@ -476,7 +493,7 @@ public class SourcingAgentService {
      * Expected header (case-insensitive): fullName, email, headline, skills,
      *   yearsExperience, profileUrl, sourceChannel
      */
-    public CsvImportResponse importCandidatesFromCsv(MultipartFile file) throws IOException {
+    public CsvImportResponse importCandidatesFromCsv(MultipartFile file, Long targetRequisitionId) throws IOException {
         int success = 0, failure = 0;
         List<String> errors = new ArrayList<>();
 
@@ -492,6 +509,7 @@ public class SourcingAgentService {
                 rowNum++;
                 try {
                     AddTalentPoolCandidateRequest req = parseCsvRow(header, row);
+                    req.setTargetRequisitionId(targetRequisitionId);
                     addCandidateAndMatch(req);
                     success++;
                 } catch (Exception e) {

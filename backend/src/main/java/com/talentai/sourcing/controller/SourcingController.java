@@ -70,15 +70,19 @@ public class SourcingController {
             @RequestParam("candidateName") String candidateName,
             @RequestParam(value = "candidateEmail", required = false) String email,
             @RequestParam(value = "sourceChannel", defaultValue = "MANUAL") String sourceChannel,
+            @RequestParam(value = "targetRequisitionId", required = false) Long targetRequisitionId,
             @RequestParam("resume") MultipartFile resume
     ) throws IOException {
-        return ResponseEntity.ok(sourcingAgentService.addCandidateFromFileAndMatch(candidateName, email, sourceChannel, resume));
+        return ResponseEntity.ok(sourcingAgentService.addCandidateFromFileAndMatch(candidateName, email, sourceChannel, resume, targetRequisitionId));
     }
 
     /** Bulk-import candidates from a CSV file. */
     @PostMapping(value = "/talent-pool/csv", consumes = "multipart/form-data")
-    public ResponseEntity<CsvImportResponse> importFromCsv(@RequestParam("file") MultipartFile file) throws IOException {
-        return ResponseEntity.ok(sourcingAgentService.importCandidatesFromCsv(file));
+    public ResponseEntity<CsvImportResponse> importFromCsv(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "targetRequisitionId", required = false) Long targetRequisitionId
+    ) throws IOException {
+        return ResponseEntity.ok(sourcingAgentService.importCandidatesFromCsv(file, targetRequisitionId));
     }
 
     /** Re-run matching for an existing candidate against currently open requisitions. */
