@@ -31,8 +31,13 @@ async function apiFetch(path, options = {}) {
     },
   });
   if (res.status === 401) {
-    clearToken();
-    window.location.reload();
+    // Only treat this as "session expired" if we actually had a session.
+    // Reloading when there was never a token (e.g. a public page hitting a
+    // protected endpoint by mistake) just loops the page forever.
+    if (token) {
+      clearToken();
+      window.location.reload();
+    }
   }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ message: res.statusText }));
@@ -4270,7 +4275,7 @@ function SchedulingView() {
 // PUBLIC REFERRAL PAGE — no login required
 // ============================================================
 function PublicReferralPage() {
-  const { data: reqs } = useApi("/requisitions?status=OPEN");
+  const { data: reqs } = useApi("/public/jobs");
   const [form, setForm] = useState({
     referrerName: "", referrerEmail: "", referrerPosition: "",
     candidateName: "", candidateEmail: "", resumeText: "", relationshipNotes: "", requisitionId: "",
@@ -4286,11 +4291,11 @@ function PublicReferralPage() {
     setParsing(true);
     try {
       const fd = new FormData();
-      fd.append("resume", file);
-      const parsed = await apiFetch("/screening/parse-resume", { method: "POST", body: fd });
+      fd.append("file", file);
+      const parsed = await apiFetch("/public/parse-resume", { method: "POST", body: fd });
       setForm(f => ({
         ...f,
-        candidateName: parsed.name || f.candidateName,
+        candidateName: parsed.fullName || f.candidateName,
         candidateEmail: parsed.email || f.candidateEmail,
         resumeText: parsed.resumeText || f.resumeText,
       }));
