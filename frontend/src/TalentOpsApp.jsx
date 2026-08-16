@@ -2739,6 +2739,9 @@ function SourcingView({ setActive }) {
   const [submitting, setSubmitting] = useState(false);
   const [csvResult, setCsvResult] = useState(null);
 
+  // "all" = match against every open role; "selected" = match only the role picked in the dropdown above
+  const [matchScope, setMatchScope] = useState("all");
+
   // Manual form state
   const [form, setForm] = useState({ fullName:"", email:"", headline:"", skills:"", resumeText:"", sourceChannel:"LINKEDIN", hasResume: true });
 
@@ -2799,6 +2802,7 @@ function SourcingView({ setActive }) {
     setCsvFile(null);
     setCsvResult(null);
     setSubmitError(null);
+    setMatchScope("all");
   }
 
   async function handleFileSelect(file) {
@@ -2879,7 +2883,8 @@ function SourcingView({ setActive }) {
     setSubmitting(true);
     setSubmitError(null);
     try {
-      await apiFetch("/sourcing/talent-pool", { method: "POST", body: JSON.stringify(form) });
+      const targetRequisitionId = matchScope === "selected" ? reqId : null;
+      await apiFetch("/sourcing/talent-pool", { method: "POST", body: JSON.stringify({ ...form, targetRequisitionId }) });
       closeModal();
       reload();
     } catch (e) {
@@ -2899,6 +2904,7 @@ function SourcingView({ setActive }) {
       fd.append("candidateName", fileForm.candidateName);
       if (fileForm.email) fd.append("candidateEmail", fileForm.email);
       fd.append("sourceChannel", fileForm.sourceChannel);
+      if (matchScope === "selected" && reqId) fd.append("targetRequisitionId", reqId);
       fd.append("resume", uploadFile);
       await apiFetch("/sourcing/talent-pool/upload", { method: "POST", body: fd });
       closeModal();
@@ -2917,6 +2923,7 @@ function SourcingView({ setActive }) {
     try {
       const fd = new FormData();
       fd.append("file", csvFile);
+      if (matchScope === "selected" && reqId) fd.append("targetRequisitionId", reqId);
       const result = await apiFetch("/sourcing/talent-pool/csv", { method: "POST", body: fd });
       setCsvResult(result);
       reload();
@@ -3283,6 +3290,36 @@ function SourcingView({ setActive }) {
                   {label}
                 </button>
               ))}
+            </div>
+
+            {/* Match scope toggle */}
+            <div className="mb-5">
+              <label className="text-xs font-semibold block mb-1.5" style={{ color: C.muted }}>Match against</label>
+              <div className="flex gap-1 p-1 rounded-xl" style={{ background: C.surface }}>
+                <button type="button" onClick={() => setMatchScope("all")}
+                  className="flex-1 text-xs font-semibold py-1.5 px-2 rounded-lg transition-all"
+                  style={{
+                    background: matchScope === "all" ? "#fff" : "transparent",
+                    color: matchScope === "all" ? C.accent : C.muted,
+                    boxShadow: matchScope === "all" ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
+                  }}>
+                  All Open Roles
+                </button>
+                <button type="button" onClick={() => setMatchScope("selected")}
+                  className="flex-1 text-xs font-semibold py-1.5 px-2 rounded-lg transition-all"
+                  style={{
+                    background: matchScope === "selected" ? "#fff" : "transparent",
+                    color: matchScope === "selected" ? C.accent : C.muted,
+                    boxShadow: matchScope === "selected" ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
+                  }}>
+                  This Role Only
+                </button>
+              </div>
+              <p className="text-xs mt-1.5" style={{ color: C.muted }}>
+                {matchScope === "selected" && reqs?.find(r => r.id === reqId)
+                  ? `Candidate will be matched only against "${reqs.find(r => r.id === reqId).title}".`
+                  : "Candidate will be matched against every currently open role."}
+              </p>
             </div>
 
             {/* Manual Entry */}
