@@ -94,7 +94,9 @@ public class ClaudeApiClient {
     private boolean isRetryable(Throwable throwable) {
         // Retry on transient/network errors; do not retry on 4xx client errors
         String message = throwable.getMessage();
-        return message != null && (message.contains("503") || message.contains("529") || message.contains("timeout"));
+        return message != null && (message.contains("503") || message.contains("529") || message.contains("timeout")
+                || message.contains("Connection reset") || message.contains("Connection refused")
+                || message.contains("Connection prematurely closed"));
     }
 
     private String extractText(String responseJson) {
