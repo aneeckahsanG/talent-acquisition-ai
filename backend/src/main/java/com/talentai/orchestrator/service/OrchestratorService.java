@@ -179,6 +179,21 @@ public class OrchestratorService {
         Candidate candidate = candidateRepository.findById(candidateId).orElse(null);
         JobRequisition req = jobRequisitionRepository.findById(requisitionId).orElse(null);
 
+        // Keep the direct-application status (SourcingMatch.status, surfaced in
+        // the Sourcing Agent / Applicants Panel views) in sync with the pipeline
+        // stage. Without this, a stage change made here (agent or pipeline
+        // board) leaves those views showing a stale "APPLIED" status — which
+        // also re-exposes the Shortlist/Reject buttons on an already-decided
+        // candidate, risking a second, contradictory action (e.g. rejecting +
+        // emailing someone the pipeline still shows as SHORTLISTED).
+        if (("SHORTLISTED".equals(newStage) || "REJECTED".equals(newStage))) {
+            sourcingMatchRepository.findByCandidateIdAndRequisitionId(candidateId, requisitionId)
+                    .ifPresent(m -> {
+                        m.setStatus(newStage);
+                        sourcingMatchRepository.save(m);
+                    });
+        }
+
         // Enforce required interview rounds before advancing to OFFER
         if ("OFFER".equals(newStage) && req != null) {
             int required = req.getRequiredInterviewRounds() != null ? req.getRequiredInterviewRounds() : 2;
