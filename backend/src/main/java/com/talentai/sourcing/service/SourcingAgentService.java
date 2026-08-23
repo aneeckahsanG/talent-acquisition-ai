@@ -36,6 +36,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * SOURCING AGENT
@@ -714,14 +715,19 @@ public class SourcingAgentService {
                 .details(candidate.getFullName() + " applied via public careers page (score: " + match.getMatchScore() + ")")
                 .build());
 
-        // Run screening async — result stays as recommendation only, no auto-advance
+        // Run screening in the background so this method (and therefore the
+        // public apply / webhook response) returns immediately after saving
+        // the application, rather than blocking on a Claude API call.
+        // Result stays as a recommendation only, no auto-advance.
         final Candidate finalCandidate = candidate;
         if (finalCandidate.getResumeText() != null && !finalCandidate.getResumeText().isBlank()) {
-            try {
-                screeningAgentService.runScreeningInternal(finalCandidate, requisition);
-            } catch (Exception e) {
-                log.warn("Screening failed for direct applicant {} / req {}: {}", candidateId, requisitionId, e.getMessage());
-            }
+            CompletableFuture.runAsync(() -> {
+                try {
+                    screeningAgentService.runScreeningInternal(finalCandidate, requisition);
+                } catch (Exception e) {
+                    log.warn("Screening failed for direct applicant {} / req {}: {}", candidateId, requisitionId, e.getMessage());
+                }
+            });
         }
 
         return DirectApplyResponse.builder()
