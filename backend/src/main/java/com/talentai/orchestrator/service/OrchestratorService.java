@@ -150,11 +150,29 @@ public class OrchestratorService {
     }
 
     public PipelineCandidateResponse moveStage(Long requisitionId, Long candidateId, String newStage) {
+        return moveStage(requisitionId, candidateId, newStage, "HUMAN");
+    }
+
+    /**
+     * Moves a candidate to a new pipeline stage, sending the standard candidate
+     * notification email on SHORTLISTED/REJECTED. Creates the pipeline entry if
+     * one doesn't exist yet (e.g. a direct applicant who was never proactively
+     * sourced) rather than requiring it to pre-exist.
+     *
+     * @param actor who initiated this change — "HUMAN" (recruiter, via the
+     *              pipeline board) or "ORCHESTRATOR" (the agentic orchestrator).
+     */
+    public PipelineCandidateResponse moveStage(Long requisitionId, Long candidateId, String newStage, String actor) {
         PipelineStage ps = pipelineStageRepository
                 .findByCandidateIdAndRequisitionId(candidateId, requisitionId)
-                .orElseThrow(() -> new IllegalArgumentException("Pipeline entry not found"));
+                .orElseGet(() -> {
+                    PipelineStage np = new PipelineStage();
+                    np.setCandidateId(candidateId);
+                    np.setRequisitionId(requisitionId);
+                    return np;
+                });
         ps.setStage(newStage);
-        ps.setUpdatedByAgent("HUMAN");
+        ps.setUpdatedByAgent(actor);
         ps.setEnteredAt(java.time.LocalDateTime.now());
         pipelineStageRepository.save(ps);
 
@@ -202,7 +220,7 @@ public class OrchestratorService {
                 .requisitionId(requisitionId)
                 .requisitionTitle(req != null ? req.getTitle() : null)
                 .stage(newStage)
-                .updatedByAgent("HUMAN")
+                .updatedByAgent(actor)
                 .enteredAt(ps.getEnteredAt())
                 .screeningScore(screening != null ? screening.getOverallScore() : null)
                 .screeningRecommendation(screening != null ? screening.getRecommendation() : null)

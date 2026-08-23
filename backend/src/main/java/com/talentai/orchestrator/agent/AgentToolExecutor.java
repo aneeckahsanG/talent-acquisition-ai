@@ -6,18 +6,16 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.talentai.common.entity.Candidate;
 import com.talentai.common.entity.JobRequisition;
-import com.talentai.common.entity.PipelineStage;
 import com.talentai.common.repository.CandidateRepository;
 import com.talentai.common.repository.JobRequisitionRepository;
 import com.talentai.common.repository.PipelineStageRepository;
+import com.talentai.orchestrator.service.OrchestratorService;
 import com.talentai.screening.repository.ScreeningResultRepository;
 import com.talentai.screening.service.ScreeningAgentService;
 import com.talentai.sourcing.service.SourcingAgentService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
-
-import java.time.LocalDateTime;
 
 /**
  * Executes the tools the orchestrator agent can call, and declares their
@@ -37,6 +35,7 @@ public class AgentToolExecutor {
     private final CandidateRepository candidateRepository;
     private final JobRequisitionRepository jobRequisitionRepository;
     private final PipelineStageRepository pipelineStageRepository;
+    private final OrchestratorService orchestratorService;
     private final ObjectMapper mapper = new ObjectMapper();
 
     /** Tools whose execution has real-world side effects and require human approval first. */
@@ -152,18 +151,11 @@ public class AgentToolExecutor {
     }
 
     private String updatePipelineStage(Long candidateId, Long requisitionId, String stage) {
-        PipelineStage ps = pipelineStageRepository
-                .findByCandidateIdAndRequisitionId(candidateId, requisitionId)
-                .orElseGet(() -> {
-                    PipelineStage np = new PipelineStage();
-                    np.setCandidateId(candidateId);
-                    np.setRequisitionId(requisitionId);
-                    return np;
-                });
-        ps.setStage(stage);
-        ps.setEnteredAt(LocalDateTime.now());
-        ps.setUpdatedByAgent("ORCHESTRATOR");
-        pipelineStageRepository.save(ps);
+        // Delegates to the same logic the recruiter's pipeline board uses, so
+        // the agent's SHORTLISTED/REJECTED moves send the same candidate
+        // notification email a human-driven move would, and required-interview
+        // enforcement stays consistent between both paths.
+        orchestratorService.moveStage(requisitionId, candidateId, stage, "ORCHESTRATOR");
         return "Candidate moved to stage " + stage;
     }
 
