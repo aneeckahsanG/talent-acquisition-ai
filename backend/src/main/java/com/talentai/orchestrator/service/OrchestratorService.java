@@ -190,17 +190,12 @@ public class OrchestratorService {
             }
         }
 
-        // Notify candidate on key stage changes
+        // Notify candidate on rejection. SHORTLISTED is an internal pipeline
+        // signal only — the candidate-facing "good news" moment is the
+        // personalized outreach email, which is drafted separately and always
+        // requires explicit recruiter approval before sending.
         if (candidate != null && candidate.getEmail() != null && req != null) {
-            if ("SHORTLISTED".equals(newStage)) {
-                String body = "Dear " + candidate.getFullName().split(" ")[0] + ",\n\n"
-                        + "We are pleased to inform you that you have been shortlisted for the "
-                        + req.getTitle() + " position.\n\n"
-                        + "Our recruiting team will be in touch shortly with next steps.\n\n"
-                        + "Best regards,\nHuman Resources\nTalentAcquisition AI";
-                emailService.sendHtml(candidate.getEmail(), "You've been shortlisted – " + req.getTitle(),
-                        emailService.wrapInTemplate(body, "TA"));
-            } else if ("REJECTED".equals(newStage)) {
+            if ("REJECTED".equals(newStage)) {
                 String body = "Dear " + candidate.getFullName().split(" ")[0] + ",\n\n"
                         + "Thank you for your interest in the " + req.getTitle() + " position. "
                         + "After careful consideration, we have decided to move forward with other candidates at this time.\n\n"
