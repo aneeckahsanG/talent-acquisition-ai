@@ -794,12 +794,7 @@ public class SourcingAgentService {
 
         if (candidate.getEmail() != null && !candidate.getEmail().isBlank()) {
             try {
-                String body = "Thank you for your application for the <strong>" + requisition.getTitle()
-                        + "</strong> position. After careful consideration, we have decided to move forward with other candidates at this time. "
-                        + "We appreciate your interest and encourage you to apply for future openings.";
-                emailService.sendHtml(candidate.getEmail(),
-                        "Your Application for " + requisition.getTitle(),
-                        emailService.wrapInTemplate(body, "Talent Acquisition Team"));
+                emailService.sendRejectionEmail(candidate.getEmail(), candidate.getFullName(), requisition.getTitle(), false);
             } catch (Exception e) {
                 log.warn("Rejection email failed for candidate {}: {}", candidate.getId(), e.getMessage());
             }

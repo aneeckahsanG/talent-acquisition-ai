@@ -52,6 +52,7 @@ public class ScreeningAgentService {
     private final ScreeningResultRepository screeningResultRepository;
     private final PipelineStageRepository pipelineStageRepository;
     private final AgentActivityLogRepository activityLogRepository;
+    private final com.talentai.common.service.EmailService emailService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     private static final String SYSTEM_PROMPT = """
@@ -365,6 +366,12 @@ public class ScreeningAgentService {
                 .orElseThrow(() -> new IllegalStateException("Candidate not found"));
         JobRequisition requisition = jobRequisitionRepository.findById(result.getRequisitionId())
                 .orElseThrow(() -> new IllegalStateException("Requisition not found"));
+
+        // SHORTLISTED is a silent internal signal (see OrchestratorService);
+        // only reject notifies the candidate, same template used everywhere else.
+        if (decision.equals("REJECT") && candidate.getEmail() != null && !candidate.getEmail().isBlank()) {
+            emailService.sendRejectionEmail(candidate.getEmail(), candidate.getFullName(), requisition.getTitle(), false);
+        }
 
         return toResponse(result, candidate, requisition);
     }

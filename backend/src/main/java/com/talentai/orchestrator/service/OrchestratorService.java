@@ -194,16 +194,11 @@ public class OrchestratorService {
         // signal only — the candidate-facing "good news" moment is the
         // personalized outreach email, which is drafted separately and always
         // requires explicit recruiter approval before sending.
-        if (candidate != null && candidate.getEmail() != null && req != null) {
-            if ("REJECTED".equals(newStage)) {
-                String body = "Dear " + candidate.getFullName().split(" ")[0] + ",\n\n"
-                        + "Thank you for your interest in the " + req.getTitle() + " position. "
-                        + "After careful consideration, we have decided to move forward with other candidates at this time.\n\n"
-                        + "We appreciate the time you invested and encourage you to apply for future openings.\n\n"
-                        + "Best regards,\nHuman Resources\nTalentAcquisition AI";
-                emailService.sendHtml(candidate.getEmail(), "Application Update – " + req.getTitle(),
-                        emailService.wrapInTemplate(body, "TA"));
-            }
+        if (candidate != null && candidate.getEmail() != null && req != null && "REJECTED".equals(newStage)) {
+            boolean hadInterview = interviewScheduleRepository
+                    .findByCandidateIdAndRequisitionIdOrderByCreatedAtAsc(candidateId, requisitionId)
+                    .stream().anyMatch(i -> "COMPLETED".equals(i.getStatus()));
+            emailService.sendRejectionEmail(candidate.getEmail(), candidate.getFullName(), req.getTitle(), hadInterview);
         }
         var screening = screeningResultRepository.findByCandidateIdAndRequisitionId(candidateId, requisitionId).orElse(null);
         var match = sourcingMatchRepository.findByCandidateIdAndRequisitionId(candidateId, requisitionId).orElse(null);

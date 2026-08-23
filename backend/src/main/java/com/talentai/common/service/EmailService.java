@@ -52,6 +52,26 @@ public class EmailService {
         }
     }
 
+    /**
+     * Sends the single, consistent candidate rejection notification used across
+     * the whole app (pipeline board, direct-applicant reject, screening reviewer
+     * decisions) — regardless of which stage or flow triggered the rejection.
+     */
+    public void sendRejectionEmail(String toEmail, String candidateFullName, String requisitionTitle, boolean hadInterview) {
+        String firstName = (candidateFullName == null || candidateFullName.isBlank())
+                ? "there" : candidateFullName.trim().split("\\s+")[0];
+        String intro = hadInterview
+                ? "Thank you for your interest in the " + requisitionTitle
+                        + " position, and for taking the time to interview with our team."
+                : "Thank you for your interest in the " + requisitionTitle + " position.";
+        String body = "Dear " + firstName + ",\n\n"
+                + intro + " After careful consideration, we have decided to move forward with "
+                + "other candidates at this time.\n\n"
+                + "We appreciate the time you invested and encourage you to apply for future openings.\n\n"
+                + "Best regards,\nHuman Resources\nTalentAcquisition AI";
+        sendHtml(toEmail, "Application Update – " + requisitionTitle, wrapInTemplate(body, "TA"));
+    }
+
     /** Wraps plain text invitation email in a clean HTML template. */
     public String wrapInTemplate(String bodyText, String logoInitials) {
         String escaped = bodyText
