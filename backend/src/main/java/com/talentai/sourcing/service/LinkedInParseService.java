@@ -17,23 +17,7 @@ public class LinkedInParseService {
 
     private final ClaudeApiClient claudeApiClient;
     private final ObjectMapper objectMapper;
-
-    private static final String SYSTEM_PROMPT = """
-            You are a talent data extractor. Given LinkedIn profile text, extract structured candidate information.
-            Return ONLY a JSON object with these exact keys (use empty string if not found):
-            {
-              "fullName": "",
-              "email": "",
-              "headline": "",
-              "location": "",
-              "skills": "",
-              "resumeText": ""
-            }
-            - "headline": their current title and company, e.g. "Senior Engineer at Grab"
-            - "skills": comma-separated list of technical skills found anywhere in the profile
-            - "resumeText": a concise 3-5 sentence summary of their experience and background
-            No markdown fences. No explanation. Pure JSON only.
-            """;
+    private final com.talentai.common.service.PromptLoader promptLoader;
 
     /**
      * Attempts to fetch a LinkedIn public profile page and extract text.
@@ -88,7 +72,7 @@ public class LinkedInParseService {
     public Map<String, String> parseProfileText(String profileText) {
         try {
             String userPrompt = "Extract candidate info from this LinkedIn profile text:\n\n" + profileText;
-            String raw = claudeApiClient.sendPrompt(SYSTEM_PROMPT, userPrompt);
+            String raw = claudeApiClient.sendPrompt(promptLoader.load("linkedin-parse-agent"), userPrompt);
             raw = raw.replaceAll("(?s)```[a-z]*\\s*", "").replaceAll("```", "").trim();
             return objectMapper.readValue(raw, Map.class);
         } catch (Exception e) {

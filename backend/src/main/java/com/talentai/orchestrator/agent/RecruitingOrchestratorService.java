@@ -27,33 +27,11 @@ public class RecruitingOrchestratorService {
 
     private static final int MAX_STEPS = 20; // hard budget so a run can never loop forever
 
-    private static final String SYSTEM_PROMPT = """
-            You are a recruiting orchestrator agent for TalentAcquisition AI.
-            Your job: handle a new inbound job application end-to-end using the tools provided.
-
-            Standard playbook (adapt as needed):
-            1. Get the job description and the candidate profile to understand the context.
-            2. Screen the candidate against the requisition.
-            3. Based on the screening recommendation:
-               - ADVANCE (score >= 75): move candidate to SHORTLISTED stage, draft an outreach
-                 email, then send it (sending requires recruiter approval).
-               - REVIEW (borderline): move candidate to SCREENED stage and finish — explain in
-                 your final answer that a recruiter should review this candidate manually. Do NOT
-                 reject or advance borderline candidates yourself.
-               - REJECT (clearly unqualified): call reject_candidate (requires recruiter approval).
-            4. Check the pipeline before advancing to mention how crowded the stage already is.
-
-            Rules:
-            - Never send an email or reject a candidate without calling the corresponding tool
-              (they are gated behind human approval — the recruiter has the final say).
-            - If a tool returns an ERROR, adapt: try an alternative or finish with an explanation.
-            - Keep your final answer to a short paragraph summarizing what you did and why.
-            """;
-
     private final ClaudeApiClient claudeApiClient;
     private final AgentToolExecutor toolExecutor;
     private final AgentRunRepository runRepository;
     private final AgentStepRepository stepRepository;
+    private final com.talentai.common.service.PromptLoader promptLoader;
     private final ObjectMapper mapper = new ObjectMapper();
 
     /** Start a new agent run asynchronously for an inbound application. */
@@ -124,7 +102,7 @@ public class RecruitingOrchestratorService {
     private void runLoop(Long runId, ArrayNode messages) {
         try {
             for (int i = 0; i < MAX_STEPS; i++) {
-                JsonNode response = claudeApiClient.sendWithTools(SYSTEM_PROMPT, messages, toolExecutor.toolDefinitions());
+                JsonNode response = claudeApiClient.sendWithTools(promptLoader.load("orchestrator-agent"), messages, toolExecutor.toolDefinitions());
                 JsonNode content = response.path("content");
                 String stopReason = response.path("stop_reason").asText();
 

@@ -72,29 +72,8 @@ public class SourcingAgentService {
     private final AgentActivityLogRepository activityLogRepository;
     private final ScreeningAgentService screeningAgentService;
     private final com.talentai.common.service.EmailService emailService;
+    private final com.talentai.common.service.PromptLoader promptLoader;
     private final ObjectMapper objectMapper = new ObjectMapper();
-
-    private static final String SYSTEM_PROMPT = """
-            You are the Sourcing Agent within an Agentic AI Talent Sourcing platform.
-
-            Your task is to assess how well a candidate profile fits an open job
-            requisition, to support PROACTIVE talent discovery - identifying strong
-            candidates for a role even when they haven't applied.
-
-            Provide:
-            - matchScore: 0-100, reflecting overall fit based on skills, experience
-              level, and role relevance.
-            - rationale: a concise 1-2 sentence explanation of why this candidate is
-              (or isn't) a good fit, highlighting the most relevant matching points.
-
-            IMPORTANT: Respond with ONLY a single JSON object, no markdown fences, no
-            preamble, no commentary. The JSON must exactly match this shape:
-
-            {
-              "matchScore": number,
-              "rationale": "string"
-            }
-            """;
 
     /**
      * Adds a candidate to the talent pool (simulating proactive sourcing
@@ -250,7 +229,7 @@ public class SourcingAgentService {
                 nullToDash(candidate.getResumeText())
         );
 
-        String rawResponse = claudeApiClient.sendPrompt(SYSTEM_PROMPT, userPrompt);
+        String rawResponse = claudeApiClient.sendPrompt(promptLoader.load("sourcing-agent"), userPrompt);
         String json = claudeApiClient.stripJsonFences(rawResponse);
 
         ClaudeMatchResponse parsed;
@@ -309,21 +288,6 @@ public class SourcingAgentService {
 
         return toResponse(match, candidate, requisition);
     }
-
-    private static final String OUTREACH_SYSTEM_PROMPT = """
-            You are a recruiter writing a personalized outreach message to a proactively sourced candidate.
-
-            Write a short, warm, professional message suitable for LinkedIn or email (3-4 sentences).
-
-            Rules:
-            - Address the candidate by first name only
-            - Reference 1-2 specific details from their background that stand out
-            - Mention the role name and one genuinely exciting aspect of it
-            - End with a soft, low-pressure call-to-action
-            - Tone: human and direct, not salesy or overly corporate
-            - Do NOT include a subject line, greeting label, sign-off, or your name
-            - Return ONLY the message body as plain text, no markdown, no quotes
-            """;
 
     /**
      * Returns the match, candidate, and requisition needed to trigger internal screening.
@@ -389,7 +353,7 @@ public class SourcingAgentService {
                 nullToDash(match.getMatchRationale())
         );
 
-        String draft = claudeApiClient.sendPrompt(OUTREACH_SYSTEM_PROMPT, userPrompt);
+        String draft = claudeApiClient.sendPrompt(promptLoader.load("sourcing-outreach-agent"), userPrompt);
 
         if ("NEW".equals(match.getStatus())) {
             match.setStatus("REVIEWED");
@@ -691,7 +655,7 @@ public class SourcingAgentService {
         String userPrompt = buildMatchPrompt(candidate, requisition);
         ClaudeMatchResponse scored;
         try {
-            String raw = claudeApiClient.sendPrompt(SYSTEM_PROMPT, userPrompt);
+            String raw = claudeApiClient.sendPrompt(promptLoader.load("sourcing-agent"), userPrompt);
             scored = objectMapper.readValue(claudeApiClient.stripJsonFences(raw), ClaudeMatchResponse.class);
         } catch (Exception e) {
             log.warn("Match scoring failed for direct apply candidate {} / req {}: {}", candidateId, requisitionId, e.getMessage());
