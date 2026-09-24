@@ -76,6 +76,35 @@ function useApi(path, deps = []) {
   return { data, loading, error, reload: load };
 }
 
+// Fetches multiple paths in parallel — used to power "All Roles" views that
+// merge per-requisition endpoints client-side. `paths` is an array of URL
+// strings, or null/empty to skip fetching.
+function useApiMulti(paths, deps = []) {
+  const [data, setData] = useState(null); // array of results aligned with paths, or null
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const pathsKey = paths ? paths.join("|") : "";
+
+  const load = useCallback(async () => {
+    if (!paths || paths.length === 0) { setData(null); setLoading(false); return; }
+    setLoading(true);
+    setError(null);
+    try {
+      const results = await Promise.all(paths.map(p => apiFetch(p)));
+      setData(results);
+    } catch (e) {
+      setError(e.message);
+      setData(null);
+    } finally {
+      setLoading(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathsKey, ...deps]);
+
+  useEffect(() => { load(); }, [load]);
+  return { data, loading, error, reload: load };
+}
+
 // ============================================================
 // DESIGN SYSTEM
 // ============================================================
@@ -109,6 +138,21 @@ const STAGE_LABELS = {
 const PIPELINE_STAGES = [
   "SOURCED","SCREENED","SHORTLISTED","INTERVIEW_SCHEDULED","OFFER","HIRED","REJECTED",
 ];
+
+// Merges per-requisition pipeline board responses into one "All Roles" board.
+// Each PipelineCandidateResponse already carries requisitionId/requisitionTitle,
+// so cards remain traceable to their role without extra tagging.
+function mergePipelineBoards(boards) {
+  const stages = {};
+  for (const s of PIPELINE_STAGES) stages[s] = [];
+  for (const b of boards || []) {
+    for (const s of PIPELINE_STAGES) {
+      const list = b?.stages?.[s] || [];
+      stages[s].push(...list);
+    }
+  }
+  return { requisitionId: null, requisitionTitle: "All Roles", stages };
+}
 
 // What action buttons appear on a card given its current stage
 // INTERVIEW_SCHEDULED and OFFER are handled separately
@@ -1299,7 +1343,7 @@ function ApplicantsPanel({ requisitionId }) {
 
 function PipelineView() {
   const { data: reqs } = useApi("/requisitions");
-  const [reqId, setReqId] = useState(null);
+  const [reqId, setReqId] = useState("ALL"); // "ALL" or a numeric requisition id
   const [movingId, setMovingId] = useState(null);
   const [completingRoundId, setCompletingRoundId] = useState(null);
   const [simulatingResponseId, setSimulatingResponseId] = useState(null);
@@ -1337,10 +1381,6 @@ function PipelineView() {
   const [roleForm, setRoleForm] = useState({ title: "", department: "", location: "", experienceLevel: "MID", description: "", requiredSkills: "", requiredInterviewRounds: 2 });
   const [savingRole, setSavingRole] = useState(false);
 
-  useEffect(() => {
-    if (reqs && reqs.length > 0 && !reqId) setReqId(reqs[0].id);
-  }, [reqs, reqId]);
-
   async function handleCreateRole() {
     if (!roleForm.title.trim()) return;
     setSavingRole(true);
@@ -1359,15 +1399,20 @@ function PipelineView() {
     }
   }
 
-  const { data: board, loading, error, reload } = useApi(
-    reqId ? `/orchestrator/pipeline/${reqId}` : null,
-    [reqId]
-  );
+  const isAllRoles = reqId === "ALL";
+  const singleBoardApi = useApi(!isAllRoles && reqId ? `/orchestrator/pipeline/${reqId}` : null, [reqId]);
+  const allPaths = isAllRoles && reqs ? reqs.map(r => `/orchestrator/pipeline/${r.id}`) : null;
+  const allBoardsApi = useApiMulti(allPaths, [isAllRoles, reqs?.length]);
 
-  async function handleMove(candidateId, nextStage) {
+  const board = isAllRoles ? (allBoardsApi.data ? mergePipelineBoards(allBoardsApi.data) : null) : singleBoardApi.data;
+  const loading = isAllRoles ? allBoardsApi.loading : singleBoardApi.loading;
+  const error = isAllRoles ? allBoardsApi.error : singleBoardApi.error;
+  const reload = isAllRoles ? allBoardsApi.reload : singleBoardApi.reload;
+
+  async function handleMove(candidateId, nextStage, candidateReqId) {
     setMovingId(candidateId);
     try {
-      await apiFetch(`/orchestrator/pipeline/${reqId}/candidates/${candidateId}/stage`, {
+      await apiFetch(`/orchestrator/pipeline/${candidateReqId ?? reqId}/candidates/${candidateId}/stage`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ stage: nextStage }),
@@ -1436,7 +1481,7 @@ function PipelineView() {
   async function handleCreateOffer() {
     setSubmittingOffer(true);
     try {
-      await apiFetch(`/orchestrator/pipeline/${reqId}/candidates/${offerModal.candidateId}/offer`, {
+      await apiFetch(`/orchestrator/pipeline/${offerModal.requisitionId ?? reqId}/candidates/${offerModal.candidateId}/offer`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...offerForm, salaryAmount: offerForm.salaryAmount ? Number(offerForm.salaryAmount) : null }),
@@ -1497,7 +1542,7 @@ function PipelineView() {
   async function handleScheduleInterview() {
     setScheduling(true);
     try {
-      const result = await apiFetch(`/orchestrator/pipeline/${reqId}/candidates/${scheduleModal.candidateId}/schedule-interview`, {
+      const result = await apiFetch(`/orchestrator/pipeline/${scheduleModal.requisitionId ?? reqId}/candidates/${scheduleModal.candidateId}/schedule-interview`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(scheduleForm),
@@ -1520,7 +1565,8 @@ function PipelineView() {
         action={
           <div className="flex items-center gap-2">
             {reqs && (
-              <Select value={reqId || ""} onChange={e => setReqId(Number(e.target.value))}>
+              <Select value={reqId} onChange={e => setReqId(e.target.value === "ALL" ? "ALL" : Number(e.target.value))}>
+                <option value="ALL">All Roles</option>
                 {reqs.map(r => <option key={r.id} value={r.id}>{r.title}</option>)}
               </Select>
             )}
@@ -1566,13 +1612,18 @@ function PipelineView() {
                     const actions = STAGE_ACTIONS[stage] || [];
                     const isMoving = movingId === c.candidateId;
                     return (
-                      <div key={c.candidateId} className="p-3 rounded-xl border"
+                      <div key={`${c.candidateId}-${c.requisitionId}`} className="p-3 rounded-xl border"
                         style={{ borderColor: C.border, backgroundColor: "#F8FAFC" }}>
                         <div className="flex items-center gap-2 mb-1.5">
                           <Avatar name={c.candidateName} size={28} />
-                          <p className="text-xs font-semibold truncate" style={{ color: C.text }}>
-                            {c.candidateName}
-                          </p>
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold truncate" style={{ color: C.text }}>
+                              {c.candidateName}
+                            </p>
+                            {isAllRoles && c.requisitionTitle && (
+                              <p className="text-[9px] truncate" style={{ color: C.muted }}>{c.requisitionTitle}</p>
+                            )}
+                          </div>
                         </div>
                         {(c.screeningScore ?? c.sourcingMatchScore) != null && (
                           <ScoreRing score={c.screeningScore ?? c.sourcingMatchScore} size={30} />
@@ -1816,7 +1867,7 @@ function PipelineView() {
                                   })()}
                                 </div>
                               ) : (
-                                <button onClick={() => setOfferModal({ candidateId: c.candidateId, candidateName: c.candidateName })}
+                                <button onClick={() => setOfferModal({ candidateId: c.candidateId, candidateName: c.candidateName, requisitionId: c.requisitionId })}
                                   className="w-full text-[10px] font-semibold py-1 rounded-lg text-white"
                                   style={{ backgroundColor: C.success }}>
                                   + Create Offer
@@ -1922,7 +1973,7 @@ function PipelineView() {
                                   <button
                                     onClick={() => {
                                       setScheduleForm(f => ({ ...f, interviewType: nextType, confirmedSlot: "", notes: "" }));
-                                      setScheduleModal({ candidateId: c.candidateId, candidateName: c.candidateName, nextType });
+                                      setScheduleModal({ candidateId: c.candidateId, candidateName: c.candidateName, requisitionId: c.requisitionId, nextType });
                                     }}
                                     className="w-full text-[10px] font-semibold py-1 rounded-lg text-white"
                                     style={{ backgroundColor: C.accent }}>
@@ -1935,7 +1986,7 @@ function PipelineView() {
                                       <button
                                         onClick={() => {
                                           setScheduleForm(f => ({ ...f, interviewType: nextType, confirmedSlot: "", notes: "" }));
-                                          setScheduleModal({ candidateId: c.candidateId, candidateName: c.candidateName, nextType });
+                                          setScheduleModal({ candidateId: c.candidateId, candidateName: c.candidateName, requisitionId: c.requisitionId, nextType });
                                         }}
                                         className="w-full text-[10px] font-semibold py-1 rounded-lg"
                                         style={{ color: C.accent, border: `1px solid ${C.accent}55` }}>
@@ -1943,7 +1994,7 @@ function PipelineView() {
                                       </button>
                                     )}
                                     <button
-                                      onClick={() => setOfferModal({ candidateId: c.candidateId, candidateName: c.candidateName })}
+                                      onClick={() => setOfferModal({ candidateId: c.candidateId, candidateName: c.candidateName, requisitionId: c.requisitionId })}
                                       className="w-full text-[10px] font-semibold py-1 rounded-lg text-white"
                                       style={{ backgroundColor: C.success }}>
                                       Advance to Offer
@@ -1951,7 +2002,7 @@ function PipelineView() {
                                   </>
                                 )}
                                 <button disabled={isMoving}
-                                  onClick={() => handleMove(c.candidateId, "REJECTED")}
+                                  onClick={() => handleMove(c.candidateId, "REJECTED", c.requisitionId)}
                                   className="w-full text-[10px] font-semibold py-1 rounded-lg transition-opacity"
                                   style={{ color: C.danger, border: `1px solid ${C.danger}33`, opacity: isMoving ? 0.5 : 1 }}>
                                   Reject
@@ -1967,8 +2018,8 @@ function PipelineView() {
                             {actions.map(({ label, next }) => (
                               <button key={next} disabled={isMoving}
                                 onClick={() => next === "INTERVIEW_SCHEDULED"
-                                  ? setScheduleModal({ candidateId: c.candidateId, candidateName: c.candidateName, nextType: "PHONE_SCREEN" })
-                                  : handleMove(c.candidateId, next)
+                                  ? setScheduleModal({ candidateId: c.candidateId, candidateName: c.candidateName, requisitionId: c.requisitionId, nextType: "PHONE_SCREEN" })
+                                  : handleMove(c.candidateId, next, c.requisitionId)
                                 }
                                 className="w-full text-[10px] font-semibold py-1 rounded-lg text-white transition-opacity"
                                 style={{ backgroundColor: C.accent, opacity: isMoving ? 0.5 : 1 }}>
@@ -1977,7 +2028,7 @@ function PipelineView() {
                             ))}
                             {stage !== "REJECTED" && (
                               <button disabled={isMoving}
-                                onClick={() => handleMove(c.candidateId, "REJECTED")}
+                                onClick={() => handleMove(c.candidateId, "REJECTED", c.requisitionId)}
                                 className="w-full text-[10px] font-semibold py-1 rounded-lg transition-opacity"
                                 style={{ color: C.danger, border: `1px solid ${C.danger}33`, opacity: isMoving ? 0.5 : 1 }}>
                                 Reject
@@ -2737,7 +2788,7 @@ function ResumeSources() {
 
 function SourcingView({ setActive }) {
   const { data: reqs } = useApi("/requisitions?status=OPEN");
-  const [reqId, setReqId] = useState(null);
+  const [reqId, setReqId] = useState("ALL"); // "ALL" or a numeric requisition id
   const [sourcingTab, setSourcingTab] = useState("matches"); // "matches" | "sources"
   const [showForm, setShowForm] = useState(false);
   const [inputMode, setInputMode] = useState("manual");
@@ -2788,14 +2839,17 @@ function SourcingView({ setActive }) {
   const [csvFile, setCsvFile] = useState(null);
   const [submitError, setSubmitError] = useState(null);
 
-  useEffect(() => {
-    if (reqs && reqs.length > 0 && !reqId) setReqId(reqs[0].id);
-  }, [reqs, reqId]);
+  const isAllRoles = reqId === "ALL";
+  const singleMatchesApi = useApi(!isAllRoles && reqId ? `/sourcing/requisition/${reqId}/matches` : null, [reqId]);
+  const allMatchPaths = isAllRoles && reqs ? reqs.map(r => `/sourcing/requisition/${r.id}/matches`) : null;
+  const allMatchesApi = useApiMulti(allMatchPaths, [isAllRoles, reqs?.length]);
 
-  const { data: matches, loading, error, reload } = useApi(
-    reqId ? `/sourcing/requisition/${reqId}/matches` : null,
-    [reqId]
-  );
+  const matches = isAllRoles
+    ? (allMatchesApi.data ? allMatchesApi.data.flat().sort((a, b) => (b.matchScore ?? -1) - (a.matchScore ?? -1)) : null)
+    : singleMatchesApi.data;
+  const loading = isAllRoles ? allMatchesApi.loading : singleMatchesApi.loading;
+  const error = isAllRoles ? allMatchesApi.error : singleMatchesApi.error;
+  const reload = isAllRoles ? allMatchesApi.reload : singleMatchesApi.reload;
 
   function closeModal() {
     setShowForm(false);
@@ -2888,7 +2942,7 @@ function SourcingView({ setActive }) {
     setSubmitting(true);
     setSubmitError(null);
     try {
-      const targetRequisitionId = matchScope === "selected" ? reqId : null;
+      const targetRequisitionId = matchScope === "selected" && !isAllRoles ? reqId : null;
       await apiFetch("/sourcing/talent-pool", { method: "POST", body: JSON.stringify({ ...form, targetRequisitionId }) });
       closeModal();
       reload();
@@ -2909,7 +2963,7 @@ function SourcingView({ setActive }) {
       fd.append("candidateName", fileForm.candidateName);
       if (fileForm.email) fd.append("candidateEmail", fileForm.email);
       fd.append("sourceChannel", fileForm.sourceChannel);
-      if (matchScope === "selected" && reqId) fd.append("targetRequisitionId", reqId);
+      if (matchScope === "selected" && reqId && !isAllRoles) fd.append("targetRequisitionId", reqId);
       fd.append("resume", uploadFile);
       await apiFetch("/sourcing/talent-pool/upload", { method: "POST", body: fd });
       closeModal();
@@ -2928,7 +2982,7 @@ function SourcingView({ setActive }) {
     try {
       const fd = new FormData();
       fd.append("file", csvFile);
-      if (matchScope === "selected" && reqId) fd.append("targetRequisitionId", reqId);
+      if (matchScope === "selected" && reqId && !isAllRoles) fd.append("targetRequisitionId", reqId);
       const result = await apiFetch("/sourcing/talent-pool/csv", { method: "POST", body: fd });
       setCsvResult(result);
       reload();
@@ -2958,7 +3012,8 @@ function SourcingView({ setActive }) {
         action={
           <div className="flex gap-2">
             {sourcingTab === "matches" && reqs && (
-              <Select value={reqId || ""} onChange={e => setReqId(Number(e.target.value))}>
+              <Select value={reqId} onChange={e => setReqId(e.target.value === "ALL" ? "ALL" : Number(e.target.value))}>
+                <option value="ALL">All Roles</option>
                 {reqs.map(r => <option key={r.id} value={r.id}>{r.title}</option>)}
               </Select>
             )}
@@ -3009,6 +3064,9 @@ function SourcingView({ setActive }) {
                     </div>
                     {m.candidateHeadline && (
                       <p className="text-xs mt-0.5" style={{ color: C.muted }}>{m.candidateHeadline}</p>
+                    )}
+                    {isAllRoles && m.requisitionTitle && (
+                      <p className="text-[10px] mt-0.5 font-medium" style={{ color: C.accent }}>{m.requisitionTitle}</p>
                     )}
                   </div>
                 </div>
@@ -3310,18 +3368,22 @@ function SourcingView({ setActive }) {
                   }}>
                   All Open Roles
                 </button>
-                <button type="button" onClick={() => setMatchScope("selected")}
+                <button type="button" disabled={isAllRoles} onClick={() => setMatchScope("selected")}
                   className="flex-1 text-xs font-semibold py-1.5 px-2 rounded-lg transition-all"
                   style={{
                     background: matchScope === "selected" ? "#fff" : "transparent",
                     color: matchScope === "selected" ? C.accent : C.muted,
                     boxShadow: matchScope === "selected" ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
+                    opacity: isAllRoles ? 0.5 : 1,
+                    cursor: isAllRoles ? "not-allowed" : "pointer",
                   }}>
                   This Role Only
                 </button>
               </div>
               <p className="text-xs mt-1.5" style={{ color: C.muted }}>
-                {matchScope === "selected" && reqs?.find(r => r.id === reqId)
+                {isAllRoles
+                  ? 'Select a specific role above (instead of "All Roles") to scope matching to just that role.'
+                  : matchScope === "selected" && reqs?.find(r => r.id === reqId)
                   ? `Candidate will be matched only against "${reqs.find(r => r.id === reqId).title}".`
                   : "Candidate will be matched against every currently open role."}
               </p>
@@ -3610,7 +3672,7 @@ function ScreeningDetailModal({ result, onClose, onDecision }) {
 
 function ScreeningView() {
   const { data: reqs } = useApi("/requisitions?status=OPEN");
-  const [reqId, setReqId] = useState(null);
+  const [reqId, setReqId] = useState("ALL"); // "ALL" or a numeric requisition id
   const [selected, setSelected] = useState(null);
   const [showUpload, setShowUpload] = useState(false);
   const [uploadForm, setUploadForm] = useState({ candidateName:"", candidateEmail:"" });
@@ -3622,14 +3684,17 @@ function ScreeningView() {
   const [parsing, setParsing] = useState(false);
   const fileRef = useRef();
 
-  useEffect(() => {
-    if (reqs && reqs.length > 0 && !reqId) setReqId(reqs[0].id);
-  }, [reqs, reqId]);
+  const isAllRoles = reqId === "ALL";
+  const singleResultsApi = useApi(!isAllRoles && reqId ? `/screening/requisition/${reqId}` : null, [reqId]);
+  const allResultsPaths = isAllRoles && reqs ? reqs.map(r => `/screening/requisition/${r.id}`) : null;
+  const allResultsApi = useApiMulti(allResultsPaths, [isAllRoles, reqs?.length]);
 
-  const { data: results, loading, error, reload } = useApi(
-    reqId ? `/screening/requisition/${reqId}` : null,
-    [reqId]
-  );
+  const results = isAllRoles
+    ? (allResultsApi.data ? allResultsApi.data.flat().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)) : null)
+    : singleResultsApi.data;
+  const loading = isAllRoles ? allResultsApi.loading : singleResultsApi.loading;
+  const error = isAllRoles ? allResultsApi.error : singleResultsApi.error;
+  const reload = isAllRoles ? allResultsApi.reload : singleResultsApi.reload;
 
   async function handleDecision(screeningId, decision, notes) {
     await apiFetch(`/screening/${screeningId}/review`, {
@@ -3639,10 +3704,10 @@ function ScreeningView() {
     reload();
   }
 
-  async function handleShortlist(candidateId) {
+  async function handleShortlist(candidateId, candidateReqId) {
     setShortlisting(candidateId);
     try {
-      await apiFetch(`/orchestrator/pipeline/${reqId}/candidates/${candidateId}/stage`, {
+      await apiFetch(`/orchestrator/pipeline/${candidateReqId ?? reqId}/candidates/${candidateId}/stage`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ stage: "SHORTLISTED" }),
@@ -3698,16 +3763,23 @@ function ScreeningView() {
         action={
           <div className="flex gap-2">
             {reqs && (
-              <Select value={reqId || ""} onChange={e => setReqId(Number(e.target.value))}>
+              <Select value={reqId} onChange={e => setReqId(e.target.value === "ALL" ? "ALL" : Number(e.target.value))}>
+                <option value="ALL">All Roles</option>
                 {reqs.map(r => <option key={r.id} value={r.id}>{r.title}</option>)}
               </Select>
             )}
-            <Btn onClick={() => setShowUpload(true)}>
+            <Btn onClick={() => setShowUpload(true)} disabled={isAllRoles}>
               <UploadCloud size={14} /> Screen Resume
             </Btn>
           </div>
         }
       />
+
+      {isAllRoles && (
+        <p className="text-xs mb-3" style={{ color: C.muted }}>
+          Select a specific role above (instead of "All Roles") to screen a new resume against it.
+        </p>
+      )}
 
       {error && <ErrorBanner message={error} onRetry={reload} />}
 
@@ -3738,6 +3810,9 @@ function ScreeningView() {
                         <Avatar name={r.candidateName} size={34} />
                         <div>
                           <p className="font-semibold" style={{ color: C.text }}>{r.candidateName}</p>
+                          {isAllRoles && r.requisitionTitle && (
+                            <p className="text-xs" style={{ color: C.muted }}>{r.requisitionTitle}</p>
+                          )}
                         </div>
                       </div>
                     </td>
@@ -3762,7 +3837,7 @@ function ScreeningView() {
                             {/* Always show Shortlist — even for REJECT recommendation the recruiter can override */}
                             <button
                               disabled={shortlisting === r.candidateId}
-                              onClick={() => handleShortlist(r.candidateId)}
+                              onClick={() => handleShortlist(r.candidateId, r.requisitionId)}
                               className="text-xs font-semibold px-3 py-1.5 rounded-lg text-white"
                               style={{ backgroundColor: C.success, opacity: shortlisting === r.candidateId ? 0.5 : 1 }}>
                               {shortlisting === r.candidateId ? "…" : rec === "REJECT" ? "Override & Shortlist" : "Shortlist"}
