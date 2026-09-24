@@ -48,7 +48,7 @@ public class OrchestratorService {
 
     private static final List<String> STAGE_ORDER = List.of(
             "SOURCED", "SCREENED", "SHORTLISTED", "REFERRAL_MATCHED",
-            "INTERVIEW_SCHEDULED", "OFFER", "HIRED", "REJECTED"
+            "INTERVIEW_SCHEDULED", "OFFER", "HIRED", "REJECTED", "NO_SHOW"
     );
 
     private final PipelineStageRepository pipelineStageRepository;

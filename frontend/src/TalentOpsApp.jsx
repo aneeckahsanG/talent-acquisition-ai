@@ -132,11 +132,12 @@ const AGENT_META = {
 const STAGE_LABELS = {
   SOURCED: "Sourced", SCREENED: "Screened", SHORTLISTED: "Shortlisted",
   INTERVIEW_SCHEDULED: "Interview", OFFER: "Offer", HIRED: "Hired", REJECTED: "Rejected",
+  NO_SHOW: "No Show",
 };
 
 // Linear progression — REFERRAL_MATCHED is a source tag, not a stage
 const PIPELINE_STAGES = [
-  "SOURCED","SCREENED","SHORTLISTED","INTERVIEW_SCHEDULED","OFFER","HIRED","REJECTED",
+  "SOURCED","SCREENED","SHORTLISTED","INTERVIEW_SCHEDULED","OFFER","HIRED","REJECTED","NO_SHOW",
 ];
 
 // Merges per-requisition pipeline board responses into one "All Roles" board.
@@ -1672,7 +1673,7 @@ function PipelineView() {
     }
   }
 
-  const visibleStages = PIPELINE_STAGES.filter(s => s !== "REJECTED");
+  const visibleStages = PIPELINE_STAGES.filter(s => s !== "REJECTED" && s !== "NO_SHOW");
 
   return (
     <div>
@@ -2131,7 +2132,7 @@ function PipelineView() {
                         })()}
 
                         {/* Stage action buttons for non-interview stages */}
-                        {stage !== "INTERVIEW_SCHEDULED" && actions.length > 0 && (
+                        {stage !== "INTERVIEW_SCHEDULED" && (actions.length > 0 || stage === "HIRED") && (
                           <div className="mt-2 space-y-1">
                             {actions.map(({ label, next }) => (
                               <button key={next} disabled={isMoving}
@@ -2144,7 +2145,15 @@ function PipelineView() {
                                 {isMoving ? "Moving…" : label}
                               </button>
                             ))}
-                            {stage !== "REJECTED" && (
+                            {stage === "HIRED" && (
+                              <button disabled={isMoving}
+                                onClick={() => handleMove(c.candidateId, "NO_SHOW", c.requisitionId)}
+                                className="w-full text-[10px] font-semibold py-1 rounded-lg transition-opacity"
+                                style={{ color: C.warning, border: `1px solid ${C.warning}55`, background: `${C.warning}10`, opacity: isMoving ? 0.5 : 1 }}>
+                                Mark as No-Show
+                              </button>
+                            )}
+                            {stage !== "REJECTED" && stage !== "HIRED" && (
                               <button disabled={isMoving}
                                 onClick={() => handleMove(c.candidateId, "REJECTED", c.requisitionId)}
                                 className="w-full text-[10px] font-semibold py-1 rounded-lg transition-opacity"
@@ -3944,12 +3953,13 @@ function ScreeningView() {
                         if (stage === "INTERVIEW_SCHEDULED") return <span className="text-xs font-semibold px-2 py-0.5 rounded-full text-white" style={{ backgroundColor: C.accent }}>Interview</span>;
                         if (stage === "OFFER")       return <span className="text-xs font-semibold px-2 py-0.5 rounded-full text-white" style={{ backgroundColor: C.accent }}>Offer</span>;
                         if (stage === "HIRED")       return <span className="text-xs font-semibold px-2 py-0.5 rounded-full text-white" style={{ backgroundColor: C.success }}>Hired</span>;
+                        if (stage === "NO_SHOW")     return <span className="text-xs font-semibold px-2 py-0.5 rounded-full text-white" style={{ backgroundColor: C.warning }}>No Show</span>;
                         return <span className="text-xs font-semibold" style={{ color: C.warning }}>Awaiting review</span>;
                       })()}
                     </td>
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-2 flex-wrap">
-                        {!["SHORTLISTED","INTERVIEW_SCHEDULED","OFFER","HIRED","REJECTED"].includes(r.pipelineStage) && (() => {
+                        {!["SHORTLISTED","INTERVIEW_SCHEDULED","OFFER","HIRED","REJECTED","NO_SHOW"].includes(r.pipelineStage) && (() => {
                           const rec = r.recommendation;
                           return (<>
                             {/* Always show Shortlist — even for REJECT recommendation the recruiter can override */}
