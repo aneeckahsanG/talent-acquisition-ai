@@ -801,7 +801,7 @@ public class SourcingAgentService {
 
         if (candidate.getEmail() != null && !candidate.getEmail().isBlank()) {
             try {
-                emailService.sendRejectionEmail(candidate.getEmail(), candidate.getFullName(), requisition.getTitle(), false);
+                emailService.sendRejectionEmail(match.getCandidateId(), match.getRequisitionId(), candidate.getEmail(), candidate.getFullName(), requisition.getTitle(), false);
             } catch (Exception e) {
                 log.warn("Rejection email failed for candidate {}: {}", candidate.getId(), e.getMessage());
             }

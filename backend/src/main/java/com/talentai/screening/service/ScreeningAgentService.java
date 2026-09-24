@@ -370,7 +370,7 @@ public class ScreeningAgentService {
         // SHORTLISTED is a silent internal signal (see OrchestratorService);
         // only reject notifies the candidate, same template used everywhere else.
         if (decision.equals("REJECT") && candidate.getEmail() != null && !candidate.getEmail().isBlank()) {
-            emailService.sendRejectionEmail(candidate.getEmail(), candidate.getFullName(), requisition.getTitle(), false);
+            emailService.sendRejectionEmail(result.getCandidateId(), result.getRequisitionId(), candidate.getEmail(), candidate.getFullName(), requisition.getTitle(), false);
         }
 
         return toResponse(result, candidate, requisition);

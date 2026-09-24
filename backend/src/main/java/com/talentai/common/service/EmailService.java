@@ -1,5 +1,7 @@
 package com.talentai.common.service;
 
+import com.talentai.common.entity.NotificationLog;
+import com.talentai.common.repository.NotificationLogRepository;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import lombok.RequiredArgsConstructor;
@@ -10,30 +12,22 @@ import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
+
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class EmailService {
 
     private final JavaMailSender mailSender;
+    private final NotificationLogRepository notificationLogRepository;
 
     @Value("${spring.mail.username}")
     private String fromAddress;
 
     @Async
     public void sendHtml(String to, String subject, String htmlBody) {
-        try {
-            MimeMessage message = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
-            helper.setFrom("TalentAcquisition AI <" + fromAddress + ">");
-            helper.setTo(to);
-            helper.setSubject(subject);
-            helper.setText(htmlBody, true);
-            mailSender.send(message);
-            log.info("Email sent to {} — subject: {}", to, subject);
-        } catch (MessagingException e) {
-            log.error("Failed to send email to {}: {}", to, e.getMessage());
-        }
+        trySend(to, subject, htmlBody);
     }
 
     @Async
@@ -56,8 +50,16 @@ public class EmailService {
      * Sends the single, consistent candidate rejection notification used across
      * the whole app (pipeline board, direct-applicant reject, screening reviewer
      * decisions) — regardless of which stage or flow triggered the rejection.
+     *
+     * The pipeline/status change that led here has already happened by the time
+     * this is called and is NOT rolled back if the send fails — a flaky mail
+     * server shouldn't freeze recruiting. Instead, the outcome is recorded to
+     * notification_log so a failed send is visible to recruiters and can be
+     * resent, rather than disappearing silently.
      */
-    public void sendRejectionEmail(String toEmail, String candidateFullName, String requisitionTitle, boolean hadInterview) {
+    @Async
+    public void sendRejectionEmail(Long candidateId, Long requisitionId, String toEmail,
+                                    String candidateFullName, String requisitionTitle, boolean hadInterview) {
         String firstName = (candidateFullName == null || candidateFullName.isBlank())
                 ? "there" : candidateFullName.trim().split("\\s+")[0];
         String intro = hadInterview
@@ -69,8 +71,57 @@ public class EmailService {
                 + "other candidates at this time.\n\n"
                 + "We appreciate the time you invested and encourage you to apply for future openings.\n\n"
                 + "Best regards,\nHuman Resources\nTalentAcquisition AI";
-        sendHtml(toEmail, "Application Update – " + requisitionTitle, wrapInTemplate(body, "TA"));
+        String subject = "Application Update – " + requisitionTitle;
+        String html = wrapInTemplate(body, "TA");
+
+        SendResult result = trySend(toEmail, subject, html);
+        notificationLogRepository.save(NotificationLog.builder()
+                .candidateId(candidateId)
+                .requisitionId(requisitionId)
+                .notificationType("REJECTION")
+                .recipientEmail(toEmail)
+                .subject(subject)
+                .body(html)
+                .status(result.success ? "SENT" : "FAILED")
+                .errorMessage(result.success ? null : result.errorMessage)
+                .createdAt(LocalDateTime.now())
+                .build());
     }
+
+    /**
+     * Re-attempts a previously failed (or any) logged notification, verbatim.
+     * Updates the same row in place — on success it flips to SENT so it drops
+     * out of the "failed" list rather than lingering there after being fixed.
+     */
+    @Async
+    public void resendLoggedNotification(Long notificationLogId) {
+        NotificationLog original = notificationLogRepository.findById(notificationLogId).orElse(null);
+        if (original == null) return;
+
+        SendResult result = trySend(original.getRecipientEmail(), original.getSubject(), original.getBody());
+        original.setStatus(result.success ? "SENT" : "FAILED");
+        original.setErrorMessage(result.success ? null : result.errorMessage);
+        notificationLogRepository.save(original);
+    }
+
+    private SendResult trySend(String to, String subject, String htmlBody) {
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            helper.setFrom("TalentAcquisition AI <" + fromAddress + ">");
+            helper.setTo(to);
+            helper.setSubject(subject);
+            helper.setText(htmlBody, true);
+            mailSender.send(message);
+            log.info("Email sent to {} — subject: {}", to, subject);
+            return new SendResult(true, null);
+        } catch (Exception e) {
+            log.error("Failed to send email to {}: {}", to, e.getMessage());
+            return new SendResult(false, e.getMessage());
+        }
+    }
+
+    private record SendResult(boolean success, String errorMessage) {}
 
     /** Wraps plain text invitation email in a clean HTML template. */
     public String wrapInTemplate(String bodyText, String logoInitials) {

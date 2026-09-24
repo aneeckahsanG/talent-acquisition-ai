@@ -213,7 +213,7 @@ public class OrchestratorService {
             boolean hadInterview = interviewScheduleRepository
                     .findByCandidateIdAndRequisitionIdOrderByCreatedAtAsc(candidateId, requisitionId)
                     .stream().anyMatch(i -> "COMPLETED".equals(i.getStatus()));
-            emailService.sendRejectionEmail(candidate.getEmail(), candidate.getFullName(), req.getTitle(), hadInterview);
+            emailService.sendRejectionEmail(candidateId, requisitionId, candidate.getEmail(), candidate.getFullName(), req.getTitle(), hadInterview);
         }
         var screening = screeningResultRepository.findByCandidateIdAndRequisitionId(candidateId, requisitionId).orElse(null);
         var match = sourcingMatchRepository.findByCandidateIdAndRequisitionId(candidateId, requisitionId).orElse(null);

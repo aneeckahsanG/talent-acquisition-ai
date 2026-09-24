@@ -1399,6 +1399,64 @@ function ApplicantsPanel({ requisitionId }) {
   );
 }
 
+// Surfaces candidate notification emails that failed to send (the triggering
+// pipeline/status change already happened and is never rolled back) so a
+// recruiter can notice and resend rather than the failure disappearing silently.
+function FailedNotificationsBanner() {
+  const { data, loading, reload } = useApi("/notifications/failed");
+  const [resendingId, setResendingId] = useState(null);
+  const [expanded, setExpanded] = useState(false);
+  const failures = data || [];
+
+  async function resend(id) {
+    setResendingId(id);
+    try {
+      await apiFetch(`/notifications/${id}/resend`, { method: "POST" });
+      // Give the async send a moment before refreshing the list
+      setTimeout(reload, 2000);
+    } finally {
+      setResendingId(null);
+    }
+  }
+
+  if (loading || failures.length === 0) return null;
+
+  return (
+    <Card className="p-4 mb-4" style={{ borderColor: "#FCA5A5", background: "#FEF2F2" }}>
+      <div className="flex items-center justify-between">
+        <button onClick={() => setExpanded(e => !e)} className="flex items-center gap-2 text-left">
+          <AlertCircle size={16} style={{ color: C.danger }} />
+          <span className="text-sm font-semibold" style={{ color: C.danger }}>
+            {failures.length} notification email{failures.length !== 1 ? "s" : ""} failed to send
+          </span>
+          <span className="text-xs" style={{ color: C.danger }}>{expanded ? "▲ Hide" : "▼ Show"}</span>
+        </button>
+        <button onClick={reload} className="p-1.5 rounded-lg hover:bg-white/50" title="Refresh">
+          <RefreshCw size={13} style={{ color: C.danger }} />
+        </button>
+      </div>
+      {expanded && (
+        <div className="mt-3 space-y-2">
+          {failures.map(f => (
+            <div key={f.id} className="flex items-center justify-between gap-3 p-2.5 rounded-lg bg-white border" style={{ borderColor: "#FECACA" }}>
+              <div className="min-w-0">
+                <p className="text-xs font-semibold truncate" style={{ color: C.text }}>{f.recipientEmail}</p>
+                <p className="text-xs truncate" style={{ color: C.muted }}>{f.subject}</p>
+                <p className="text-[10px] mt-0.5 truncate" style={{ color: C.danger }}>{f.errorMessage}</p>
+              </div>
+              <button disabled={resendingId === f.id} onClick={() => resend(f.id)}
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg text-white shrink-0"
+                style={{ backgroundColor: C.danger, opacity: resendingId === f.id ? 0.5 : 1 }}>
+                {resendingId === f.id ? "Resending…" : "Resend"}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function PipelineView() {
   const { data: reqs } = useApi("/requisitions");
   const [reqId, setReqId] = useState("ALL"); // "ALL" or a numeric requisition id
@@ -1639,6 +1697,8 @@ function PipelineView() {
           </div>
         }
       />
+
+      <FailedNotificationsBanner />
 
       {error && <ErrorBanner message={error} onRetry={reload} />}
 
