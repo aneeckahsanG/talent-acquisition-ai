@@ -1163,7 +1163,36 @@ function ApplicantsPanel({ requisitionId }) {
   const [acting, setActing] = useState(null);
   const [expanded, setExpanded] = useState({});
 
+  // Candidate id currently being email-edited, and that edit's local state
+  const [editingEmailFor, setEditingEmailFor] = useState(null);
+  const [emailDraft, setEmailDraft] = useState("");
+  const [savingEmail, setSavingEmail] = useState(false);
+  const [emailError, setEmailError] = useState(null);
+
   const applicants = data || [];
+
+  function startEditEmail(a) {
+    setEditingEmailFor(a.candidateId);
+    setEmailDraft(a.candidateEmail || "");
+    setEmailError(null);
+  }
+
+  async function saveEmail(candidateId) {
+    setSavingEmail(true);
+    setEmailError(null);
+    try {
+      await apiFetch(`/candidates/${candidateId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ email: emailDraft }),
+      });
+      setEditingEmailFor(null);
+      reload();
+    } catch (e) {
+      setEmailError(e.message);
+    } finally {
+      setSavingEmail(false);
+    }
+  }
 
   async function shortlist(matchId) {
     setActing(matchId);
@@ -1237,6 +1266,35 @@ function ApplicantsPanel({ requisitionId }) {
                     </div>
                     {a.candidateHeadline && (
                       <p className="text-xs mt-0.5 truncate" style={{ color: C.muted }}>{a.candidateHeadline}</p>
+                    )}
+                    {editingEmailFor === a.candidateId ? (
+                      <div className="mt-1 flex items-center gap-1.5">
+                        <input type="email" value={emailDraft} autoFocus
+                          onChange={e => setEmailDraft(e.target.value)}
+                          onKeyDown={e => { if (e.key === "Enter") saveEmail(a.candidateId); if (e.key === "Escape") setEditingEmailFor(null); }}
+                          className="text-xs px-2 py-1 rounded-lg border flex-1 min-w-0"
+                          style={{ borderColor: C.border }} />
+                        <button disabled={savingEmail} onClick={() => saveEmail(a.candidateId)}
+                          className="text-xs font-semibold px-2 py-1 rounded-lg text-white"
+                          style={{ backgroundColor: C.success, opacity: savingEmail ? 0.5 : 1 }}>
+                          {savingEmail ? "…" : "Save"}
+                        </button>
+                        <button disabled={savingEmail} onClick={() => setEditingEmailFor(null)}
+                          className="text-xs font-semibold px-2 py-1 rounded-lg border" style={{ borderColor: C.border, color: C.muted }}>
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1.5 mt-0.5 group">
+                        <p className="text-xs truncate" style={{ color: C.muted }}>{a.candidateEmail || "No email on record"}</p>
+                        <button onClick={() => startEditEmail(a)}
+                          className="text-xs opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: C.accent }}>
+                          Edit
+                        </button>
+                      </div>
+                    )}
+                    {editingEmailFor === a.candidateId && emailError && (
+                      <p className="text-xs mt-1" style={{ color: C.danger }}>{emailError}</p>
                     )}
                     <p className="text-xs mt-1" style={{ color: C.muted }}>
                       Applied {a.createdAt ? new Date(a.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—"}

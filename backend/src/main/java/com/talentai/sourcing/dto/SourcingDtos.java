@@ -160,6 +160,7 @@ public class SourcingDtos {
         private Long id;
         private Long candidateId;
         private String candidateName;
+        private String candidateEmail;
         private String candidateHeadline;
         private String sourceChannel;
         private Long requisitionId;

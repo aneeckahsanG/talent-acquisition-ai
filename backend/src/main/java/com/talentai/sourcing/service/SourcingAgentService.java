@@ -611,6 +611,7 @@ public class SourcingAgentService {
                 .id(match.getId())
                 .candidateId(match.getCandidateId())
                 .candidateName(candidate != null ? candidate.getFullName() : null)
+                .candidateEmail(candidate != null ? candidate.getEmail() : null)
                 .candidateHeadline(candidate != null ? candidate.getHeadline() : null)
                 .sourceChannel(candidate != null ? candidate.getSourceChannel() : null)
                 .requisitionId(match.getRequisitionId())
