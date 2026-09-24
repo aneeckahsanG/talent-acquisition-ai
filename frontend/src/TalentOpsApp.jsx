@@ -109,8 +109,8 @@ function useApiMulti(paths, deps = []) {
 // DESIGN SYSTEM
 // ============================================================
 const C = {
-  sidebar: "#0F172A",
-  accent: "#6366F1",
+  sidebar: "#003580",
+  accent: "#0082D9",
   success: "#10B981",
   warning: "#F59E0B",
   danger: "#EF4444",
@@ -273,7 +273,7 @@ function Card({ children, className = "", style = {}, onClick }) {
 
 function Btn({ children, variant = "primary", onClick, className = "", disabled = false, type = "button" }) {
   const styles = {
-    primary:   { background: "linear-gradient(135deg,#6366F1,#8B5CF6)", color: "#fff", border: "none" },
+    primary:   { background: "linear-gradient(135deg,#0082D9,#003580)", color: "#fff", border: "none" },
     secondary: { background: "#fff", color: C.text, border: `1px solid ${C.border}` },
     danger:    { background: "#FEF2F2", color: C.danger,   border: "1px solid #FECACA" },
     success:   { background: "#ECFDF5", color: C.success,  border: "1px solid #A7F3D0" },
@@ -293,7 +293,7 @@ function Input({ label, ...props }) {
     <div>
       {label && <label className="text-xs font-semibold block mb-1.5" style={{ color: C.muted }}>{label}</label>}
       <input
-        className="w-full text-sm px-4 py-2.5 rounded-xl border outline-none focus:ring-2 focus:ring-indigo-200 transition-shadow"
+        className="w-full text-sm px-4 py-2.5 rounded-xl border outline-none focus:ring-2 focus:ring-blue-200 transition-shadow"
         style={{ borderColor: C.border }}
         {...props}
       />
@@ -388,7 +388,7 @@ function LoginScreen({ onLogin }) {
       <div className="w-full max-w-sm">
         <div className="flex items-center gap-3 justify-center mb-8">
           <div className="w-10 h-10 rounded-2xl flex items-center justify-center"
-            style={{ background: "linear-gradient(135deg,#6366F1,#8B5CF6)" }}>
+            style={{ background: "linear-gradient(135deg,#0082D9,#003580)" }}>
             <Sparkles size={20} color="#fff" />
           </div>
           <div>
@@ -440,7 +440,7 @@ function Sidebar({ active, setActive, user, onLogout }) {
     <aside className="w-64 shrink-0 flex flex-col" style={{ backgroundColor: C.sidebar }}>
       <div className="px-6 py-6 flex items-center gap-3">
         <div className="w-8 h-8 rounded-xl flex items-center justify-center"
-          style={{ background: "linear-gradient(135deg,#6366F1,#8B5CF6)" }}>
+          style={{ background: "linear-gradient(135deg,#0082D9,#003580)" }}>
           <Sparkles size={16} color="#fff" />
         </div>
         <div>
@@ -459,9 +459,9 @@ function Sidebar({ active, setActive, user, onLogout }) {
                 backgroundColor: active_ ? "#1E293B" : "transparent",
                 color: active_ ? "#fff" : "#94A3B8",
               }}>
-              <Icon size={16} style={{ color: active_ ? "#818CF8" : "#475569" }} />
+              <Icon size={16} style={{ color: active_ ? "#4FC3FF" : "#475569" }} />
               {label}
-              {active_ && <ChevronRight size={14} className="ml-auto" style={{ color: "#818CF8" }} />}
+              {active_ && <ChevronRight size={14} className="ml-auto" style={{ color: "#4FC3FF" }} />}
             </button>
           );
         })}
@@ -3557,7 +3557,7 @@ function SourcingView({ setActive }) {
                 <div>
                   <label className="text-xs font-semibold block mb-1.5" style={{ color: C.muted }}>Resume File (PDF or TXT)</label>
                   <label className="flex flex-col items-center justify-center gap-2 w-full py-6 rounded-xl border-2 border-dashed cursor-pointer transition-colors"
-                    style={{ borderColor: uploadFile ? C.accent : C.border, background: uploadFile ? "#EEF2FF" : "transparent" }}>
+                    style={{ borderColor: uploadFile ? C.accent : C.border, background: uploadFile ? "#E6F3FB" : "transparent" }}>
                     <UploadCloud size={22} style={{ color: uploadFile ? C.accent : C.muted }} />
                     <span className="text-xs font-medium" style={{ color: uploadFile ? C.accent : C.muted }}>
                       {uploadFile ? uploadFile.name : "Click to select PDF or TXT file"}
@@ -3638,7 +3638,7 @@ function SourcingView({ setActive }) {
                       </button>
                     </div>
                     <label className="flex flex-col items-center justify-center gap-2 w-full py-6 rounded-xl border-2 border-dashed cursor-pointer transition-colors"
-                      style={{ borderColor: csvFile ? C.accent : C.border, background: csvFile ? "#EEF2FF" : "transparent" }}>
+                      style={{ borderColor: csvFile ? C.accent : C.border, background: csvFile ? "#E6F3FB" : "transparent" }}>
                       <UploadCloud size={22} style={{ color: csvFile ? C.accent : C.muted }} />
                       <span className="text-xs font-medium" style={{ color: csvFile ? C.accent : C.muted }}>
                         {csvFile ? csvFile.name : "Click to select CSV file"}
@@ -4026,7 +4026,7 @@ function ScreeningView() {
                   Resume File (PDF or TXT)
                 </label>
                 <div
-                  className="border-2 border-dashed rounded-xl p-6 text-center cursor-pointer hover:border-indigo-300 transition-colors"
+                  className="border-2 border-dashed rounded-xl p-6 text-center cursor-pointer hover:border-blue-300 transition-colors"
                   style={{ borderColor: uploadFile ? C.accent : C.border }}
                   onClick={() => fileRef.current?.click()}>
                   <UploadCloud size={24} className="mx-auto mb-2" style={{ color: C.muted }} />
@@ -4257,7 +4257,7 @@ function ReferralsView({ currentUser = {} }) {
                   placeholder="Skills, experience, key background..." />
               </div>
               <div className="p-3.5 rounded-xl flex items-start gap-2.5"
-                style={{ background: "linear-gradient(135deg,#EEF2FF,#F5F3FF)", border: "1px solid #C7D2FE" }}>
+                style={{ background: "linear-gradient(135deg,#E6F3FB,#EAF0F7)", border: "1px solid #B8DCF2" }}>
                 <Sparkles size={14} className="shrink-0 mt-0.5" style={{ color: C.accent }} />
                 <p className="text-xs" style={{ color: C.muted }}>
                   The Referral Agent will auto-match this candidate against all open roles
@@ -4393,7 +4393,7 @@ function SchedulingView() {
                   {(s.proposedSlots || []).map((slot) => (
                     <button key={slot}
                       onClick={() => handleConfirm(s.id, slot)}
-                      className="text-xs font-mono px-4 py-2 rounded-xl border hover:border-indigo-300 hover:bg-indigo-50 transition-colors flex items-center gap-1.5"
+                      className="text-xs font-mono px-4 py-2 rounded-xl border hover:border-blue-300 hover:bg-blue-50 transition-colors flex items-center gap-1.5"
                       style={{ borderColor: C.border, color: C.text }}>
                       <Clock size={11} style={{ color: C.accent }} />
                       {formatDateTime(slot)}
@@ -4454,7 +4454,7 @@ function SchedulingView() {
                 </Select>
               </div>
               <div className="p-3.5 rounded-xl flex items-start gap-2.5"
-                style={{ background: "linear-gradient(135deg,#EEF2FF,#F5F3FF)", border: "1px solid #C7D2FE" }}>
+                style={{ background: "linear-gradient(135deg,#E6F3FB,#EAF0F7)", border: "1px solid #B8DCF2" }}>
                 <Sparkles size={14} className="shrink-0 mt-0.5" style={{ color: C.accent }} />
                 <p className="text-xs" style={{ color: C.muted }}>
                   Claude will generate 3 interview slot suggestions and a draft candidate
@@ -4548,7 +4548,7 @@ function PublicReferralPage() {
       <div className="w-full max-w-lg">
         <div className="flex items-center gap-3 justify-center mb-6">
           <div className="w-10 h-10 rounded-2xl flex items-center justify-center"
-            style={{ background: "linear-gradient(135deg,#6366F1,#8B5CF6)" }}>
+            style={{ background: "linear-gradient(135deg,#0082D9,#003580)" }}>
             <Sparkles size={20} color="#fff" />
           </div>
           <div>
@@ -4628,7 +4628,7 @@ function PublicReferralPage() {
             </div>
 
             <div className="p-3.5 rounded-xl flex items-start gap-2.5"
-              style={{ background: "linear-gradient(135deg,#EEF2FF,#F5F3FF)", border: "1px solid #C7D2FE" }}>
+              style={{ background: "linear-gradient(135deg,#E6F3FB,#EAF0F7)", border: "1px solid #B8DCF2" }}>
               <Sparkles size={14} className="shrink-0 mt-0.5" style={{ color: C.accent }} />
               <p className="text-xs" style={{ color: C.muted }}>
                 Our AI agent will automatically match this candidate to the best open role and notify the recruiting team.
