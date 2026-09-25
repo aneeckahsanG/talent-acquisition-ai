@@ -3,7 +3,7 @@ import {
   LayoutGrid, Search, FileCheck, UserPlus, Calendar, Activity,
   ChevronRight, ChevronUp, ChevronDown, Sparkles, CheckCircle2, XCircle, AlertCircle, Clock,
   Briefcase, Mail, X, ArrowRight, Bell, LogOut, Loader2, UploadCloud,
-  RefreshCw, Plus, Globe,
+  RefreshCw, Plus, Globe, List, ArrowUp, ArrowDown, ArrowUpDown,
 } from "lucide-react";
 
 // ============================================================
@@ -1458,9 +1458,161 @@ function FailedNotificationsBanner() {
   );
 }
 
+// Sortable, filterable table view of the pipeline — same underlying data as
+// the Kanban board, flattened into rows. Complements the board rather than
+// replacing it: bulk scanning/sorting/filtering is easier here (including
+// surfacing REJECTED/NO_SHOW candidates the board hides by default), while
+// multi-round interview scheduling and offer creation stay board-only since
+// they need more room than a table row can give them.
+function PipelineListView({
+  board, isAllRoles, stageFilter, setStageFilter, sortBy, setSortBy, sortDir, setSortDir,
+  movingId, handleMove, setScheduleModal, setScheduleForm, setOfferModal,
+}) {
+  const allCandidates = Object.values(board.stages || {}).flat();
+  const filtered = stageFilter === "ALL" ? allCandidates : allCandidates.filter(c => c.stage === stageFilter);
+
+  const sorted = [...filtered].sort((a, b) => {
+    let av, bv;
+    if (sortBy === "name") { av = (a.candidateName || "").toLowerCase(); bv = (b.candidateName || "").toLowerCase(); }
+    else if (sortBy === "score") { av = a.screeningScore ?? a.sourcingMatchScore ?? -1; bv = b.screeningScore ?? b.sourcingMatchScore ?? -1; }
+    else if (sortBy === "stage") { av = PIPELINE_STAGES.indexOf(a.stage); bv = PIPELINE_STAGES.indexOf(b.stage); }
+    else { av = a.enteredAt || ""; bv = b.enteredAt || ""; }
+    if (av < bv) return sortDir === "asc" ? -1 : 1;
+    if (av > bv) return sortDir === "asc" ? 1 : -1;
+    return 0;
+  });
+
+  function toggleSort(col) {
+    if (sortBy === col) setSortDir(d => d === "asc" ? "desc" : "asc");
+    else { setSortBy(col); setSortDir(col === "name" || col === "stage" ? "asc" : "desc"); }
+  }
+
+  function SortHeader({ col, children }) {
+    const active = sortBy === col;
+    return (
+      <th className="text-left px-4 py-3 font-semibold cursor-pointer select-none" style={{ color: C.muted }}
+        onClick={() => toggleSort(col)}>
+        <span className="inline-flex items-center gap-1">
+          {children}
+          {active ? (sortDir === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />) : <ArrowUpDown size={11} style={{ opacity: 0.35 }} />}
+        </span>
+      </th>
+    );
+  }
+
+  return (
+    <div>
+      <div className="mb-3 flex items-center gap-2">
+        <label className="text-xs font-semibold" style={{ color: C.muted }}>Stage</label>
+        <Select value={stageFilter} onChange={e => setStageFilter(e.target.value)}>
+          <option value="ALL">All Stages ({allCandidates.length})</option>
+          {PIPELINE_STAGES.map(s => {
+            const n = allCandidates.filter(c => c.stage === s).length;
+            return <option key={s} value={s}>{STAGE_LABELS[s]} ({n})</option>;
+          })}
+        </Select>
+      </div>
+
+      <Card className="overflow-hidden">
+        <table className="w-full text-sm">
+          <thead>
+            <tr style={{ backgroundColor: C.bg }}>
+              <SortHeader col="name">Candidate</SortHeader>
+              {isAllRoles && <th className="text-left px-4 py-3 font-semibold" style={{ color: C.muted }}>Role</th>}
+              <SortHeader col="stage">Stage</SortHeader>
+              <SortHeader col="score">Score</SortHeader>
+              <th className="text-left px-4 py-3 font-semibold" style={{ color: C.muted }}>Updated By</th>
+              <SortHeader col="enteredAt">Entered</SortHeader>
+              <th className="text-left px-4 py-3 font-semibold" style={{ color: C.muted }}></th>
+            </tr>
+          </thead>
+          <tbody className="divide-y" style={{ borderColor: C.border }}>
+            {sorted.map(c => {
+              const isMoving = movingId === c.candidateId;
+              const actions = STAGE_ACTIONS[c.stage] || [];
+              const score = c.screeningScore ?? c.sourcingMatchScore;
+              return (
+                <tr key={`${c.candidateId}-${c.requisitionId}`} className="hover:bg-slate-50 transition-colors">
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2.5">
+                      <Avatar name={c.candidateName} size={30} />
+                      <span className="font-semibold" style={{ color: C.text }}>{c.candidateName}</span>
+                    </div>
+                  </td>
+                  {isAllRoles && (
+                    <td className="px-4 py-3 text-xs" style={{ color: C.muted }}>{c.requisitionTitle}</td>
+                  )}
+                  <td className="px-4 py-3">
+                    <span className="text-xs font-semibold px-2 py-0.5 rounded-full"
+                      style={{ backgroundColor: `${C.accent}15`, color: C.accent }}>
+                      {STAGE_LABELS[c.stage] || c.stage}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">{score != null && <ScoreRing score={score} size={30} />}</td>
+                  <td className="px-4 py-3 text-xs font-semibold"
+                    style={{ color: AGENT_META[c.updatedByAgent]?.color || C.muted }}>
+                    {AGENT_META[c.updatedByAgent]?.label || c.updatedByAgent || "—"}
+                  </td>
+                  <td className="px-4 py-3 text-xs" style={{ color: C.muted }}>
+                    {c.enteredAt ? new Date(c.enteredAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—"}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {c.stage === "INTERVIEW_SCHEDULED" || c.stage === "OFFER" ? (
+                        <span className="text-xs" style={{ color: C.muted }}>Manage in Board view</span>
+                      ) : (
+                        <>
+                          {actions.map(({ label, next }) => (
+                            <button key={next} disabled={isMoving}
+                              onClick={() => next === "INTERVIEW_SCHEDULED"
+                                ? setScheduleModal({ candidateId: c.candidateId, candidateName: c.candidateName, requisitionId: c.requisitionId, nextType: "PHONE_SCREEN" })
+                                : handleMove(c.candidateId, next, c.requisitionId)
+                              }
+                              className="text-xs font-semibold px-2.5 py-1 rounded-lg text-white"
+                              style={{ backgroundColor: C.accent, opacity: isMoving ? 0.5 : 1 }}>
+                              {label}
+                            </button>
+                          ))}
+                          {c.stage === "HIRED" && (
+                            <button disabled={isMoving}
+                              onClick={() => handleMove(c.candidateId, "NO_SHOW", c.requisitionId)}
+                              className="text-xs font-semibold px-2.5 py-1 rounded-lg"
+                              style={{ color: C.warning, border: `1px solid ${C.warning}55`, opacity: isMoving ? 0.5 : 1 }}>
+                              Mark as No-Show
+                            </button>
+                          )}
+                          {c.stage !== "REJECTED" && c.stage !== "HIRED" && c.stage !== "NO_SHOW" && (
+                            <button disabled={isMoving}
+                              onClick={() => handleMove(c.candidateId, "REJECTED", c.requisitionId)}
+                              className="text-xs font-semibold px-2.5 py-1 rounded-lg"
+                              style={{ color: C.danger, border: `1px solid ${C.danger}33`, opacity: isMoving ? 0.5 : 1 }}>
+                              Reject
+                            </button>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        {sorted.length === 0 && (
+          <p className="text-sm text-center py-10" style={{ color: C.muted }}>No candidates in this stage.</p>
+        )}
+      </Card>
+    </div>
+  );
+}
+
 function PipelineView() {
   const { data: reqs } = useApi("/requisitions");
   const [reqId, setReqId] = useState("ALL"); // "ALL" or a numeric requisition id
+  const [viewMode, setViewMode] = useState("board"); // "board" | "list"
+  const [stageFilter, setStageFilter] = useState("ALL");
+  const [sortBy, setSortBy] = useState("enteredAt"); // "name" | "score" | "stage" | "enteredAt"
+  const [sortDir, setSortDir] = useState("desc");
   const [movingId, setMovingId] = useState(null);
   const [completingRoundId, setCompletingRoundId] = useState(null);
   const [simulatingResponseId, setSimulatingResponseId] = useState(null);
@@ -1687,6 +1839,18 @@ function PipelineView() {
                 {reqs.map(r => <option key={r.id} value={r.id}>{r.title}</option>)}
               </Select>
             )}
+            <div className="flex p-1 rounded-xl" style={{ background: C.surface, border: `1px solid ${C.border}` }}>
+              <button onClick={() => setViewMode("board")}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors"
+                style={{ background: viewMode === "board" ? C.accent : "transparent", color: viewMode === "board" ? "#fff" : C.muted }}>
+                <LayoutGrid size={13} /> Board
+              </button>
+              <button onClick={() => setViewMode("list")}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors"
+                style={{ background: viewMode === "list" ? C.accent : "transparent", color: viewMode === "list" ? "#fff" : C.muted }}>
+                <List size={13} /> List
+              </button>
+            </div>
             <Btn variant="primary" onClick={() => setNewRoleModal(true)}>
               <Plus size={13} /> New Role
             </Btn>
@@ -1709,7 +1873,16 @@ function PipelineView() {
         </div>
       )}
 
-      {board && (
+      {board && viewMode === "list" && (
+        <PipelineListView board={board} isAllRoles={isAllRoles}
+          stageFilter={stageFilter} setStageFilter={setStageFilter}
+          sortBy={sortBy} setSortBy={setSortBy} sortDir={sortDir} setSortDir={setSortDir}
+          movingId={movingId} handleMove={handleMove}
+          setScheduleModal={setScheduleModal} setScheduleForm={setScheduleForm}
+          setOfferModal={setOfferModal} />
+      )}
+
+      {board && viewMode === "board" && (
         <div className="flex gap-3 overflow-x-auto pb-4" style={{ minHeight: 0 }}>
           {visibleStages.map((stage) => {
             const candidates = (board.stages?.[stage]) || [];
