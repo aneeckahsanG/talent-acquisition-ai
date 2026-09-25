@@ -37,15 +37,25 @@ public class ScreeningController {
         return ResponseEntity.ok(screeningAgentService.parseResume(resume));
     }
 
-    /** Screen a candidate by uploading a resume file (PDF or text) against a requisition. */
+    /**
+     * Screen a candidate by uploading a resume file (PDF or text). If
+     * requisitionId is omitted (the "All Roles" case), screens against every
+     * currently open requisition instead of one specific role. Always
+     * returns a list, so callers don't need to branch on the shape.
+     */
     @PostMapping(value = "/evaluate-upload", consumes = "multipart/form-data")
-    public ResponseEntity<ScreeningResultResponse> screenCandidateFromFile(
+    public ResponseEntity<List<ScreeningResultResponse>> screenCandidateFromFile(
             @RequestParam("candidateName") String candidateName,
             @RequestParam(value = "candidateEmail", required = false) String candidateEmail,
-            @RequestParam("requisitionId") Long requisitionId,
+            @RequestParam(value = "requisitionId", required = false) Long requisitionId,
             @RequestParam("resume") MultipartFile resume
     ) throws IOException {
-        return ResponseEntity.ok(screeningAgentService.screenCandidateFromFile(candidateName, candidateEmail, requisitionId, resume));
+        if (requisitionId != null) {
+            return ResponseEntity.ok(List.of(
+                    screeningAgentService.screenCandidateFromFile(candidateName, candidateEmail, requisitionId, resume)));
+        }
+        return ResponseEntity.ok(
+                screeningAgentService.screenCandidateFromFileAllOpenRoles(candidateName, candidateEmail, resume));
     }
 
     /** Get a single screening result by ID. */

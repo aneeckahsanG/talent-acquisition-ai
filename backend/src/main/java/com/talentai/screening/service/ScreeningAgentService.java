@@ -143,6 +143,47 @@ public class ScreeningAgentService {
         return toResponse(result, candidate, requisition);
     }
 
+    /**
+     * Screens a candidate from an uploaded resume file against every currently
+     * open requisition (used when "All Roles" is selected instead of one
+     * specific role). Extracts the resume text and creates/finds the
+     * candidate record once, then screens once per open role — skipping any
+     * role the candidate was already screened for rather than failing the
+     * whole batch.
+     */
+    @Transactional
+    public List<ScreeningResultResponse> screenCandidateFromFileAllOpenRoles(
+            String candidateName, String candidateEmail, MultipartFile resumeFile) throws IOException {
+
+        List<JobRequisition> openRequisitions = jobRequisitionRepository.findByStatus("OPEN");
+        if (openRequisitions.isEmpty()) {
+            throw new IllegalArgumentException("There are no open requisitions to screen this candidate against.");
+        }
+
+        String resumeText = pdfTextExtractor.extractText(resumeFile);
+        if (resumeText == null || resumeText.isBlank()) {
+            throw new IllegalArgumentException("Could not extract any text from the uploaded resume file.");
+        }
+
+        Candidate candidate = findOrCreateCandidate(
+                candidateName, candidateEmail, resumeText, resumeFile.getOriginalFilename(), "UPLOAD");
+
+        List<ScreeningResultResponse> results = new java.util.ArrayList<>();
+        for (JobRequisition requisition : openRequisitions) {
+            boolean alreadyScreened = screeningResultRepository
+                    .findByCandidateIdAndRequisitionId(candidate.getId(), requisition.getId()).isPresent();
+            if (alreadyScreened) continue;
+            ScreeningResult result = runScreening(candidate, requisition);
+            results.add(toResponse(result, candidate, requisition));
+        }
+
+        if (results.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "This candidate has already been screened for every open role. Duplicate upload is not allowed.");
+        }
+        return results;
+    }
+
     private Candidate findOrCreateCandidate(String name, String email, String resumeText, String filename, String sourceChannel) {
         Candidate candidate = null;
         if (email != null && !email.isBlank()) {

@@ -3866,7 +3866,7 @@ function ScreeningView() {
     const fd = new FormData();
     fd.append("candidateName", uploadForm.candidateName);
     fd.append("candidateEmail", uploadForm.candidateEmail);
-    fd.append("requisitionId", String(reqId));
+    if (!isAllRoles) fd.append("requisitionId", String(reqId));
     fd.append("resume", uploadFile);
     try {
       await apiFetch("/screening/evaluate-upload", { method: "POST", body: fd });
@@ -3895,7 +3895,7 @@ function ScreeningView() {
                 {reqs.map(r => <option key={r.id} value={r.id}>{r.title}</option>)}
               </Select>
             )}
-            <Btn onClick={() => setShowUpload(true)} disabled={isAllRoles}>
+            <Btn onClick={() => setShowUpload(true)}>
               <UploadCloud size={14} /> Screen Resume
             </Btn>
           </div>
@@ -3904,7 +3904,7 @@ function ScreeningView() {
 
       {isAllRoles && (
         <p className="text-xs mb-3" style={{ color: C.muted }}>
-          Select a specific role above (instead of "All Roles") to screen a new resume against it.
+          "All Roles" is selected — this candidate will be screened against every currently open role.
         </p>
       )}
 
@@ -4006,13 +4006,18 @@ function ScreeningView() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
           style={{ backgroundColor: "rgba(15,23,42,0.5)", backdropFilter: "blur(4px)" }}>
           <Card className="w-full max-w-md p-6">
-            <div className="flex items-center justify-between mb-5">
+            <div className="flex items-center justify-between mb-1">
               <h2 className="font-bold text-lg" style={{ color: C.text }}>Screen a Resume</h2>
               <button onClick={() => { setShowUpload(false); setUploadError(null); }}
                 className="w-8 h-8 rounded-xl flex items-center justify-center hover:bg-slate-100">
                 <X size={16} />
               </button>
             </div>
+            <p className="text-xs mb-4" style={{ color: C.muted }}>
+              {isAllRoles
+                ? "Will be screened against every currently open role."
+                : `Will be screened against "${reqs?.find(r => r.id === reqId)?.title || "the selected role"}".`}
+            </p>
             <form onSubmit={handleUpload} className="space-y-3">
               <div>
                 <Input label="Candidate Name" required value={uploadForm.candidateName}
