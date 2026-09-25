@@ -273,7 +273,7 @@ function Card({ children, className = "", style = {}, onClick }) {
 
 function Btn({ children, variant = "primary", onClick, className = "", disabled = false, type = "button" }) {
   const styles = {
-    primary:   { background: "linear-gradient(135deg,#248EC2,#1B6B94)", color: "#fff", border: "none" },
+    primary:   { background: "#248EC2", color: "#fff", border: "none" },
     secondary: { background: "#fff", color: C.text, border: `1px solid ${C.border}` },
     danger:    { background: "#FEF2F2", color: C.danger,   border: "1px solid #FECACA" },
     success:   { background: "#ECFDF5", color: C.success,  border: "1px solid #A7F3D0" },
@@ -388,7 +388,7 @@ function LoginScreen({ onLogin }) {
       <div className="w-full max-w-sm">
         <div className="flex items-center gap-3 justify-center mb-8">
           <div className="w-10 h-10 rounded-2xl flex items-center justify-center"
-            style={{ background: "linear-gradient(135deg,#248EC2,#1B6B94)" }}>
+            style={{ background: "#248EC2" }}>
             <Sparkles size={20} color="#fff" />
           </div>
           <div>
@@ -440,7 +440,7 @@ function Sidebar({ active, setActive, user, onLogout }) {
     <aside className="w-64 shrink-0 flex flex-col" style={{ backgroundColor: C.sidebar }}>
       <div className="px-6 py-6 flex items-center gap-3">
         <div className="w-8 h-8 rounded-xl flex items-center justify-center"
-          style={{ background: "linear-gradient(135deg,#248EC2,#1B6B94)" }}>
+          style={{ background: "#248EC2" }}>
           <Sparkles size={16} color="#fff" />
         </div>
         <div>
@@ -4548,7 +4548,7 @@ function PublicReferralPage() {
       <div className="w-full max-w-lg">
         <div className="flex items-center gap-3 justify-center mb-6">
           <div className="w-10 h-10 rounded-2xl flex items-center justify-center"
-            style={{ background: "linear-gradient(135deg,#248EC2,#1B6B94)" }}>
+            style={{ background: "#248EC2" }}>
             <Sparkles size={20} color="#fff" />
           </div>
           <div>
