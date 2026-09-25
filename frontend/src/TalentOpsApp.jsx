@@ -445,7 +445,7 @@ function Sidebar({ active, setActive, user, onLogout }) {
         </div>
         <div>
           <p className="text-white font-bold text-sm tracking-tight">TalentAcquisition AI</p>
-          <p className="text-xs" style={{ color: "#475569" }}>Agentic recruiting</p>
+          <p className="text-xs" style={{ color: "rgba(255,255,255,0.75)" }}>Agentic recruiting</p>
         </div>
       </div>
 
@@ -457,9 +457,9 @@ function Sidebar({ active, setActive, user, onLogout }) {
               className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all text-left"
               style={{
                 backgroundColor: active_ ? "#1E293B" : "transparent",
-                color: active_ ? "#fff" : "#94A3B8",
+                color: "#fff",
               }}>
-              <Icon size={16} style={{ color: active_ ? "#4FC3FF" : "#475569" }} />
+              <Icon size={16} style={{ color: active_ ? "#4FC3FF" : "#fff" }} />
               {label}
               {active_ && <ChevronRight size={14} className="ml-auto" style={{ color: "#4FC3FF" }} />}
             </button>
@@ -472,12 +472,12 @@ function Sidebar({ active, setActive, user, onLogout }) {
           <Avatar name={user?.fullName || "User"} size={34} />
           <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold text-white truncate">{user?.fullName}</p>
-            <p className="text-xs truncate" style={{ color: "#64748B" }}>{user?.role}</p>
+            <p className="text-xs truncate" style={{ color: "rgba(255,255,255,0.75)" }}>{user?.role}</p>
           </div>
         </div>
         <button onClick={onLogout}
           className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium transition-colors"
-          style={{ color: "#64748B" }}>
+          style={{ color: "rgba(255,255,255,0.75)" }}>
           <LogOut size={13} /> Sign out
         </button>
       </div>
