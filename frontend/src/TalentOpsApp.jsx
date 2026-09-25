@@ -456,7 +456,7 @@ function Sidebar({ active, setActive, user, onLogout }) {
             <button key={id} onClick={() => setActive(id)}
               className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all text-left"
               style={{
-                backgroundColor: active_ ? "#1E293B" : "transparent",
+                backgroundColor: active_ ? "rgba(255,255,255,0.2)" : "transparent",
                 color: "#fff",
               }}>
               <Icon size={16} style={{ color: active_ ? "#4FC3FF" : "#fff" }} />
