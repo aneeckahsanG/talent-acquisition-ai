@@ -109,7 +109,7 @@ function useApiMulti(paths, deps = []) {
 // DESIGN SYSTEM
 // ============================================================
 const C = {
-  sidebar: "#003580",
+  sidebar: "#248EC2",
   accent: "#248EC2",
   success: "#10B981",
   warning: "#F59E0B",
@@ -440,7 +440,7 @@ function Sidebar({ active, setActive, user, onLogout }) {
     <aside className="w-64 shrink-0 flex flex-col" style={{ backgroundColor: C.sidebar }}>
       <div className="px-6 py-6 flex items-center gap-3">
         <div className="w-8 h-8 rounded-xl flex items-center justify-center"
-          style={{ background: "#248EC2" }}>
+          style={{ background: "rgba(255,255,255,0.2)" }}>
           <Sparkles size={16} color="#fff" />
         </div>
         <div>
