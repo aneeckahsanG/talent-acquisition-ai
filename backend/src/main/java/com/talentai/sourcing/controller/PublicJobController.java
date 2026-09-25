@@ -45,12 +45,12 @@ public class PublicJobController {
   /* NAV */
   nav { background: #0f172a; padding: 0 2rem; display: flex; align-items: center; justify-content: space-between; height: 64px; }
   .logo { color: #fff; font-size: 1.1rem; font-weight: 700; display: flex; align-items: center; gap: 10px; }
-  .logo-icon { background: #0082D9; border-radius: 8px; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; font-size: 1rem; }
+  .logo-icon { background: #248EC2; border-radius: 8px; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; font-size: 1rem; }
   .nav-right { color: #94a3b8; font-size: 0.85rem; }
 
   /* HERO */
   .hero { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color: #fff; padding: 72px 2rem 60px; text-align: center; }
-  .hero-tag { display: inline-flex; align-items: center; gap: 6px; background: rgba(0,130,217,.25); border: 1px solid rgba(79,195,255,.4); color: #B8DCF2; border-radius: 20px; padding: 4px 14px; font-size: 0.8rem; font-weight: 500; margin-bottom: 20px; }
+  .hero-tag { display: inline-flex; align-items: center; gap: 6px; background: rgba(36,142,194,.25); border: 1px solid rgba(79,195,255,.4); color: #B8DCF2; border-radius: 20px; padding: 4px 14px; font-size: 0.8rem; font-weight: 500; margin-bottom: 20px; }
   .hero h1 { font-size: 2.8rem; font-weight: 800; margin-bottom: 14px; line-height: 1.15; }
   .hero h1 span { color: #4FC3FF; }
   .hero p { font-size: 1.05rem; color: #94a3b8; max-width: 540px; margin: 0 auto 36px; line-height: 1.6; }
@@ -61,7 +61,7 @@ public class PublicJobController {
   /* STATS BAR */
   .stats-bar { background: #fff; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: center; gap: 48px; padding: 18px 2rem; }
   .stat { text-align: center; }
-  .stat-n { font-size: 1.4rem; font-weight: 700; color: #0082D9; }
+  .stat-n { font-size: 1.4rem; font-weight: 700; color: #248EC2; }
   .stat-l { font-size: 0.78rem; color: #64748b; margin-top: 2px; }
 
   /* LAYOUT */
@@ -72,29 +72,29 @@ public class PublicJobController {
   .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px; margin-bottom: 14px; }
   .card h3 { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #94a3b8; margin-bottom: 12px; }
   .chip { display: inline-flex; align-items: center; padding: 4px 12px; border-radius: 20px; font-size: 0.78rem; background: #f1f5f9; color: #475569; margin: 3px; cursor: pointer; border: 1.5px solid transparent; transition: all .12s; }
-  .chip:hover, .chip.on { background: #E6F3FB; color: #0082D9; border-color: #B8DCF2; }
+  .chip:hover, .chip.on { background: #E6F3FB; color: #248EC2; border-color: #B8DCF2; }
 
   /* JOB LIST */
   .list-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; }
   .list-header h2 { font-size: 1.1rem; font-weight: 700; }
   .count { font-size: 0.82rem; color: #64748b; }
   .job { background: #fff; border: 1.5px solid #e2e8f0; border-radius: 14px; padding: 22px; margin-bottom: 14px; transition: all .15s; }
-  .job:hover { border-color: #4FC3FF; box-shadow: 0 4px 20px rgba(0,130,217,.07); transform: translateY(-1px); }
+  .job:hover { border-color: #4FC3FF; box-shadow: 0 4px 20px rgba(36,142,194,.07); transform: translateY(-1px); }
   .job-top { display: flex; justify-content: space-between; align-items: flex-start; }
   .job-left { display: flex; gap: 14px; align-items: flex-start; }
   .jicon { width: 46px; height: 46px; border-radius: 11px; display: flex; align-items: center; justify-content: center; font-size: 1.3rem; flex-shrink: 0; }
   .jtitle { font-size: 1rem; font-weight: 700; margin-bottom: 3px; }
-  .jdept { font-size: 0.82rem; color: #0082D9; font-weight: 500; }
+  .jdept { font-size: 0.82rem; color: #248EC2; font-weight: 500; }
   .jmeta { display: flex; gap: 18px; margin-top: 10px; flex-wrap: wrap; }
   .jmeta span { font-size: 0.78rem; color: #64748b; }
   .jdesc { font-size: 0.85rem; color: #475569; margin-top: 10px; line-height: 1.6; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .jfooter { display: flex; justify-content: space-between; align-items: center; margin-top: 16px; padding-top: 14px; border-top: 1px solid #f1f5f9; }
   .badge { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 20px; font-size: 0.72rem; font-weight: 600; }
   .badge-green { background: #dcfce7; color: #16a34a; }
-  .badge-purple { background: #E6F3FB; color: #0082D9; }
+  .badge-purple { background: #E6F3FB; color: #248EC2; }
   .badge-applied { background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; }
   .applied-btn { background: #f0fdf4; color: #16a34a; border: 1.5px solid #bbf7d0; padding: 9px 22px; border-radius: 8px; font-size: 0.85rem; font-weight: 600; cursor: default; }
-  .apply-btn { background: #0082D9; color: #fff; border: none; padding: 9px 22px; border-radius: 8px; font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: background .15s; }
+  .apply-btn { background: #248EC2; color: #fff; border: none; padding: 9px 22px; border-radius: 8px; font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: background .15s; }
   .apply-btn:hover { background: #5b21b6; }
 
   /* MODAL */
@@ -120,12 +120,12 @@ public class PublicJobController {
   .succ { background: #f0fdf4; border: 1px solid #bbf7d0; color: #16a34a; border-radius: 8px; padding: 12px 16px; font-size: 0.875rem; display: none; margin-bottom: 12px; }
   .err { background: #fef2f2; border: 1px solid #fecaca; color: #dc2626; border-radius: 8px; padding: 12px 16px; font-size: 0.875rem; display: none; margin-bottom: 12px; }
   .upload-zone { border: 2px dashed #B8DCF2; border-radius: 10px; padding: 16px 20px; text-align: center; cursor: pointer; transition: all .15s; background: #F5FAFD; margin-bottom: 14px; position: relative; }
-  .upload-zone:hover { border-color: #006BB3; background: #EAF4FC; }
+  .upload-zone:hover { border-color: #1B6B94; background: #EAF4FC; }
   .upload-zone input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
   .upload-zone .uz-icon { font-size: 1.4rem; margin-bottom: 4px; }
-  .upload-zone .uz-label { font-size: 0.82rem; font-weight: 600; color: #0082D9; }
+  .upload-zone .uz-label { font-size: 0.82rem; font-weight: 600; color: #248EC2; }
   .upload-zone .uz-sub { font-size: 0.75rem; color: #94a3b8; margin-top: 2px; }
-  .parsing-bar { display: none; align-items: center; gap: 8px; background: #E6F3FB; border: 1px solid #B8DCF2; border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; font-size: 0.82rem; color: #0082D9; font-weight: 500; }
+  .parsing-bar { display: none; align-items: center; gap: 8px; background: #E6F3FB; border: 1px solid #B8DCF2; border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; font-size: 0.82rem; color: #248EC2; font-weight: 500; }
   .parse-succ { display: none; align-items: center; gap: 8px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; font-size: 0.82rem; color: #16a34a; font-weight: 500; }
   .jd-section { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px; margin-bottom: 14px; }
   .jd-section h4 { font-size: 0.8rem; font-weight: 700; text-transform: uppercase; color: #94a3b8; margin-bottom: 8px; }
@@ -188,7 +188,7 @@ public class PublicJobController {
   </div>
 </div>
 
-<footer>© 2025 TalentAcquisition AI · All rights reserved · <a href="/careers" style="color:#0082D9">Careers</a></footer>
+<footer>© 2025 TalentAcquisition AI · All rights reserved · <a href="/careers" style="color:#248EC2">Careers</a></footer>
 
 <!-- JOB DETAIL + APPLY MODAL -->
 <div class="overlay" id="applyOverlay">
