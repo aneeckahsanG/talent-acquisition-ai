@@ -9,6 +9,7 @@ import com.talentai.common.repository.AgentActivityLogRepository;
 import com.talentai.common.repository.CandidateRepository;
 import com.talentai.common.repository.JobRequisitionRepository;
 import com.talentai.common.repository.PipelineStageRepository;
+import com.talentai.common.service.PromptLoader;
 import com.talentai.common.util.PdfTextExtractor;
 import com.talentai.screening.dto.ScreeningDtos.*;
 import com.talentai.screening.entity.ScreeningResult;
@@ -45,6 +46,7 @@ public class ScreeningAgentService {
     private static final String AGENT_NAME = "SCREENING";
 
     private final ChatClient chatClient;
+    private final PromptLoader promptLoader;
     private final PdfTextExtractor pdfTextExtractor;
     private final CandidateRepository candidateRepository;
     private final JobRequisitionRepository jobRequisitionRepository;
@@ -53,55 +55,6 @@ public class ScreeningAgentService {
     private final AgentActivityLogRepository activityLogRepository;
 
     private record ParsedNameEmail(String name, String email) {}
-
-    private static final String SYSTEM_PROMPT = """
-            You are the Screening Agent within an Agentic AI Talent Sourcing platform.
-
-            Your task is to evaluate a candidate's resume against a job requisition using a
-            STANDARDIZED RUBRIC so that every candidate is assessed consistently, regardless
-            of which recruiter or system triggers the evaluation.
-
-            Score the candidate on three dimensions (each 0-100):
-            1. skillsScore - alignment between candidate's demonstrated skills and the
-               requisition's required skills.
-            2. experienceScore - relevance and depth of work experience versus the
-               requisition's experience level and responsibilities.
-            3. cultureFitScore - signals of collaboration, communication, growth mindset,
-               and alignment with general professional best practices (based only on
-               resume content - do not invent information).
-
-            Then compute an overallScore (0-100) as a holistic weighted assessment.
-
-            Provide:
-            - strengths: 2-4 concise bullet points (as a single string with newline separators)
-              highlighting the candidate's strongest matches.
-            - gaps: 2-4 concise bullet points (as a single string with newline separators)
-              describing gaps versus the requisition. Each bullet in strengths and gaps
-              must be a complete, self-contained sentence.
-            - rationale: a short paragraph explaining the overall assessment.
-            - recommendation: one of "ADVANCE", "REJECT", or "REVIEW".
-              Use "REVIEW" for edge cases - e.g., borderline scores (roughly 45-65 overall),
-              unusual or non-traditional career paths, conflicting signals between
-              dimensions, or any case where you are not confident a simple
-              advance/reject is appropriate. Err on the side of REVIEW when uncertain;
-              a human recruiter will make the final call on REVIEW cases.
-            - isEdgeCase: true if recommendation is "REVIEW", otherwise false.
-
-            IMPORTANT: Respond with ONLY a single JSON object, no markdown fences, no
-            preamble, no commentary. The JSON must exactly match this shape:
-
-            {
-              "overallScore": number,
-              "skillsScore": number,
-              "experienceScore": number,
-              "cultureFitScore": number,
-              "strengths": "string",
-              "gaps": "string",
-              "rationale": "string",
-              "recommendation": "ADVANCE" | "REJECT" | "REVIEW",
-              "isEdgeCase": boolean
-            }
-            """;
 
     /**
      * Screens a candidate (provided via resume text) against a requisition.
@@ -233,7 +186,7 @@ public class ScreeningAgentService {
         ClaudeScreeningResponse parsed;
         try {
             parsed = chatClient.prompt()
-                    .system(SYSTEM_PROMPT)
+                    .system(promptLoader.load("screening-agent"))
                     .user(userPrompt)
                     .call()
                     .entity(ClaudeScreeningResponse.class);

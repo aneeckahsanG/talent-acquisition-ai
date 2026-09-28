@@ -2,6 +2,7 @@ package com.talentai.admin.service;
 
 import com.talentai.admin.dto.AdminDtos.*;
 import com.talentai.admin.entity.CandidateStatusUpdate;
+import com.talentai.common.service.PromptLoader;
 import com.talentai.admin.entity.InterviewSchedule;
 import com.talentai.admin.repository.CandidateStatusUpdateRepository;
 import com.talentai.admin.repository.InterviewScheduleRepository;
@@ -47,6 +48,7 @@ public class AdminAgentService {
     private static final DateTimeFormatter ISO_FORMAT = DateTimeFormatter.ISO_LOCAL_DATE_TIME;
 
     private final ChatClient chatClient;
+    private final PromptLoader promptLoader;
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
     private final InterviewScheduleRepository interviewScheduleRepository;
     private final CandidateStatusUpdateRepository candidateStatusUpdateRepository;
@@ -55,28 +57,6 @@ public class AdminAgentService {
     private final PipelineStageRepository pipelineStageRepository;
     private final AgentActivityLogRepository activityLogRepository;
 
-    private static final String SYSTEM_PROMPT = """
-            You are the Administrative / Coordination Agent within an Agentic AI Talent
-            Sourcing platform.
-
-            Given a candidate, a job requisition, an interview type, and a set of
-            candidate-provided availability windows, your task is to:
-
-            1. Select up to 3 concrete interview slot suggestions (ISO 8601 datetime
-               strings, e.g. "2026-06-18T10:00:00") from within the provided
-               availability windows, spaced sensibly (e.g. different days/times).
-            2. Draft a short, professional candidate-facing message proposing these
-               slots for the interview. This message is a DRAFT for recruiter review
-               before sending - keep tone warm and clear.
-
-            IMPORTANT: Respond with ONLY a single JSON object, no markdown fences, no
-            preamble, no commentary. The JSON must exactly match this shape:
-
-            {
-              "proposedSlots": ["ISO datetime string", "..."],
-              "candidateMessage": "string"
-            }
-            """;
 
     @Transactional
     public InterviewScheduleResponse proposeInterview(ProposeInterviewRequest request) {
@@ -149,7 +129,7 @@ public class AdminAgentService {
 
         try {
             return chatClient.prompt()
-                    .system(SYSTEM_PROMPT)
+                    .system(promptLoader.load("admin-agent"))
                     .user(userPrompt)
                     .call()
                     .entity(ClaudeSchedulingResponse.class);

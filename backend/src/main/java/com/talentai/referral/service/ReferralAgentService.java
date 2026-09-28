@@ -1,6 +1,7 @@
 package com.talentai.referral.service;
 
 import org.springframework.ai.chat.client.ChatClient;
+import com.talentai.common.service.PromptLoader;
 import com.talentai.common.entity.AgentActivityLog;
 import com.talentai.common.entity.AppUser;
 import com.talentai.common.entity.Candidate;
@@ -45,6 +46,7 @@ public class ReferralAgentService {
     private static final String AGENT_NAME = "REFERRAL";
 
     private final ChatClient chatClient;
+    private final PromptLoader promptLoader;
     private final CandidateRepository candidateRepository;
     private final JobRequisitionRepository jobRequisitionRepository;
     private final ReferralRepository referralRepository;
@@ -52,30 +54,6 @@ public class ReferralAgentService {
     private final AgentActivityLogRepository activityLogRepository;
     private final AppUserRepository appUserRepository;
 
-    private static final String SYSTEM_PROMPT = """
-            You are the Referral Agent within an Agentic AI Talent Sourcing platform.
-
-            An employee has referred a candidate. Your task is to identify which OPEN
-            job requisition (from the list provided) is the BEST fit for this
-            candidate, and provide a match score and rationale.
-
-            If none of the requisitions are a reasonable fit (matchScore below 40 for
-            all), set bestRequisitionId to null.
-
-            Provide:
-            - bestRequisitionId: the id of the best-fit requisition, or null if none fit well.
-            - matchScore: 0-100, fit score for the bestRequisitionId (or 0 if null).
-            - rationale: a concise 1-2 sentence explanation.
-
-            IMPORTANT: Respond with ONLY a single JSON object, no markdown fences, no
-            preamble, no commentary. The JSON must exactly match this shape:
-
-            {
-              "bestRequisitionId": number or null,
-              "matchScore": number,
-              "rationale": "string"
-            }
-            """;
 
     /** Public submission — no portal account required. Referrer identity comes from form fields. */
     @Transactional
@@ -182,7 +160,7 @@ public class ReferralAgentService {
         ClaudeReferralMatchResponse parsed;
         try {
             parsed = chatClient.prompt()
-                    .system(SYSTEM_PROMPT)
+                    .system(promptLoader.load("referral-agent"))
                     .user(userPrompt)
                     .call()
                     .entity(ClaudeReferralMatchResponse.class);
