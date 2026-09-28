@@ -430,8 +430,8 @@ function Sidebar({ active, setActive, user, onLogout }) {
     { id: "dashboard",    label: "Dashboard",         icon: LayoutGrid },
     { id: "roles",        label: "Open Roles",         icon: Briefcase  },
     { id: "pipeline",     label: "Pipeline",           icon: Activity   },
-    { id: "screening",    label: "Screening Agent",    icon: FileCheck  },
-    { id: "referrals",    label: "Referral Agent",     icon: UserPlus   },
+    { id: "screening",    label: "Screening",          icon: FileCheck  },
+    { id: "referrals",    label: "Referral",           icon: UserPlus   },
     { id: "integrations", label: "Integrations",       icon: Globe      },
   ];
 
