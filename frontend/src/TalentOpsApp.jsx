@@ -1631,7 +1631,7 @@ function PipelineListView({
                               Reject
                             </button>
                           )}
-                          {c.stage === "SHORTLISTED" && c.matchId && onDraftOutreach && (
+                          {c.stage === "SHORTLISTED" && onDraftOutreach && (
                             <button onClick={() => onDraftOutreach(c)}
                               className="text-xs font-semibold px-2.5 py-1 rounded-lg flex items-center gap-1"
                               style={{ color: C.accent, border: `1px solid ${C.accent}55` }}>
@@ -1878,7 +1878,10 @@ function PipelineView() {
   async function handleDraftOutreach(c) {
     setOutreach({ loading: true, matchId: c.matchId, candidateName: c.candidateName, requisitionTitle: c.requisitionTitle, candidateEmail: c.candidateEmail });
     try {
-      const result = await apiFetch(`/sourcing/matches/${c.matchId}/draft-outreach`, { method: "POST" });
+      const url = c.matchId
+        ? `/sourcing/matches/${c.matchId}/draft-outreach`
+        : `/sourcing/outreach/draft-by-candidate?candidateId=${c.candidateId}&requisitionId=${c.requisitionId}`;
+      const result = await apiFetch(url, { method: "POST" });
       setOutreach({ loading: false, ...result });
     } catch { setOutreach(null); }
   }
@@ -2392,7 +2395,7 @@ function PipelineView() {
                                 Reject
                               </button>
                             )}
-                            {stage === "SHORTLISTED" && c.matchId && (
+                            {stage === "SHORTLISTED" && (
                               <button onClick={() => handleDraftOutreach(c)}
                                 className="w-full text-[10px] font-semibold py-1 rounded-lg flex items-center justify-center gap-1"
                                 style={{ color: C.accent, border: `1px solid ${C.accent}55` }}>
@@ -4209,7 +4212,10 @@ function ScreeningView() {
   async function handleDraftOutreach(r) {
     setOutreach({ loading: true, matchId: r.matchId, candidateName: r.candidateName, requisitionTitle: r.requisitionTitle });
     try {
-      const result = await apiFetch(`/sourcing/matches/${r.matchId}/draft-outreach`, { method: "POST" });
+      const url = r.matchId
+        ? `/sourcing/matches/${r.matchId}/draft-outreach`
+        : `/sourcing/outreach/draft-by-candidate?candidateId=${r.candidateId}&requisitionId=${r.requisitionId}`;
+      const result = await apiFetch(url, { method: "POST" });
       setOutreach({ loading: false, ...result });
     } catch { setOutreach(null); }
   }
@@ -4336,7 +4342,7 @@ function ScreeningView() {
                             )}
                           </>);
                         })()}
-                        {r.pipelineStage === "SHORTLISTED" && r.matchId && (
+                        {r.pipelineStage === "SHORTLISTED" && (
                           <button
                             onClick={() => handleDraftOutreach(r)}
                             className="text-xs font-semibold px-3 py-1.5 rounded-lg"

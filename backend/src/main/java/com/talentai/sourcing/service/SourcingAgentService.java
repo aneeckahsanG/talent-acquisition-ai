@@ -309,6 +309,27 @@ public class SourcingAgentService {
     }
 
     /**
+     * Finds an existing SourcingMatch for the given candidate+requisition pair, or creates a
+     * placeholder one (matchScore=0, status=NEW) so outreach can be drafted for manually-screened
+     * candidates that were never run through the sourcing agent.
+     */
+    @Transactional
+    public OutreachDraftResponse draftOutreachForCandidate(Long candidateId, Long requisitionId) {
+        SourcingMatch match = sourcingMatchRepository
+                .findByCandidateIdAndRequisitionId(candidateId, requisitionId)
+                .orElseGet(() -> sourcingMatchRepository.save(
+                        SourcingMatch.builder()
+                                .candidateId(candidateId)
+                                .requisitionId(requisitionId)
+                                .matchScore(BigDecimal.ZERO)
+                                .matchRationale("Manually screened and shortlisted")
+                                .isProactive(false)
+                                .status("NEW")
+                                .build()));
+        return draftOutreach(match.getId());
+    }
+
+    /**
      * Generates a personalized outreach draft for a sourcing match using Claude.
      * Also marks the match as REVIEWED so the recruiter's action is tracked.
      */
