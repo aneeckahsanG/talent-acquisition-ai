@@ -1101,26 +1101,50 @@ function AgentActivityPanel({ requisitionId }) {
                 </span>
               </button>
 
-              {run.status === "PAUSED_FOR_APPROVAL" && (
-                <div className="px-4 py-3 border-t flex items-center justify-between gap-3"
-                  style={{ borderColor: C.border, backgroundColor: "#fefce8" }}>
-                  <p className="text-xs font-medium" style={{ color: "#854d0e" }}>
-                    Agent wants to run <span className="font-mono font-bold">{run.pendingTool}</span> — your approval is required.
-                  </p>
-                  <div className="flex gap-2 shrink-0">
-                    <button disabled={acting === run.id} onClick={() => decide(run.id, "approve")}
-                      className="px-3 py-1.5 rounded-lg text-xs font-bold text-white"
-                      style={{ backgroundColor: "#16a34a", opacity: acting === run.id ? 0.5 : 1 }}>
-                      ✓ Approve
-                    </button>
-                    <button disabled={acting === run.id} onClick={() => decide(run.id, "reject")}
-                      className="px-3 py-1.5 rounded-lg text-xs font-bold text-white"
-                      style={{ backgroundColor: "#dc2626", opacity: acting === run.id ? 0.5 : 1 }}>
-                      ✕ Decline
-                    </button>
+              {run.status === "PAUSED_FOR_APPROVAL" && (() => {
+                let pendingInput = null;
+                try { pendingInput = run.pendingInput ? JSON.parse(run.pendingInput) : null; } catch {}
+                const emailBody = run.pendingTool === "send_outreach_email" && pendingInput?.input?.emailBody;
+                const rejectReason = run.pendingTool === "reject_candidate" && pendingInput?.input?.reason;
+                return (
+                  <div className="border-t" style={{ borderColor: C.border, backgroundColor: "#fefce8" }}>
+                    <div className="px-4 py-3 flex items-center justify-between gap-3">
+                      <p className="text-xs font-medium" style={{ color: "#854d0e" }}>
+                        Agent wants to run <span className="font-mono font-bold">{run.pendingTool}</span> — your approval is required.
+                      </p>
+                      <div className="flex gap-2 shrink-0">
+                        <button disabled={acting === run.id} onClick={() => decide(run.id, "approve")}
+                          className="px-3 py-1.5 rounded-lg text-xs font-bold text-white"
+                          style={{ backgroundColor: "#16a34a", opacity: acting === run.id ? 0.5 : 1 }}>
+                          ✓ Approve
+                        </button>
+                        <button disabled={acting === run.id} onClick={() => decide(run.id, "reject")}
+                          className="px-3 py-1.5 rounded-lg text-xs font-bold text-white"
+                          style={{ backgroundColor: "#dc2626", opacity: acting === run.id ? 0.5 : 1 }}>
+                          ✕ Decline
+                        </button>
+                      </div>
+                    </div>
+                    {emailBody && (
+                      <div className="px-4 pb-3">
+                        <p className="text-xs font-semibold mb-1" style={{ color: "#854d0e" }}>Email to be sent:</p>
+                        <pre className="text-xs whitespace-pre-wrap rounded-lg p-3 leading-relaxed"
+                          style={{ backgroundColor: "#fef3c7", color: "#78350f", fontFamily: "inherit" }}>
+                          {emailBody}
+                        </pre>
+                      </div>
+                    )}
+                    {rejectReason && (
+                      <div className="px-4 pb-3">
+                        <p className="text-xs font-semibold mb-1" style={{ color: "#854d0e" }}>Rejection reason:</p>
+                        <p className="text-xs rounded-lg p-3" style={{ backgroundColor: "#fef3c7", color: "#78350f" }}>
+                          {rejectReason}
+                        </p>
+                      </div>
+                    )}
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               {openRun === run.id && (
                 <div className="border-t px-4 py-3 space-y-2" style={{ borderColor: C.border, backgroundColor: "#fafafa" }}>
