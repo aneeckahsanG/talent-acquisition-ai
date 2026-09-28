@@ -132,6 +132,7 @@ public class OrchestratorService {
                     .updatedByAgent(stage.getUpdatedByAgent())
                     .notes(stage.getNotes())
                     .enteredAt(stage.getEnteredAt())
+                    .matchId(sourcingMatch != null ? sourcingMatch.getId() : null)
                     .screeningScore(screening != null ? screening.getOverallScore() : null)
                     .screeningRecommendation(screening != null ? screening.getRecommendation() : null)
                     .sourcingMatchScore(sourcingMatch != null ? sourcingMatch.getMatchScore() : null)

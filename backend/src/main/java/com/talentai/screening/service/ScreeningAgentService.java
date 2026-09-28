@@ -11,6 +11,7 @@ import com.talentai.common.repository.CandidateRepository;
 import com.talentai.common.repository.JobRequisitionRepository;
 import com.talentai.common.repository.PipelineStageRepository;
 import com.talentai.common.util.PdfTextExtractor;
+import com.talentai.sourcing.repository.SourcingMatchRepository;
 import com.talentai.screening.dto.ScreeningDtos.*;
 import com.talentai.screening.entity.ScreeningResult;
 import com.talentai.screening.repository.ScreeningResultRepository;
@@ -53,6 +54,7 @@ public class ScreeningAgentService {
     private final PipelineStageRepository pipelineStageRepository;
     private final AgentActivityLogRepository activityLogRepository;
     private final com.talentai.common.service.EmailService emailService;
+    private final SourcingMatchRepository sourcingMatchRepository;
     private final com.talentai.common.service.PromptLoader promptLoader;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -408,12 +410,18 @@ public class ScreeningAgentService {
                 .map(com.talentai.common.entity.PipelineStage::getStage)
                 .orElse(null);
 
+        Long matchId = sourcingMatchRepository
+                .findByCandidateIdAndRequisitionId(result.getCandidateId(), result.getRequisitionId())
+                .map(m -> m.getId())
+                .orElse(null);
+
         return ScreeningResultResponse.builder()
                 .id(result.getId())
                 .candidateId(result.getCandidateId())
                 .candidateName(candidate != null ? candidate.getFullName() : null)
                 .requisitionId(result.getRequisitionId())
                 .requisitionTitle(requisition != null ? requisition.getTitle() : null)
+                .matchId(matchId)
                 .overallScore(result.getOverallScore())
                 .skillsScore(result.getSkillsScore())
                 .experienceScore(result.getExperienceScore())

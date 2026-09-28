@@ -1187,6 +1187,7 @@ function ApplicantsPanel({ requisitionId }) {
   const { data, loading, reload } = useApi(`/requisitions/${requisitionId}/applicants`, [requisitionId]);
   const [acting, setActing] = useState(null);
   const [expanded, setExpanded] = useState({});
+  const [outreach, setOutreach] = useState(null);
 
   // Candidate id currently being email-edited, and that edit's local state
   const [editingEmailFor, setEditingEmailFor] = useState(null);
@@ -1233,6 +1234,14 @@ function ApplicantsPanel({ requisitionId }) {
       await apiFetch(`/requisitions/${requisitionId}/applicants/${matchId}/reject`, { method: "POST" });
       reload();
     } finally { setActing(null); }
+  }
+
+  async function draftOutreach(a) {
+    setOutreach({ loading: true, matchId: a.id, candidateName: a.candidateName, requisitionTitle: null, candidateEmail: a.candidateEmail });
+    try {
+      const result = await apiFetch(`/sourcing/matches/${a.id}/draft-outreach`, { method: "POST" });
+      setOutreach({ loading: false, ...result });
+    } catch { setOutreach(null); }
   }
 
   const REC_STYLE = {
@@ -1410,7 +1419,15 @@ function ApplicantsPanel({ requisitionId }) {
                 )}
 
                 {a.status === "SHORTLISTED" && (
-                  <p className="text-xs" style={{ color: C.success }}>✓ Added to pipeline at Screening stage</p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs" style={{ color: C.success }}>✓ Added to pipeline at Screening stage</p>
+                    <button
+                      onClick={() => draftOutreach(a)}
+                      className="text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1"
+                      style={{ color: C.accent, border: `1px solid ${C.accent}55`, backgroundColor: `${C.accent}08` }}>
+                      <Mail size={11} /> Send Outreach
+                    </button>
+                  </div>
                 )}
                 {a.status === "REJECTED" && (
                   <p className="text-xs" style={{ color: "#dc2626" }}>✕ Rejected — email notification sent</p>
@@ -1420,6 +1437,7 @@ function ApplicantsPanel({ requisitionId }) {
           })}
         </div>
       )}
+      <OutreachModal outreach={outreach} onClose={() => setOutreach(null)} onSent={reload} />
     </Card>
   );
 }
@@ -1490,7 +1508,7 @@ function FailedNotificationsBanner() {
 // they need more room than a table row can give them.
 function PipelineListView({
   board, isAllRoles, stageFilter, setStageFilter, sortBy, setSortBy, sortDir, setSortDir,
-  movingId, handleMove, setScheduleModal, setScheduleForm, setOfferModal,
+  movingId, handleMove, setScheduleModal, setScheduleForm, setOfferModal, onDraftOutreach,
 }) {
   const allCandidates = Object.values(board.stages || {}).flat();
   const filtered = stageFilter === "ALL" ? allCandidates : allCandidates.filter(c => c.stage === stageFilter);
@@ -1613,6 +1631,13 @@ function PipelineListView({
                               Reject
                             </button>
                           )}
+                          {c.stage === "SHORTLISTED" && c.matchId && onDraftOutreach && (
+                            <button onClick={() => onDraftOutreach(c)}
+                              className="text-xs font-semibold px-2.5 py-1 rounded-lg flex items-center gap-1"
+                              style={{ color: C.accent, border: `1px solid ${C.accent}55` }}>
+                              <Mail size={11} /> Send Outreach
+                            </button>
+                          )}
                         </>
                       )}
                     </div>
@@ -1660,6 +1685,7 @@ function PipelineView() {
   const [recordReplyText, setRecordReplyText] = useState("");
   const [recordingResponse, setRecordingResponse] = useState(false);
   const [offerModal, setOfferModal] = useState(null);
+  const [outreach, setOutreach] = useState(null);
   const [offerForm, setOfferForm] = useState({ salaryAmount: "", currency: "MYR", startDate: "", expiryDate: "", notes: "" });
   const [submittingOffer, setSubmittingOffer] = useState(false);
   const [updatingOfferId, setUpdatingOfferId] = useState(null);
@@ -1849,6 +1875,14 @@ function PipelineView() {
     }
   }
 
+  async function handleDraftOutreach(c) {
+    setOutreach({ loading: true, matchId: c.matchId, candidateName: c.candidateName, requisitionTitle: c.requisitionTitle, candidateEmail: c.candidateEmail });
+    try {
+      const result = await apiFetch(`/sourcing/matches/${c.matchId}/draft-outreach`, { method: "POST" });
+      setOutreach({ loading: false, ...result });
+    } catch { setOutreach(null); }
+  }
+
   const visibleStages = PIPELINE_STAGES.filter(s => s !== "REJECTED" && s !== "NO_SHOW");
 
   return (
@@ -1903,7 +1937,7 @@ function PipelineView() {
           sortBy={sortBy} setSortBy={setSortBy} sortDir={sortDir} setSortDir={setSortDir}
           movingId={movingId} handleMove={handleMove}
           setScheduleModal={setScheduleModal} setScheduleForm={setScheduleForm}
-          setOfferModal={setOfferModal} />
+          setOfferModal={setOfferModal} onDraftOutreach={handleDraftOutreach} />
       )}
 
       {board && viewMode === "board" && (
@@ -2356,6 +2390,13 @@ function PipelineView() {
                                 className="w-full text-[10px] font-semibold py-1 rounded-lg transition-opacity"
                                 style={{ color: C.danger, border: `1px solid ${C.danger}33`, opacity: isMoving ? 0.5 : 1 }}>
                                 Reject
+                              </button>
+                            )}
+                            {stage === "SHORTLISTED" && c.matchId && (
+                              <button onClick={() => handleDraftOutreach(c)}
+                                className="w-full text-[10px] font-semibold py-1 rounded-lg flex items-center justify-center gap-1"
+                                style={{ color: C.accent, border: `1px solid ${C.accent}55` }}>
+                                <Mail size={10} /> Send Outreach
                               </button>
                             )}
                           </div>
@@ -2948,6 +2989,8 @@ function PipelineView() {
           </Card>
         </div>
       )}
+
+      <OutreachModal outreach={outreach} onClose={() => setOutreach(null)} onSent={reload} />
     </div>
   );
 }
@@ -3863,6 +3906,113 @@ function SourcingView({ setActive }) {
 }
 
 // ============================================================
+// SHARED OUTREACH MODAL
+// Used by Screening page, Applicants panel, and Pipeline board/list.
+// Props:
+//   outreach: null | { loading, matchId, candidateName, requisitionTitle, draft, candidateEmail }
+//   onClose: () => void
+//   onSent: () => void  (called after email is sent, so parent can reload)
+// ============================================================
+function OutreachModal({ outreach, onClose, onSent }) {
+  const [draft, setDraft] = useState(outreach?.draft || "");
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  // Sync draft text when outreach prop changes (e.g. after loading completes)
+  useEffect(() => { setDraft(outreach?.draft || ""); }, [outreach?.draft]);
+
+  if (!outreach) return null;
+
+  async function send() {
+    setSending(true);
+    try {
+      await apiFetch(`/sourcing/matches/${outreach.matchId}/send-outreach`, {
+        method: "POST",
+        body: JSON.stringify({ emailBody: draft }),
+      });
+      setSent(true);
+      onSent?.();
+      setTimeout(() => { onClose(); setSent(false); }, 1800);
+    } catch (err) {
+      alert("Failed to send: " + err.message);
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ backgroundColor: "rgba(15,23,42,0.5)", backdropFilter: "blur(4px)" }}>
+      <Card className="w-full max-w-lg p-6">
+        <div className="flex items-start justify-between mb-4">
+          <div>
+            <h2 className="font-bold text-lg" style={{ color: C.text }}>Draft Outreach</h2>
+            {outreach.candidateName && (
+              <p className="text-sm mt-0.5" style={{ color: C.muted }}>
+                {outreach.candidateName}{outreach.requisitionTitle ? ` · ${outreach.requisitionTitle}` : ""}
+              </p>
+            )}
+          </div>
+          <button onClick={onClose}
+            className="w-8 h-8 rounded-xl flex items-center justify-center hover:bg-slate-100">
+            <X size={16} style={{ color: C.muted }} />
+          </button>
+        </div>
+
+        {outreach.loading ? (
+          <div className="flex flex-col items-center justify-center py-12 gap-3">
+            <Spinner size={24} />
+            <p className="text-sm" style={{ color: C.muted }}>Crafting a personalised message…</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {outreach.candidateEmail && (
+              <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl"
+                style={{ backgroundColor: `${C.accent}08`, border: `1px solid ${C.accent}22` }}>
+                <Mail size={13} style={{ color: C.accent }} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>Send to</p>
+                  <p className="text-sm font-semibold truncate" style={{ color: C.text }}>{outreach.candidateEmail}</p>
+                </div>
+                <button onClick={() => { navigator.clipboard.writeText(outreach.candidateEmail); setCopied("email"); setTimeout(() => setCopied(false), 2000); }}
+                  className="text-[10px] font-semibold px-2 py-1 rounded-lg border shrink-0"
+                  style={{ borderColor: copied === "email" ? C.success : C.border, color: copied === "email" ? C.success : C.muted }}>
+                  {copied === "email" ? "✓ Copied!" : "Copy"}
+                </button>
+              </div>
+            )}
+            <div>
+              <label className="text-xs font-semibold block mb-1.5" style={{ color: C.muted }}>
+                AI-generated draft — edit before sending
+              </label>
+              <textarea rows={7}
+                className="w-full text-sm px-4 py-3 rounded-xl border outline-none resize-none leading-relaxed"
+                style={{ borderColor: C.border, color: C.text }}
+                value={draft}
+                onChange={e => setDraft(e.target.value)}
+                disabled={sent}
+              />
+            </div>
+            <div className="flex gap-2">
+              <Btn variant="primary" className="flex-1 justify-center" disabled={sending || sent} onClick={send}>
+                {sent ? <CheckCircle2 size={14} /> : sending ? <Spinner size={14} /> : <Mail size={14} />}
+                {sent ? "Sent!" : sending ? "Sending…" : "Send Email"}
+              </Btn>
+              <Btn variant="secondary"
+                onClick={() => { navigator.clipboard.writeText(draft); setCopied("msg"); setTimeout(() => setCopied(false), 2000); }}>
+                {copied === "msg" ? "✓ Copied" : "Copy"}
+              </Btn>
+              <Btn variant="secondary" onClick={onClose}>Close</Btn>
+            </div>
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+// ============================================================
 // SCREENING AGENT
 // ============================================================
 function ScreeningDetailModal({ result, onClose, onDecision }) {
@@ -4007,6 +4157,7 @@ function ScreeningView() {
   const [uploadError, setUploadError] = useState(null);
   const [parsing, setParsing] = useState(false);
   const fileRef = useRef();
+  const [outreach, setOutreach] = useState(null);
 
   const isAllRoles = reqId === "ALL";
   const singleResultsApi = useApi(!isAllRoles && reqId ? `/screening/requisition/${reqId}` : null, [reqId]);
@@ -4053,6 +4204,14 @@ function ScreeningView() {
     } finally {
       setRejecting(null);
     }
+  }
+
+  async function handleDraftOutreach(r) {
+    setOutreach({ loading: true, matchId: r.matchId, candidateName: r.candidateName, requisitionTitle: r.requisitionTitle });
+    try {
+      const result = await apiFetch(`/sourcing/matches/${r.matchId}/draft-outreach`, { method: "POST" });
+      setOutreach({ loading: false, ...result });
+    } catch { setOutreach(null); }
   }
 
   async function handleUpload(e) {
@@ -4159,7 +4318,6 @@ function ScreeningView() {
                         {!["SHORTLISTED","INTERVIEW_SCHEDULED","OFFER","HIRED","REJECTED","NO_SHOW"].includes(r.pipelineStage) && (() => {
                           const rec = r.recommendation;
                           return (<>
-                            {/* Always show Shortlist — even for REJECT recommendation the recruiter can override */}
                             <button
                               disabled={shortlisting === r.candidateId}
                               onClick={() => handleShortlist(r.candidateId, r.requisitionId)}
@@ -4167,7 +4325,6 @@ function ScreeningView() {
                               style={{ backgroundColor: C.success, opacity: shortlisting === r.candidateId ? 0.5 : 1 }}>
                               {shortlisting === r.candidateId ? "…" : rec === "REJECT" ? "Override & Shortlist" : "Shortlist"}
                             </button>
-                            {/* Show Reject button — only for REJECT or REVIEW recommendations */}
                             {(rec === "REJECT" || rec === "REVIEW") && (
                               <button
                                 disabled={rejecting === r.id}
@@ -4179,6 +4336,14 @@ function ScreeningView() {
                             )}
                           </>);
                         })()}
+                        {r.pipelineStage === "SHORTLISTED" && r.matchId && (
+                          <button
+                            onClick={() => handleDraftOutreach(r)}
+                            className="text-xs font-semibold px-3 py-1.5 rounded-lg"
+                            style={{ color: C.accent, border: `1px solid ${C.accent}55`, backgroundColor: `${C.accent}08` }}>
+                            <span className="flex items-center gap-1"><Mail size={11} /> Send Outreach</span>
+                          </button>
+                        )}
                         <Btn variant="secondary" onClick={() => setSelected(r)}>View</Btn>
                       </div>
                     </td>
@@ -4197,6 +4362,11 @@ function ScreeningView() {
         result={selected}
         onClose={() => setSelected(null)}
         onDecision={handleDecision}
+      />
+      <OutreachModal
+        outreach={outreach}
+        onClose={() => setOutreach(null)}
+        onSent={reload}
       />
 
       {showUpload && (

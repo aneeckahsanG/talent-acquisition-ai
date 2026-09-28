@@ -38,6 +38,7 @@ public class ScreeningDtos {
         private String candidateName;
         private Long requisitionId;
         private String requisitionTitle;
+        private Long matchId;
         private BigDecimal overallScore;
         private BigDecimal skillsScore;
         private BigDecimal experienceScore;
