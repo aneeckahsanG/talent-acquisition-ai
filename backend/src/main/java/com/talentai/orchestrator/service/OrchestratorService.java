@@ -3,7 +3,7 @@ package com.talentai.orchestrator.service;
 import com.talentai.admin.entity.InterviewSchedule;
 import com.talentai.admin.entity.Offer;
 import com.talentai.admin.entity.OfferNegotiationHistory;
-import com.talentai.common.client.ClaudeApiClient;
+import org.springframework.ai.chat.client.ChatClient;
 import com.talentai.admin.repository.InterviewScheduleRepository;
 import com.talentai.admin.repository.OfferNegotiationHistoryRepository;
 import com.talentai.admin.repository.OfferRepository;
@@ -61,7 +61,7 @@ public class OrchestratorService {
     private final OfferRepository offerRepository;
     private final OfferNegotiationHistoryRepository negotiationHistoryRepository;
     private final AgentActivityLogRepository activityLogRepository;
-    private final ClaudeApiClient claudeApiClient;
+    private final ChatClient chatClient;
     private final com.talentai.common.service.EmailService emailService;
 
     private static final List<String> INTERVIEW_OR_LATER = List.of(
@@ -311,7 +311,11 @@ public class OrchestratorService {
                 offer.getNotes() != null ? offer.getNotes() : "None"
         );
 
-        String letter = claudeApiClient.sendPrompt(system, prompt);
+        String letter = chatClient.prompt()
+                .system(system)
+                .user(prompt)
+                .call()
+                .content();
 
         return OfferLetterResponse.builder()
                 .candidateName(candidate.getFullName())
@@ -451,7 +455,11 @@ public class OrchestratorService {
                     Keep it concise and professional.
                     """.formatted(candidate.getFullName(), candidate.getEmail(), requisition.getTitle(),
                     interviewType, slotDisplay, candidate.getFullName().split(" ")[0]);
-            invitationEmail = claudeApiClient.sendPrompt("You are an HR coordinator writing professional interview invitation emails.", prompt);
+            invitationEmail = chatClient.prompt()
+                        .system("You are an HR coordinator writing professional interview invitation emails.")
+                        .user(prompt)
+                        .call()
+                        .content();
         } catch (Exception e) {
             invitationEmail = "Dear " + candidate.getFullName() + ",\n\nWe are pleased to invite you for a " + interviewType + " interview for the " + requisition.getTitle() + " position on " + slotDisplay + ".\n\nPlease confirm your availability.\n\nBest regards,\nHuman Resources\nArvato Systems Malaysia Sdn. Bhd.";
         }
@@ -515,7 +523,11 @@ public class OrchestratorService {
                     Keep it concise and professional.
                     """.formatted(candidate.getFullName(), candidate.getEmail(), requisition.getTitle(),
                     interview.getInterviewType(), slotDisplay, candidate.getFullName().split(" ")[0]);
-            invitationEmail = claudeApiClient.sendPrompt("You are an HR coordinator writing professional interview emails.", prompt);
+            invitationEmail = chatClient.prompt()
+                        .system("You are an HR coordinator writing professional interview emails.")
+                        .user(prompt)
+                        .call()
+                        .content();
         } catch (Exception e) {
             invitationEmail = "Dear " + candidate.getFullName() + ",\n\nWe would like to reschedule your " + interview.getInterviewType() + " interview for the " + requisition.getTitle() + " position to " + slotDisplay + ".\n\nPlease confirm your availability.\n\nBest regards,\nHuman Resources\nArvato Systems Malaysia Sdn. Bhd.";
         }
@@ -615,7 +627,11 @@ public class OrchestratorService {
                     requisition != null ? requisition.getTitle() : "the role",
                     interview.getInterviewType(),
                     slotDisplay);
-            reply = claudeApiClient.sendPrompt("You are simulating a job candidate replying to a recruitment email. Write realistic, natural responses.", prompt);
+            reply = chatClient.prompt()
+                        .system("You are simulating a job candidate replying to a recruitment email. Write realistic, natural responses.")
+                        .user(prompt)
+                        .call()
+                        .content();
         } catch (Exception e) {
             reply = "Dear Hiring Team,\n\nThank you for the invitation. I am happy to confirm my availability for the " + interview.getInterviewType() + " interview on " + slotDisplay + ".\n\nLooking forward to speaking with you.\n\nBest regards,\n" + (candidate != null ? candidate.getFullName() : "Candidate");
         }

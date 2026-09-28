@@ -1,13 +1,13 @@
 package com.talentai.sourcing.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.talentai.common.client.ClaudeApiClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 
 import java.time.Duration;
+import java.util.HashMap;
 import java.util.Map;
 
 @Service
@@ -15,8 +15,11 @@ import java.util.Map;
 @Slf4j
 public class LinkedInParseService {
 
-    private final ClaudeApiClient claudeApiClient;
-    private final ObjectMapper objectMapper;
+    private final ChatClient chatClient;
+
+    private record ParsedLinkedInProfile(
+            String fullName, String email, String headline,
+            String location, String skills, String resumeText) {}
 
     private static final String SYSTEM_PROMPT = """
             You are a talent data extractor. Given LinkedIn profile text, extract structured candidate information.
@@ -84,16 +87,27 @@ public class LinkedInParseService {
     /**
      * Parses raw LinkedIn profile text (from URL fetch or user paste) into structured fields using Claude.
      */
-    @SuppressWarnings("unchecked")
     public Map<String, String> parseProfileText(String profileText) {
         try {
-            String userPrompt = "Extract candidate info from this LinkedIn profile text:\n\n" + profileText;
-            String raw = claudeApiClient.sendPrompt(SYSTEM_PROMPT, userPrompt);
-            raw = raw.replaceAll("(?s)```[a-z]*\\s*", "").replaceAll("```", "").trim();
-            return objectMapper.readValue(raw, Map.class);
+            ParsedLinkedInProfile parsed = chatClient.prompt()
+                    .system(SYSTEM_PROMPT)
+                    .user("Extract candidate info from this LinkedIn profile text:\n\n" + profileText)
+                    .call()
+                    .entity(ParsedLinkedInProfile.class);
+            Map<String, String> result = new HashMap<>();
+            result.put("fullName",   parsed.fullName()   != null ? parsed.fullName()   : "");
+            result.put("email",      parsed.email()      != null ? parsed.email()      : "");
+            result.put("headline",   parsed.headline()   != null ? parsed.headline()   : "");
+            result.put("location",   parsed.location()   != null ? parsed.location()   : "");
+            result.put("skills",     parsed.skills()     != null ? parsed.skills()     : "");
+            result.put("resumeText", parsed.resumeText() != null ? parsed.resumeText() : "");
+            return result;
         } catch (Exception e) {
             log.error("Failed to parse LinkedIn profile text: {}", e.getMessage());
-            return Map.of("fullName", "", "email", "", "headline", "", "location", "", "skills", "", "resumeText", "");
+            Map<String, String> empty = new HashMap<>();
+            empty.put("fullName", ""); empty.put("email", ""); empty.put("headline", "");
+            empty.put("location", ""); empty.put("skills", ""); empty.put("resumeText", "");
+            return empty;
         }
     }
 }

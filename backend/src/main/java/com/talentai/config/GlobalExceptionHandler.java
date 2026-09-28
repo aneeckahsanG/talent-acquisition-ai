@@ -1,6 +1,5 @@
 package com.talentai.config;
 
-import com.talentai.common.client.ClaudeApiClient.ClaudeApiException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -46,14 +45,6 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, Object>> handleBadCredentials(BadCredentialsException ex) {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .body(errorBody(HttpStatus.UNAUTHORIZED, "Invalid username or password", null));
-    }
-
-    @ExceptionHandler(ClaudeApiException.class)
-    public ResponseEntity<Map<String, Object>> handleClaudeApiException(ClaudeApiException ex) {
-        log.error("Claude API error", ex);
-        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                .body(errorBody(HttpStatus.SERVICE_UNAVAILABLE,
-                        "AI service is currently unavailable. Please try again shortly.", null));
     }
 
     @ExceptionHandler(Exception.class)

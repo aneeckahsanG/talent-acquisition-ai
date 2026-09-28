@@ -1,12 +1,11 @@
 package com.talentai.admin.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.talentai.admin.dto.AdminDtos.*;
 import com.talentai.admin.entity.CandidateStatusUpdate;
 import com.talentai.admin.entity.InterviewSchedule;
 import com.talentai.admin.repository.CandidateStatusUpdateRepository;
 import com.talentai.admin.repository.InterviewScheduleRepository;
-import com.talentai.common.client.ClaudeApiClient;
+import org.springframework.ai.chat.client.ChatClient;
 import com.talentai.common.entity.AgentActivityLog;
 import com.talentai.common.entity.Candidate;
 import com.talentai.common.entity.JobRequisition;
@@ -47,14 +46,14 @@ public class AdminAgentService {
     private static final String AGENT_NAME = "ADMIN";
     private static final DateTimeFormatter ISO_FORMAT = DateTimeFormatter.ISO_LOCAL_DATE_TIME;
 
-    private final ClaudeApiClient claudeApiClient;
+    private final ChatClient chatClient;
+    private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
     private final InterviewScheduleRepository interviewScheduleRepository;
     private final CandidateStatusUpdateRepository candidateStatusUpdateRepository;
     private final CandidateRepository candidateRepository;
     private final JobRequisitionRepository jobRequisitionRepository;
     private final PipelineStageRepository pipelineStageRepository;
     private final AgentActivityLogRepository activityLogRepository;
-    private final ObjectMapper objectMapper = new ObjectMapper();
 
     private static final String SYSTEM_PROMPT = """
             You are the Administrative / Coordination Agent within an Agentic AI Talent
@@ -148,13 +147,14 @@ public class AdminAgentService {
                 String.join("\n", availability)
         );
 
-        String rawResponse = claudeApiClient.sendPrompt(SYSTEM_PROMPT, userPrompt);
-        String json = claudeApiClient.stripJsonFences(rawResponse);
-
         try {
-            return objectMapper.readValue(json, ClaudeSchedulingResponse.class);
+            return chatClient.prompt()
+                    .system(SYSTEM_PROMPT)
+                    .user(userPrompt)
+                    .call()
+                    .entity(ClaudeSchedulingResponse.class);
         } catch (Exception e) {
-            log.error("Failed to parse Admin Agent scheduling response: {}", json, e);
+            log.error("Failed to get or parse Admin Agent scheduling response", e);
             // Fallback: propose the first 3 availability windows as-is
             List<String> fallbackSlots = availability.size() > 3 ? availability.subList(0, 3) : availability;
             return new ClaudeSchedulingResponse(fallbackSlots,

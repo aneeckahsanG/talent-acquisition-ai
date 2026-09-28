@@ -44,27 +44,17 @@ spring:
     multipart:
       max-file-size: 10MB
       max-request-size: 10MB
+  ai:
+    anthropic:
+          api-key: ${CLAUDE_API_KEY:}
+          chat:
+            options:
+              model: claude-sonnet-4-6
+              max-tokens: 2048
 
 server:
   port: 8080
 
-spring:
-  ai:
-    anthropic:
-      api-key: ${CLAUDE_API_KEY:}
-      chat:
-        options:
-          model: claude-sonnet-4-6
-          max-tokens: 2048
-
-# Legacy config used by ClaudeApiClient — will be removed once migration is complete
-claude:
-  api:
-    key: ${CLAUDE_API_KEY:}
-    base-url: https://api.anthropic.com/v1/messages
-    model: claude-sonnet-4-6
-    version: "2023-06-01"
-    max-tokens: 2048
 
 app:
   jwt:

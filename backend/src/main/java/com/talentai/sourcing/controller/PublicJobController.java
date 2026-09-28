@@ -23,8 +23,10 @@ public class PublicJobController {
     private final JobRequisitionRepository jobRequisitionRepository;
     private final SourcingAgentService sourcingAgentService;
     private final PdfTextExtractor pdfTextExtractor;
-    private final com.talentai.common.client.ClaudeApiClient claudeApiClient;
-    private final com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();
+    private final org.springframework.ai.chat.client.ChatClient chatClient;
+
+    private record ParsedResume(String fullName, String email, String headline,
+                                String skills, Double yearsExperience, String resumeText) {}
 
     // ── Public Careers HTML ───────────────────────────────────────────────────
 
@@ -467,17 +469,19 @@ load();
                     """;
             String userPrompt = "Resume:\n" + text.substring(0, Math.min(text.length(), 4000));
 
-            String raw = claudeApiClient.sendPrompt(systemPrompt, userPrompt);
-            String json = claudeApiClient.stripJsonFences(raw);
-            com.fasterxml.jackson.databind.JsonNode node = objectMapper.readTree(json);
+            ParsedResume parsed = chatClient.prompt()
+                    .system(systemPrompt)
+                    .user(userPrompt)
+                    .call()
+                    .entity(ParsedResume.class);
 
             Map<String, Object> result = new java.util.HashMap<>();
-            result.put("fullName", node.path("fullName").isNull() ? null : node.path("fullName").asText(null));
-            result.put("email", node.path("email").isNull() ? null : node.path("email").asText(null));
-            result.put("headline", node.path("headline").isNull() ? null : node.path("headline").asText(null));
-            result.put("skills", node.path("skills").isNull() ? null : node.path("skills").asText(null));
-            result.put("yearsExperience", node.path("yearsExperience").isNull() ? null : node.path("yearsExperience").asDouble(0));
-            result.put("resumeText", node.path("resumeText").isNull() ? null : node.path("resumeText").asText(null));
+            result.put("fullName", parsed.fullName());
+            result.put("email", parsed.email());
+            result.put("headline", parsed.headline());
+            result.put("skills", parsed.skills());
+            result.put("yearsExperience", parsed.yearsExperience());
+            result.put("resumeText", parsed.resumeText());
             result.put("rawText", text.substring(0, Math.min(text.length(), 3000)));
             return ResponseEntity.ok(result);
         } catch (Exception e) {

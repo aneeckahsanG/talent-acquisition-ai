@@ -1,8 +1,6 @@
 package com.talentai.common.service;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.talentai.common.client.ClaudeApiClient;
+import org.springframework.ai.chat.client.ChatClient;
 import com.talentai.common.dto.JobRequisitionDtos.*;
 import com.talentai.common.entity.AppUser;
 import com.talentai.common.entity.JobRequisition;
@@ -23,9 +21,12 @@ public class RequisitionService {
 
     private final JobRequisitionRepository jobRequisitionRepository;
     private final AppUserRepository appUserRepository;
-    private final ClaudeApiClient claudeApiClient;
+    private final ChatClient chatClient;
     private final ApplicationEventPublisher eventPublisher;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    private record ParsedJd(
+            String title, String department, String location,
+            String experienceLevel, String requiredSkills, String description) {}
 
     public List<RequisitionResponse> getAll(String status) {
         List<JobRequisition> requisitions = (status != null && !status.isBlank())
@@ -93,20 +94,22 @@ public class RequisitionService {
                 Return exactly: {"title":"...","department":"...","location":"...","experienceLevel":"...","requiredSkills":"...","description":"..."}
                 """;
 
-        String raw = claudeApiClient.sendPrompt(system, "Job description:\n\n" + rawText);
-        String json = claudeApiClient.stripJsonFences(raw);
         try {
-            JsonNode node = objectMapper.readTree(json);
+            ParsedJd parsed = chatClient.prompt()
+                    .system(system)
+                    .user("Job description:\n\n" + rawText)
+                    .call()
+                    .entity(ParsedJd.class);
             CreateRequisitionRequest req = new CreateRequisitionRequest();
-            req.setTitle(node.path("title").asText(""));
-            req.setDepartment(node.path("department").asText(""));
-            req.setLocation(node.path("location").asText(""));
-            req.setExperienceLevel(node.path("experienceLevel").asText("MID"));
-            req.setRequiredSkills(node.path("requiredSkills").asText(""));
-            req.setDescription(node.path("description").asText(""));
+            req.setTitle(parsed.title() != null ? parsed.title() : "");
+            req.setDepartment(parsed.department() != null ? parsed.department() : "");
+            req.setLocation(parsed.location() != null ? parsed.location() : "");
+            req.setExperienceLevel(parsed.experienceLevel() != null ? parsed.experienceLevel() : "MID");
+            req.setRequiredSkills(parsed.requiredSkills() != null ? parsed.requiredSkills() : "");
+            req.setDescription(parsed.description() != null ? parsed.description() : "");
             return req;
         } catch (Exception e) {
-            log.error("Failed to parse Claude JD response: {}", json, e);
+            log.error("Failed to get or parse Claude JD response", e);
             throw new IllegalStateException("Could not parse job description: " + e.getMessage());
         }
     }
