@@ -1,7 +1,6 @@
 package com.talentai.screening.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.talentai.common.client.ClaudeApiClient;
+import org.springframework.ai.chat.client.ChatClient;
 import com.talentai.common.entity.AgentActivityLog;
 import com.talentai.common.entity.Candidate;
 import com.talentai.common.entity.JobRequisition;
@@ -45,14 +44,15 @@ public class ScreeningAgentService {
 
     private static final String AGENT_NAME = "SCREENING";
 
-    private final ClaudeApiClient claudeApiClient;
+    private final ChatClient chatClient;
     private final PdfTextExtractor pdfTextExtractor;
     private final CandidateRepository candidateRepository;
     private final JobRequisitionRepository jobRequisitionRepository;
     private final ScreeningResultRepository screeningResultRepository;
     private final PipelineStageRepository pipelineStageRepository;
     private final AgentActivityLogRepository activityLogRepository;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    private record ParsedNameEmail(String name, String email) {}
 
     private static final String SYSTEM_PROMPT = """
             You are the Screening Agent within an Agentic AI Talent Sourcing platform.
@@ -140,14 +140,13 @@ public class ScreeningAgentService {
                 "Reply ONLY as JSON with keys \"name\" and \"email\". If a field is not found, use an empty string.\n\nResume:\n" +
                 resumeText.substring(0, Math.min(resumeText.length(), 2000));
         try {
-            String json = claudeApiClient.sendPrompt("You extract structured data from resumes. Return only valid JSON.", prompt);
-            // strip markdown code fences if present
-            json = json.replaceAll("(?s)```[a-z]*\\s*", "").replaceAll("```", "").trim();
-            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-            @SuppressWarnings("unchecked")
-            java.util.Map<String, Object> map = mapper.readValue(json, java.util.Map.class);
-            String parsedName = String.valueOf(map.getOrDefault("name", ""));
-            String parsedEmail = String.valueOf(map.getOrDefault("email", ""));
+            ParsedNameEmail parsed = chatClient.prompt()
+                    .system("You extract structured data from resumes. Return only valid JSON.")
+                    .user(prompt)
+                    .call()
+                    .entity(ParsedNameEmail.class);
+            String parsedName = parsed.name() != null ? parsed.name() : "";
+            String parsedEmail = parsed.email() != null ? parsed.email() : "";
             return ParsedResumeResponse.builder()
                     .name(parsedName.isBlank() ? "" : parsedName)
                     .email(parsedEmail.isBlank() ? (email != null ? email : "") : parsedEmail)
@@ -231,14 +230,15 @@ public class ScreeningAgentService {
     private ScreeningResult runScreening(Candidate candidate, JobRequisition requisition, boolean allowReject) {
         String userPrompt = buildUserPrompt(candidate, requisition);
 
-        String rawResponse = claudeApiClient.sendPrompt(SYSTEM_PROMPT, userPrompt);
-        String json = claudeApiClient.stripJsonFences(rawResponse);
-
         ClaudeScreeningResponse parsed;
         try {
-            parsed = objectMapper.readValue(json, ClaudeScreeningResponse.class);
+            parsed = chatClient.prompt()
+                    .system(SYSTEM_PROMPT)
+                    .user(userPrompt)
+                    .call()
+                    .entity(ClaudeScreeningResponse.class);
         } catch (Exception e) {
-            log.error("Failed to parse Screening Agent response for candidate {}: {}", candidate.getId(), json, e);
+            log.error("Failed to get or parse Screening Agent response for candidate {}", candidate.getId(), e);
             throw new IllegalStateException("Screening Agent returned an unexpected response format.");
         }
 

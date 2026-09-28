@@ -1,7 +1,6 @@
 package com.talentai.referral.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.talentai.common.client.ClaudeApiClient;
+import org.springframework.ai.chat.client.ChatClient;
 import com.talentai.common.entity.AgentActivityLog;
 import com.talentai.common.entity.AppUser;
 import com.talentai.common.entity.Candidate;
@@ -45,14 +44,13 @@ public class ReferralAgentService {
 
     private static final String AGENT_NAME = "REFERRAL";
 
-    private final ClaudeApiClient claudeApiClient;
+    private final ChatClient chatClient;
     private final CandidateRepository candidateRepository;
     private final JobRequisitionRepository jobRequisitionRepository;
     private final ReferralRepository referralRepository;
     private final PipelineStageRepository pipelineStageRepository;
     private final AgentActivityLogRepository activityLogRepository;
     private final AppUserRepository appUserRepository;
-    private final ObjectMapper objectMapper = new ObjectMapper();
 
     private static final String SYSTEM_PROMPT = """
             You are the Referral Agent within an Agentic AI Talent Sourcing platform.
@@ -181,14 +179,15 @@ public class ReferralAgentService {
                 %s
                 """.formatted(requisitionList, candidate.getFullName(), nullToDash(candidate.getResumeText()));
 
-        String rawResponse = claudeApiClient.sendPrompt(SYSTEM_PROMPT, userPrompt);
-        String json = claudeApiClient.stripJsonFences(rawResponse);
-
         ClaudeReferralMatchResponse parsed;
         try {
-            parsed = objectMapper.readValue(json, ClaudeReferralMatchResponse.class);
+            parsed = chatClient.prompt()
+                    .system(SYSTEM_PROMPT)
+                    .user(userPrompt)
+                    .call()
+                    .entity(ClaudeReferralMatchResponse.class);
         } catch (Exception e) {
-            log.error("Failed to parse Referral Agent response for referral {}: {}", referral.getId(), json, e);
+            log.error("Failed to get or parse Referral Agent response for referral {}", referral.getId(), e);
             // Non-fatal: leave referral in SUBMITTED state for manual matching
             return referral;
         }

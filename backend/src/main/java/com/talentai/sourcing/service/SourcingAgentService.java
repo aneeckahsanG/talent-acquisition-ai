@@ -1,9 +1,8 @@
 package com.talentai.sourcing.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.opencsv.CSVReader;
+import org.springframework.ai.chat.client.ChatClient;
 import com.opencsv.exceptions.CsvValidationException;
-import com.talentai.common.client.ClaudeApiClient;
 import com.talentai.common.entity.AgentActivityLog;
 import com.talentai.common.entity.Candidate;
 import com.talentai.common.entity.JobRequisition;
@@ -61,7 +60,7 @@ public class SourcingAgentService {
     private static final String AGENT_NAME = "SOURCING";
     private static final BigDecimal HIGH_FIT_THRESHOLD = new BigDecimal("70");
 
-    private final ClaudeApiClient claudeApiClient;
+    private final ChatClient chatClient;
     private final PdfTextExtractor pdfTextExtractor;
     private final CandidateRepository candidateRepository;
     private final JobRequisitionRepository jobRequisitionRepository;
@@ -71,7 +70,8 @@ public class SourcingAgentService {
     private final AgentActivityLogRepository activityLogRepository;
     private final ScreeningAgentService screeningAgentService;
     private final com.talentai.common.service.EmailService emailService;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    private record ParsedNameEmail(String name, String email) {}
 
     private static final String SYSTEM_PROMPT = """
             You are the Sourcing Agent within an Agentic AI Talent Sourcing platform.
@@ -249,15 +249,16 @@ public class SourcingAgentService {
                 nullToDash(candidate.getResumeText())
         );
 
-        String rawResponse = claudeApiClient.sendPrompt(SYSTEM_PROMPT, userPrompt);
-        String json = claudeApiClient.stripJsonFences(rawResponse);
-
         ClaudeMatchResponse parsed;
         try {
-            parsed = objectMapper.readValue(json, ClaudeMatchResponse.class);
+            parsed = chatClient.prompt()
+                    .system(SYSTEM_PROMPT)
+                    .user(userPrompt)
+                    .call()
+                    .entity(ClaudeMatchResponse.class);
         } catch (Exception e) {
-            log.error("Failed to parse Sourcing Agent response for candidate {} / requisition {}: {}",
-                    candidate.getId(), requisition.getId(), json, e);
+            log.error("Failed to get or parse Sourcing Agent response for candidate {} / requisition {}",
+                    candidate.getId(), requisition.getId(), e);
             throw new IllegalStateException("Sourcing Agent returned an unexpected response format.");
         }
 
@@ -388,7 +389,11 @@ public class SourcingAgentService {
                 nullToDash(match.getMatchRationale())
         );
 
-        String draft = claudeApiClient.sendPrompt(OUTREACH_SYSTEM_PROMPT, userPrompt);
+        String draft = chatClient.prompt()
+                .system(OUTREACH_SYSTEM_PROMPT)
+                .user(userPrompt)
+                .call()
+                .content();
 
         if ("NEW".equals(match.getStatus())) {
             match.setStatus("REVIEWED");
@@ -457,12 +462,14 @@ public class SourcingAgentService {
         String userPrompt = "Resume:\n" + text.substring(0, Math.min(text.length(), 2000));
 
         try {
-            String raw = claudeApiClient.sendPrompt(systemPrompt, userPrompt);
-            String json = claudeApiClient.stripJsonFences(raw);
-            com.fasterxml.jackson.databind.JsonNode node = objectMapper.readTree(json);
+            ParsedNameEmail parsed = chatClient.prompt()
+                    .system(systemPrompt)
+                    .user(userPrompt)
+                    .call()
+                    .entity(ParsedNameEmail.class);
             return ResumeParseResponse.builder()
-                    .name(node.path("name").isNull() ? null : node.path("name").asText(null))
-                    .email(node.path("email").isNull() ? null : node.path("email").asText(null))
+                    .name(parsed.name())
+                    .email(parsed.email())
                     .build();
         } catch (Exception e) {
             log.warn("Could not parse resume info from file: {}", e.getMessage());
@@ -689,8 +696,11 @@ public class SourcingAgentService {
         String userPrompt = buildMatchPrompt(candidate, requisition);
         ClaudeMatchResponse scored;
         try {
-            String raw = claudeApiClient.sendPrompt(SYSTEM_PROMPT, userPrompt);
-            scored = objectMapper.readValue(claudeApiClient.stripJsonFences(raw), ClaudeMatchResponse.class);
+            scored = chatClient.prompt()
+                    .system(SYSTEM_PROMPT)
+                    .user(userPrompt)
+                    .call()
+                    .entity(ClaudeMatchResponse.class);
         } catch (Exception e) {
             log.warn("Match scoring failed for direct apply candidate {} / req {}: {}", candidateId, requisitionId, e.getMessage());
             scored = new ClaudeMatchResponse(BigDecimal.valueOf(50), "AI scoring unavailable at this time.");
