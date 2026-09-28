@@ -385,10 +385,9 @@ function Sidebar({ active, setActive, user, onLogout }) {
     { id: "dashboard",  label: "Dashboard",         icon: LayoutGrid },
     { id: "roles",      label: "Open Roles",         icon: Briefcase  },
     { id: "pipeline",   label: "Pipeline",           icon: Activity   },
-    { id: "sourcing",   label: "Sourcing Agent",     icon: Search     },
-    { id: "screening",  label: "Screening Agent",    icon: FileCheck  },
-    { id: "referrals",  label: "Referral Agent",     icon: UserPlus   },
-    { id: "scheduling", label: "Coordination Agent", icon: Calendar   },
+    { id: "sync-sources", label: "Sync Sources",      icon: Globe      },
+    { id: "screening",  label: "Screening",          icon: FileCheck  },
+    { id: "referrals",  label: "Referral",           icon: UserPlus   },
   ];
 
   return (
@@ -448,9 +447,9 @@ function Dashboard({ setActive }) {
 
   const stats = summary ? [
     { label: "Open Requisitions",        value: summary.openRequisitions,        icon: Briefcase,     color: C.accent,  nav: "roles"    },
-    { label: "Candidates in Pool",        value: summary.totalCandidates,          icon: Activity,      color: "#8B5CF6", nav: "sourcing" },
+    { label: "Candidates in Pool",        value: summary.totalCandidates,          icon: Activity,      color: "#8B5CF6", nav: "pipeline" },
     { label: "Edge Cases Awaiting Review",value: summary.edgeCasesAwaitingReview,  icon: AlertCircle,   color: C.warning, nav: "screening"},
-    { label: "Interviews Scheduled",      value: summary.interviewsScheduled,      icon: Calendar,      color: C.success, nav: "scheduling"},
+    { label: "Interviews Scheduled",      value: summary.interviewsScheduled,      icon: Calendar,      color: C.success, nav: "pipeline" },
   ] : [];
 
   return (
@@ -4349,10 +4348,11 @@ export default function App() {
     dashboard:  <Dashboard setActive={setActive} />,
     roles:      <RolesView setActive={setActive} />,
     pipeline:   <PipelineView />,
-    sourcing:   <SourcingView setActive={setActive} />,
-    screening:  <ScreeningView />,
-    referrals:  <ReferralsView currentUser={displayUser} />,
-    scheduling: <SchedulingView />,
+    sourcing:        <SourcingView setActive={setActive} />,
+    "sync-sources":  <div className="space-y-6"><h1 className="text-xl font-bold" style={{color:"var(--color-text,#0F172A)"}}>Sync Sources</h1><ResumeSources /></div>,
+    screening:       <ScreeningView />,
+    referrals:       <ReferralsView currentUser={displayUser} />,
+    scheduling:      <SchedulingView />,
   };
 
   return (
