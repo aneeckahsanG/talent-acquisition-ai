@@ -344,6 +344,29 @@ public class SourcingAgentService {
         JobRequisition requisition = jobRequisitionRepository.findById(match.getRequisitionId())
                 .orElseThrow(() -> new IllegalArgumentException("Requisition not found: " + match.getRequisitionId()));
 
+        var screening = screeningResultRepository
+                .findByCandidateIdAndRequisitionId(candidate.getId(), requisition.getId())
+                .orElse(null);
+
+        String screeningSection = screening == null ? "" : """
+
+                ## Screening evaluation (use this to personalise — reference their actual strengths)
+                Overall score: %s/100  (skills: %s, experience: %s, culture fit: %s)
+                Recommendation: %s
+                Strengths: %s
+                Gaps: %s
+                Evaluator rationale: %s
+                """.formatted(
+                screening.getOverallScore(),
+                screening.getSkillsScore(),
+                screening.getExperienceScore(),
+                screening.getCultureFitScore(),
+                nullToDash(screening.getRecommendation()),
+                nullToDash(screening.getStrengths()),
+                nullToDash(screening.getGaps()),
+                nullToDash(screening.getRationale())
+        );
+
         String userPrompt = """
                 ## Candidate
                 Name: %s
@@ -372,7 +395,7 @@ public class SourcingAgentService {
                 requisition.getDescription(),
                 nullToDash(requisition.getRequiredSkills()),
                 nullToDash(match.getMatchRationale())
-        );
+        ) + screeningSection;
 
         String draft = claudeApiClient.sendPrompt(promptLoader.load("sourcing-outreach-agent"), userPrompt);
 
