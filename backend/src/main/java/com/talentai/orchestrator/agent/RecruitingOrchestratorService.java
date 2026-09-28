@@ -86,13 +86,33 @@ public class RecruitingOrchestratorService {
 
     // ---- the loop ----
 
+    /**
+     * Resumes a paused run. Claude requires every tool_use id from the
+     * pausing turn to be resolved together in ONE user message — so this
+     * merges any tool results already computed earlier in that same turn
+     * (pendingPriorResults) with the just-approved/declined tool's result,
+     * rather than sending the new result alone.
+     */
     private void resumeWithToolResult(AgentRun run, String toolUseId, String result) {
         ArrayNode messages = (ArrayNode) readJson(run.getConversation());
-        messages.add(toolResultMessage(toolUseId, result));
+
+        ArrayNode toolResults = mapper.createArrayNode();
+        if (run.getPendingPriorResults() != null) {
+            for (JsonNode block : readJson(run.getPendingPriorResults())) {
+                toolResults.add(block);
+            }
+        }
+        toolResults.add(toolResultBlock(toolUseId, result));
+
+        ObjectNode userMsg = mapper.createObjectNode();
+        userMsg.put("role", "user");
+        userMsg.set("content", toolResults);
+        messages.add(userMsg);
 
         run.setStatus("RUNNING");
         run.setPendingTool(null);
         run.setPendingInput(null);
+        run.setPendingPriorResults(null);
         run.setUpdatedAt(LocalDateTime.now());
         runRepository.save(run);
 
@@ -136,7 +156,7 @@ public class RecruitingOrchestratorService {
                     recordStep(runId, "TOOL_CALL", toolName, input.toPrettyString());
 
                     if (toolExecutor.requiresApproval(toolName)) {
-                        pauseForApproval(runId, messages, toolName, toolUseId, input);
+                        pauseForApproval(runId, messages, toolResults, toolName, toolUseId, input);
                         return;
                     }
 
@@ -157,7 +177,8 @@ public class RecruitingOrchestratorService {
         }
     }
 
-    private void pauseForApproval(Long runId, ArrayNode messages, String toolName, String toolUseId, JsonNode input) {
+    private void pauseForApproval(Long runId, ArrayNode messages, ArrayNode priorResultsThisTurn,
+                                   String toolName, String toolUseId, JsonNode input) {
         ObjectNode pending = mapper.createObjectNode();
         pending.put("toolUseId", toolUseId);
         pending.set("input", input);
@@ -166,6 +187,11 @@ public class RecruitingOrchestratorService {
         run.setStatus("PAUSED_FOR_APPROVAL");
         run.setPendingTool(toolName);
         run.setPendingInput(pending.toString());
+        // Results from other tool_use blocks Claude bundled into this same
+        // turn (if any) — can't be sent back yet since Claude requires every
+        // tool_use id from a turn to be resolved together in one message.
+        // Held here and merged in once this gate is approved/declined.
+        run.setPendingPriorResults(priorResultsThisTurn.isEmpty() ? null : priorResultsThisTurn.toString());
         run.setConversation(messages.toString());
         run.setUpdatedAt(LocalDateTime.now());
         runRepository.save(run);
@@ -225,14 +251,6 @@ public class RecruitingOrchestratorService {
         block.put("tool_use_id", toolUseId);
         block.put("content", result);
         return block;
-    }
-
-    private ObjectNode toolResultMessage(String toolUseId, String result) {
-        ObjectNode msg = mapper.createObjectNode();
-        msg.put("role", "user");
-        ArrayNode content = msg.putArray("content");
-        content.add(toolResultBlock(toolUseId, result));
-        return msg;
     }
 
     private String extractText(JsonNode content) {

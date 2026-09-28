@@ -42,6 +42,15 @@ public class AgentRun {
     @Column(name = "pending_input", columnDefinition = "TEXT")
     private String pendingInput;
 
+    /**
+     * tool_result blocks already computed earlier in the same assistant
+     * turn as the gated tool call, held here until the gate resolves —
+     * see pauseForApproval in RecruitingOrchestratorService for why these
+     * can't be sent back to Claude immediately.
+     */
+    @Column(name = "pending_prior_results", columnDefinition = "TEXT")
+    private String pendingPriorResults;
+
     @Column(name = "result_summary", columnDefinition = "TEXT")
     private String resultSummary;
 
