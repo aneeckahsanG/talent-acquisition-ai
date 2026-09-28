@@ -29,6 +29,9 @@ public class OrchestratorDtos {
         private String notes;
         private LocalDateTime enteredAt;
 
+        // Sourcing match id — present when a SourcingMatch record exists (used to trigger outreach)
+        private Long matchId;
+
         // Supplementary scores, populated where available
         private BigDecimal screeningScore;
         private String screeningRecommendation;

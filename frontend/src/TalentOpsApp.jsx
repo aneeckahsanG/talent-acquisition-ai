@@ -3,7 +3,7 @@ import {
   LayoutGrid, Search, FileCheck, UserPlus, Calendar, Activity,
   ChevronRight, ChevronUp, ChevronDown, Sparkles, CheckCircle2, XCircle, AlertCircle, Clock,
   Briefcase, Mail, X, ArrowRight, Bell, LogOut, Loader2, UploadCloud,
-  RefreshCw, Plus, Globe,
+  RefreshCw, Plus, Globe, List, ArrowUp, ArrowDown, ArrowUpDown,
 } from "lucide-react";
 
 // ============================================================
@@ -76,12 +76,41 @@ function useApi(path, deps = []) {
   return { data, loading, error, reload: load };
 }
 
+// Fetches multiple paths in parallel — used to power "All Roles" views that
+// merge per-requisition endpoints client-side. `paths` is an array of URL
+// strings, or null/empty to skip fetching.
+function useApiMulti(paths, deps = []) {
+  const [data, setData] = useState(null); // array of results aligned with paths, or null
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const pathsKey = paths ? paths.join("|") : "";
+
+  const load = useCallback(async () => {
+    if (!paths || paths.length === 0) { setData(null); setLoading(false); return; }
+    setLoading(true);
+    setError(null);
+    try {
+      const results = await Promise.all(paths.map(p => apiFetch(p)));
+      setData(results);
+    } catch (e) {
+      setError(e.message);
+      setData(null);
+    } finally {
+      setLoading(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathsKey, ...deps]);
+
+  useEffect(() => { load(); }, [load]);
+  return { data, loading, error, reload: load };
+}
+
 // ============================================================
 // DESIGN SYSTEM
 // ============================================================
 const C = {
-  sidebar: "#0F172A",
-  accent: "#6366F1",
+  sidebar: "#248EC2",
+  accent: "#248EC2",
   success: "#10B981",
   warning: "#F59E0B",
   danger: "#EF4444",
@@ -103,12 +132,28 @@ const AGENT_META = {
 const STAGE_LABELS = {
   SOURCED: "Sourced", SCREENED: "Screened", SHORTLISTED: "Shortlisted",
   INTERVIEW_SCHEDULED: "Interview", OFFER: "Offer", HIRED: "Hired", REJECTED: "Rejected",
+  NO_SHOW: "No Show",
 };
 
 // Linear progression — REFERRAL_MATCHED is a source tag, not a stage
 const PIPELINE_STAGES = [
-  "SOURCED","SCREENED","SHORTLISTED","INTERVIEW_SCHEDULED","OFFER","HIRED","REJECTED",
+  "SOURCED","SCREENED","SHORTLISTED","INTERVIEW_SCHEDULED","OFFER","HIRED","REJECTED","NO_SHOW",
 ];
+
+// Merges per-requisition pipeline board responses into one "All Roles" board.
+// Each PipelineCandidateResponse already carries requisitionId/requisitionTitle,
+// so cards remain traceable to their role without extra tagging.
+function mergePipelineBoards(boards) {
+  const stages = {};
+  for (const s of PIPELINE_STAGES) stages[s] = [];
+  for (const b of boards || []) {
+    for (const s of PIPELINE_STAGES) {
+      const list = b?.stages?.[s] || [];
+      stages[s].push(...list);
+    }
+  }
+  return { requisitionId: null, requisitionTitle: "All Roles", stages };
+}
 
 // What action buttons appear on a card given its current stage
 // INTERVIEW_SCHEDULED and OFFER are handled separately
@@ -228,7 +273,7 @@ function Card({ children, className = "", style = {}, onClick }) {
 
 function Btn({ children, variant = "primary", onClick, className = "", disabled = false, type = "button" }) {
   const styles = {
-    primary:   { background: "linear-gradient(135deg,#6366F1,#8B5CF6)", color: "#fff", border: "none" },
+    primary:   { background: "#248EC2", color: "#fff", border: "none" },
     secondary: { background: "#fff", color: C.text, border: `1px solid ${C.border}` },
     danger:    { background: "#FEF2F2", color: C.danger,   border: "1px solid #FECACA" },
     success:   { background: "#ECFDF5", color: C.success,  border: "1px solid #A7F3D0" },
@@ -248,7 +293,7 @@ function Input({ label, ...props }) {
     <div>
       {label && <label className="text-xs font-semibold block mb-1.5" style={{ color: C.muted }}>{label}</label>}
       <input
-        className="w-full text-sm px-4 py-2.5 rounded-xl border outline-none focus:ring-2 focus:ring-indigo-200 transition-shadow"
+        className="w-full text-sm px-4 py-2.5 rounded-xl border outline-none focus:ring-2 focus:ring-blue-200 transition-shadow"
         style={{ borderColor: C.border }}
         {...props}
       />
@@ -343,7 +388,7 @@ function LoginScreen({ onLogin }) {
       <div className="w-full max-w-sm">
         <div className="flex items-center gap-3 justify-center mb-8">
           <div className="w-10 h-10 rounded-2xl flex items-center justify-center"
-            style={{ background: "linear-gradient(135deg,#6366F1,#8B5CF6)" }}>
+            style={{ background: "#248EC2" }}>
             <Sparkles size={20} color="#fff" />
           </div>
           <div>
@@ -382,24 +427,24 @@ function LoginScreen({ onLogin }) {
 // ============================================================
 function Sidebar({ active, setActive, user, onLogout }) {
   const nav = [
-    { id: "dashboard",  label: "Dashboard",         icon: LayoutGrid },
-    { id: "roles",      label: "Open Roles",         icon: Briefcase  },
-    { id: "pipeline",   label: "Pipeline",           icon: Activity   },
-    { id: "sync-sources", label: "Sync Sources",      icon: Globe      },
-    { id: "screening",  label: "Screening",          icon: FileCheck  },
-    { id: "referrals",  label: "Referral",           icon: UserPlus   },
+    { id: "dashboard",    label: "Dashboard",         icon: LayoutGrid },
+    { id: "roles",        label: "Open Roles",         icon: Briefcase  },
+    { id: "pipeline",     label: "Pipeline",           icon: Activity   },
+    { id: "screening",    label: "Screening",          icon: FileCheck  },
+    { id: "referrals",    label: "Referral",           icon: UserPlus   },
+    { id: "integrations", label: "Integrations",       icon: Globe      },
   ];
 
   return (
     <aside className="w-64 shrink-0 flex flex-col" style={{ backgroundColor: C.sidebar }}>
       <div className="px-6 py-6 flex items-center gap-3">
         <div className="w-8 h-8 rounded-xl flex items-center justify-center"
-          style={{ background: "linear-gradient(135deg,#6366F1,#8B5CF6)" }}>
+          style={{ background: "rgba(255,255,255,0.2)" }}>
           <Sparkles size={16} color="#fff" />
         </div>
         <div>
           <p className="text-white font-bold text-sm tracking-tight">TalentAcquisition AI</p>
-          <p className="text-xs" style={{ color: "#475569" }}>Agentic recruiting</p>
+          <p className="text-xs" style={{ color: "rgba(255,255,255,0.75)" }}>Agentic recruiting</p>
         </div>
       </div>
 
@@ -410,12 +455,12 @@ function Sidebar({ active, setActive, user, onLogout }) {
             <button key={id} onClick={() => setActive(id)}
               className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all text-left"
               style={{
-                backgroundColor: active_ ? "#1E293B" : "transparent",
-                color: active_ ? "#fff" : "#94A3B8",
+                backgroundColor: active_ ? "rgba(255,255,255,0.2)" : "transparent",
+                color: "#fff",
               }}>
-              <Icon size={16} style={{ color: active_ ? "#818CF8" : "#475569" }} />
+              <Icon size={16} style={{ color: active_ ? "#4FC3FF" : "#fff" }} />
               {label}
-              {active_ && <ChevronRight size={14} className="ml-auto" style={{ color: "#818CF8" }} />}
+              {active_ && <ChevronRight size={14} className="ml-auto" style={{ color: "#4FC3FF" }} />}
             </button>
           );
         })}
@@ -426,12 +471,12 @@ function Sidebar({ active, setActive, user, onLogout }) {
           <Avatar name={user?.fullName || "User"} size={34} />
           <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold text-white truncate">{user?.fullName}</p>
-            <p className="text-xs truncate" style={{ color: "#64748B" }}>{user?.role}</p>
+            <p className="text-xs truncate" style={{ color: "rgba(255,255,255,0.75)" }}>{user?.role}</p>
           </div>
         </div>
         <button onClick={onLogout}
           className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium transition-colors"
-          style={{ color: "#64748B" }}>
+          style={{ color: "rgba(255,255,255,0.75)" }}>
           <LogOut size={13} /> Sign out
         </button>
       </div>
@@ -447,9 +492,9 @@ function Dashboard({ setActive }) {
 
   const stats = summary ? [
     { label: "Open Requisitions",        value: summary.openRequisitions,        icon: Briefcase,     color: C.accent,  nav: "roles"    },
-    { label: "Candidates in Pool",        value: summary.totalCandidates,          icon: Activity,      color: "#8B5CF6", nav: "pipeline" },
+    { label: "Candidates in Pool",        value: summary.totalCandidates,          icon: Activity,      color: "#8B5CF6", nav: "sourcing" },
     { label: "Edge Cases Awaiting Review",value: summary.edgeCasesAwaitingReview,  icon: AlertCircle,   color: C.warning, nav: "screening"},
-    { label: "Interviews Scheduled",      value: summary.interviewsScheduled,      icon: Calendar,      color: C.success, nav: "pipeline" },
+    { label: "Interviews Scheduled",      value: summary.interviewsScheduled,      icon: Calendar,      color: C.success, nav: "scheduling"},
   ] : [];
 
   return (
@@ -700,6 +745,7 @@ function RolesView({ setActive }) {
               </Card>
             )}
             <ApplicantsPanel requisitionId={detail.id} />
+            <AgentActivityPanel requisitionId={detail.id} />
           </div>
           <div className="space-y-4">
             <Card className="p-5 space-y-3">
@@ -979,6 +1025,160 @@ function WebhookUrlCard({ requisitionId }) {
 }
 
 // ============================================================
+// AGENT ACTIVITY PANEL — agentic orchestrator runs, traces, and approvals
+// ============================================================
+function AgentActivityPanel({ requisitionId }) {
+  const { data: runs, loading, reload } = useApi(`/agent/requisition/${requisitionId}/runs`, [requisitionId]);
+  const [openRun, setOpenRun] = useState(null);
+  const [steps, setSteps] = useState({});
+  const [acting, setActing] = useState(null);
+
+  const RUN_STYLE = {
+    RUNNING:             { bg: "#dbeafe", color: "#1d4ed8", label: "Running" },
+    PAUSED_FOR_APPROVAL: { bg: "#fef9c3", color: "#ca8a04", label: "Awaiting Approval" },
+    COMPLETED:           { bg: "#dcfce7", color: "#16a34a", label: "Completed" },
+    FAILED:              { bg: "#fee2e2", color: "#dc2626", label: "Failed" },
+    CANCELLED:           { bg: "#f1f5f9", color: "#64748b", label: "Cancelled" },
+  };
+
+  const STEP_ICON = {
+    THOUGHT: "💭", TOOL_CALL: "🔧", TOOL_RESULT: "📄",
+    APPROVAL_REQUEST: "✋", APPROVAL_DECISION: "👤", FINAL: "✅", ERROR: "⚠️",
+  };
+
+  async function toggleRun(runId) {
+    if (openRun === runId) { setOpenRun(null); return; }
+    setOpenRun(runId);
+    if (!steps[runId]) {
+      const s = await apiFetch(`/agent/runs/${runId}/steps`);
+      setSteps(prev => ({ ...prev, [runId]: s }));
+    }
+  }
+
+  async function decide(runId, action) {
+    setActing(runId);
+    try {
+      await apiFetch(`/agent/runs/${runId}/${action}`, { method: "POST" });
+      setSteps(prev => ({ ...prev, [runId]: undefined }));
+      setOpenRun(null);
+      reload();
+    } finally { setActing(null); }
+  }
+
+  const runList = runs || [];
+  if (!loading && runList.length === 0) return null;
+
+  return (
+    <Card className="p-6">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wide" style={{ color: C.muted }}>Agent Activity</p>
+          <p className="text-xs mt-0.5" style={{ color: C.muted }}>
+            AI orchestrator runs for inbound applications · {runList.length} run{runList.length !== 1 ? "s" : ""}
+          </p>
+        </div>
+        <button onClick={reload} className="p-1.5 rounded-lg hover:bg-gray-100 text-xs font-semibold" style={{ color: C.accent }} title="Refresh">
+          ↻ Refresh
+        </button>
+      </div>
+
+      <div className="space-y-3">
+        {runList.map(run => {
+          const st = RUN_STYLE[run.status] || RUN_STYLE.CANCELLED;
+          return (
+            <div key={run.id} className="border rounded-xl overflow-hidden" style={{ borderColor: C.border }}>
+              <button onClick={() => toggleRun(run.id)}
+                className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-gray-50">
+                <div className="flex items-center gap-3 min-w-0">
+                  <span className="text-xs font-bold px-2.5 py-1 rounded-full shrink-0" style={{ backgroundColor: st.bg, color: st.color }}>
+                    {st.label}
+                  </span>
+                  <span className="text-xs truncate" style={{ color: C.text }}>{run.goal}</span>
+                </div>
+                <span className="text-xs shrink-0 ml-2" style={{ color: C.muted }}>
+                  {openRun === run.id ? "▲" : "▼"}
+                </span>
+              </button>
+
+              {run.status === "PAUSED_FOR_APPROVAL" && (() => {
+                let pendingInput = null;
+                try { pendingInput = run.pendingInput ? JSON.parse(run.pendingInput) : null; } catch {}
+                const emailBody = run.pendingTool === "send_outreach_email" && pendingInput?.input?.emailBody;
+                const rejectReason = run.pendingTool === "reject_candidate" && pendingInput?.input?.reason;
+                return (
+                  <div className="border-t" style={{ borderColor: C.border, backgroundColor: "#fefce8" }}>
+                    <div className="px-4 py-3 flex items-center justify-between gap-3">
+                      <p className="text-xs font-medium" style={{ color: "#854d0e" }}>
+                        Agent wants to run <span className="font-mono font-bold">{run.pendingTool}</span> — your approval is required.
+                      </p>
+                      <div className="flex gap-2 shrink-0">
+                        <button disabled={acting === run.id} onClick={() => decide(run.id, "approve")}
+                          className="px-3 py-1.5 rounded-lg text-xs font-bold text-white"
+                          style={{ backgroundColor: "#16a34a", opacity: acting === run.id ? 0.5 : 1 }}>
+                          ✓ Approve
+                        </button>
+                        <button disabled={acting === run.id} onClick={() => decide(run.id, "reject")}
+                          className="px-3 py-1.5 rounded-lg text-xs font-bold text-white"
+                          style={{ backgroundColor: "#dc2626", opacity: acting === run.id ? 0.5 : 1 }}>
+                          ✕ Decline
+                        </button>
+                      </div>
+                    </div>
+                    {emailBody && (
+                      <div className="px-4 pb-3">
+                        <p className="text-xs font-semibold mb-1" style={{ color: "#854d0e" }}>Email to be sent:</p>
+                        <pre className="text-xs whitespace-pre-wrap rounded-lg p-3 leading-relaxed"
+                          style={{ backgroundColor: "#fef3c7", color: "#78350f", fontFamily: "inherit" }}>
+                          {emailBody}
+                        </pre>
+                      </div>
+                    )}
+                    {rejectReason && (
+                      <div className="px-4 pb-3">
+                        <p className="text-xs font-semibold mb-1" style={{ color: "#854d0e" }}>Rejection reason:</p>
+                        <p className="text-xs rounded-lg p-3" style={{ backgroundColor: "#fef3c7", color: "#78350f" }}>
+                          {rejectReason}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {openRun === run.id && (
+                <div className="border-t px-4 py-3 space-y-2" style={{ borderColor: C.border, backgroundColor: "#fafafa" }}>
+                  {!steps[run.id] ? (
+                    <p className="text-xs" style={{ color: C.muted }}>Loading trace…</p>
+                  ) : steps[run.id].map(step => (
+                    <div key={step.id} className="flex gap-2 text-xs">
+                      <span className="shrink-0">{STEP_ICON[step.stepType] || "•"}</span>
+                      <div className="min-w-0">
+                        <span className="font-bold" style={{ color: C.text }}>
+                          {step.stepType}{step.toolName ? ` · ${step.toolName}` : ""}
+                        </span>
+                        <pre className="whitespace-pre-wrap font-sans mt-0.5 max-h-40 overflow-y-auto" style={{ color: C.muted }}>
+                          {step.content}
+                        </pre>
+                      </div>
+                    </div>
+                  ))}
+                  {run.resultSummary && (
+                    <div className="mt-2 pt-2 border-t text-xs" style={{ borderColor: C.border }}>
+                      <span className="font-bold" style={{ color: C.text }}>Final summary: </span>
+                      <span style={{ color: C.muted }}>{run.resultSummary}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
+
+// ============================================================
 // ============================================================
 // APPLICANTS PANEL — direct applications from public careers page
 // ============================================================
@@ -986,8 +1186,38 @@ function ApplicantsPanel({ requisitionId }) {
   const { data, loading, reload } = useApi(`/requisitions/${requisitionId}/applicants`, [requisitionId]);
   const [acting, setActing] = useState(null);
   const [expanded, setExpanded] = useState({});
+  const [outreach, setOutreach] = useState(null);
+
+  // Candidate id currently being email-edited, and that edit's local state
+  const [editingEmailFor, setEditingEmailFor] = useState(null);
+  const [emailDraft, setEmailDraft] = useState("");
+  const [savingEmail, setSavingEmail] = useState(false);
+  const [emailError, setEmailError] = useState(null);
 
   const applicants = data || [];
+
+  function startEditEmail(a) {
+    setEditingEmailFor(a.candidateId);
+    setEmailDraft(a.candidateEmail || "");
+    setEmailError(null);
+  }
+
+  async function saveEmail(candidateId) {
+    setSavingEmail(true);
+    setEmailError(null);
+    try {
+      await apiFetch(`/candidates/${candidateId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ email: emailDraft }),
+      });
+      setEditingEmailFor(null);
+      reload();
+    } catch (e) {
+      setEmailError(e.message);
+    } finally {
+      setSavingEmail(false);
+    }
+  }
 
   async function shortlist(matchId) {
     setActing(matchId);
@@ -1003,6 +1233,14 @@ function ApplicantsPanel({ requisitionId }) {
       await apiFetch(`/requisitions/${requisitionId}/applicants/${matchId}/reject`, { method: "POST" });
       reload();
     } finally { setActing(null); }
+  }
+
+  async function draftOutreach(a) {
+    setOutreach({ loading: true, matchId: a.id, candidateName: a.candidateName, requisitionTitle: null, candidateEmail: a.candidateEmail });
+    try {
+      const result = await apiFetch(`/sourcing/matches/${a.id}/draft-outreach`, { method: "POST" });
+      setOutreach({ loading: false, ...result });
+    } catch { setOutreach(null); }
   }
 
   const REC_STYLE = {
@@ -1061,6 +1299,35 @@ function ApplicantsPanel({ requisitionId }) {
                     </div>
                     {a.candidateHeadline && (
                       <p className="text-xs mt-0.5 truncate" style={{ color: C.muted }}>{a.candidateHeadline}</p>
+                    )}
+                    {editingEmailFor === a.candidateId ? (
+                      <div className="mt-1 flex items-center gap-1.5">
+                        <input type="email" value={emailDraft} autoFocus
+                          onChange={e => setEmailDraft(e.target.value)}
+                          onKeyDown={e => { if (e.key === "Enter") saveEmail(a.candidateId); if (e.key === "Escape") setEditingEmailFor(null); }}
+                          className="text-xs px-2 py-1 rounded-lg border flex-1 min-w-0"
+                          style={{ borderColor: C.border }} />
+                        <button disabled={savingEmail} onClick={() => saveEmail(a.candidateId)}
+                          className="text-xs font-semibold px-2 py-1 rounded-lg text-white"
+                          style={{ backgroundColor: C.success, opacity: savingEmail ? 0.5 : 1 }}>
+                          {savingEmail ? "…" : "Save"}
+                        </button>
+                        <button disabled={savingEmail} onClick={() => setEditingEmailFor(null)}
+                          className="text-xs font-semibold px-2 py-1 rounded-lg border" style={{ borderColor: C.border, color: C.muted }}>
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1.5 mt-0.5 group">
+                        <p className="text-xs truncate" style={{ color: C.muted }}>{a.candidateEmail || "No email on record"}</p>
+                        <button onClick={() => startEditEmail(a)}
+                          className="text-xs opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: C.accent }}>
+                          Edit
+                        </button>
+                      </div>
+                    )}
+                    {editingEmailFor === a.candidateId && emailError && (
+                      <p className="text-xs mt-1" style={{ color: C.danger }}>{emailError}</p>
                     )}
                     <p className="text-xs mt-1" style={{ color: C.muted }}>
                       Applied {a.createdAt ? new Date(a.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—"}
@@ -1151,7 +1418,15 @@ function ApplicantsPanel({ requisitionId }) {
                 )}
 
                 {a.status === "SHORTLISTED" && (
-                  <p className="text-xs" style={{ color: C.success }}>✓ Added to pipeline at Screening stage</p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs" style={{ color: C.success }}>✓ Added to pipeline at Screening stage</p>
+                    <button
+                      onClick={() => draftOutreach(a)}
+                      className="text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1"
+                      style={{ color: C.accent, border: `1px solid ${C.accent}55`, backgroundColor: `${C.accent}08` }}>
+                      <Mail size={11} /> Send Outreach
+                    </button>
+                  </div>
                 )}
                 {a.status === "REJECTED" && (
                   <p className="text-xs" style={{ color: "#dc2626" }}>✕ Rejected — email notification sent</p>
@@ -1161,13 +1436,231 @@ function ApplicantsPanel({ requisitionId }) {
           })}
         </div>
       )}
+      <OutreachModal outreach={outreach} onClose={() => setOutreach(null)} onSent={reload} />
     </Card>
+  );
+}
+
+// Surfaces candidate notification emails that failed to send (the triggering
+// pipeline/status change already happened and is never rolled back) so a
+// recruiter can notice and resend rather than the failure disappearing silently.
+function FailedNotificationsBanner() {
+  const { data, loading, reload } = useApi("/notifications/failed");
+  const [resendingId, setResendingId] = useState(null);
+  const [expanded, setExpanded] = useState(false);
+  const failures = data || [];
+
+  async function resend(id) {
+    setResendingId(id);
+    try {
+      await apiFetch(`/notifications/${id}/resend`, { method: "POST" });
+      // Give the async send a moment before refreshing the list
+      setTimeout(reload, 2000);
+    } finally {
+      setResendingId(null);
+    }
+  }
+
+  if (loading || failures.length === 0) return null;
+
+  return (
+    <Card className="p-4 mb-4" style={{ borderColor: "#FCA5A5", background: "#FEF2F2" }}>
+      <div className="flex items-center justify-between">
+        <button onClick={() => setExpanded(e => !e)} className="flex items-center gap-2 text-left">
+          <AlertCircle size={16} style={{ color: C.danger }} />
+          <span className="text-sm font-semibold" style={{ color: C.danger }}>
+            {failures.length} notification email{failures.length !== 1 ? "s" : ""} failed to send
+          </span>
+          <span className="text-xs" style={{ color: C.danger }}>{expanded ? "▲ Hide" : "▼ Show"}</span>
+        </button>
+        <button onClick={reload} className="p-1.5 rounded-lg hover:bg-white/50" title="Refresh">
+          <RefreshCw size={13} style={{ color: C.danger }} />
+        </button>
+      </div>
+      {expanded && (
+        <div className="mt-3 space-y-2">
+          {failures.map(f => (
+            <div key={f.id} className="flex items-center justify-between gap-3 p-2.5 rounded-lg bg-white border" style={{ borderColor: "#FECACA" }}>
+              <div className="min-w-0">
+                <p className="text-xs font-semibold truncate" style={{ color: C.text }}>{f.recipientEmail}</p>
+                <p className="text-xs truncate" style={{ color: C.muted }}>{f.subject}</p>
+                <p className="text-[10px] mt-0.5 truncate" style={{ color: C.danger }}>{f.errorMessage}</p>
+              </div>
+              <button disabled={resendingId === f.id} onClick={() => resend(f.id)}
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg text-white shrink-0"
+                style={{ backgroundColor: C.danger, opacity: resendingId === f.id ? 0.5 : 1 }}>
+                {resendingId === f.id ? "Resending…" : "Resend"}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+// Sortable, filterable table view of the pipeline — same underlying data as
+// the Kanban board, flattened into rows. Complements the board rather than
+// replacing it: bulk scanning/sorting/filtering is easier here (including
+// surfacing REJECTED/NO_SHOW candidates the board hides by default), while
+// multi-round interview scheduling and offer creation stay board-only since
+// they need more room than a table row can give them.
+function PipelineListView({
+  board, isAllRoles, stageFilter, setStageFilter, sortBy, setSortBy, sortDir, setSortDir,
+  movingId, handleMove, setScheduleModal, setScheduleForm, setOfferModal, onDraftOutreach,
+}) {
+  const allCandidates = Object.values(board.stages || {}).flat();
+  const filtered = stageFilter === "ALL" ? allCandidates : allCandidates.filter(c => c.stage === stageFilter);
+
+  const sorted = [...filtered].sort((a, b) => {
+    let av, bv;
+    if (sortBy === "name") { av = (a.candidateName || "").toLowerCase(); bv = (b.candidateName || "").toLowerCase(); }
+    else if (sortBy === "score") { av = a.screeningScore ?? a.sourcingMatchScore ?? -1; bv = b.screeningScore ?? b.sourcingMatchScore ?? -1; }
+    else if (sortBy === "stage") { av = PIPELINE_STAGES.indexOf(a.stage); bv = PIPELINE_STAGES.indexOf(b.stage); }
+    else { av = a.enteredAt || ""; bv = b.enteredAt || ""; }
+    if (av < bv) return sortDir === "asc" ? -1 : 1;
+    if (av > bv) return sortDir === "asc" ? 1 : -1;
+    return 0;
+  });
+
+  function toggleSort(col) {
+    if (sortBy === col) setSortDir(d => d === "asc" ? "desc" : "asc");
+    else { setSortBy(col); setSortDir(col === "name" || col === "stage" ? "asc" : "desc"); }
+  }
+
+  function SortHeader({ col, children }) {
+    const active = sortBy === col;
+    return (
+      <th className="text-left px-4 py-3 font-semibold cursor-pointer select-none" style={{ color: C.muted }}
+        onClick={() => toggleSort(col)}>
+        <span className="inline-flex items-center gap-1">
+          {children}
+          {active ? (sortDir === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />) : <ArrowUpDown size={11} style={{ opacity: 0.35 }} />}
+        </span>
+      </th>
+    );
+  }
+
+  return (
+    <div>
+      <div className="mb-3 flex items-center gap-2">
+        <label className="text-xs font-semibold" style={{ color: C.muted }}>Stage</label>
+        <Select value={stageFilter} onChange={e => setStageFilter(e.target.value)}>
+          <option value="ALL">All Stages ({allCandidates.length})</option>
+          {PIPELINE_STAGES.map(s => {
+            const n = allCandidates.filter(c => c.stage === s).length;
+            return <option key={s} value={s}>{STAGE_LABELS[s]} ({n})</option>;
+          })}
+        </Select>
+      </div>
+
+      <Card className="overflow-hidden">
+        <table className="w-full text-sm">
+          <thead>
+            <tr style={{ backgroundColor: C.bg }}>
+              <SortHeader col="name">Candidate</SortHeader>
+              {isAllRoles && <th className="text-left px-4 py-3 font-semibold" style={{ color: C.muted }}>Role</th>}
+              <SortHeader col="stage">Stage</SortHeader>
+              <SortHeader col="score">Score</SortHeader>
+              <th className="text-left px-4 py-3 font-semibold" style={{ color: C.muted }}>Updated By</th>
+              <SortHeader col="enteredAt">Entered</SortHeader>
+              <th className="text-left px-4 py-3 font-semibold" style={{ color: C.muted }}></th>
+            </tr>
+          </thead>
+          <tbody className="divide-y" style={{ borderColor: C.border }}>
+            {sorted.map(c => {
+              const isMoving = movingId === c.candidateId;
+              const actions = STAGE_ACTIONS[c.stage] || [];
+              const score = c.screeningScore ?? c.sourcingMatchScore;
+              return (
+                <tr key={`${c.candidateId}-${c.requisitionId}`} className="hover:bg-slate-50 transition-colors">
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2.5">
+                      <Avatar name={c.candidateName} size={30} />
+                      <span className="font-semibold" style={{ color: C.text }}>{c.candidateName}</span>
+                    </div>
+                  </td>
+                  {isAllRoles && (
+                    <td className="px-4 py-3 text-xs" style={{ color: C.muted }}>{c.requisitionTitle}</td>
+                  )}
+                  <td className="px-4 py-3">
+                    <span className="text-xs font-semibold px-2 py-0.5 rounded-full"
+                      style={{ backgroundColor: `${C.accent}15`, color: C.accent }}>
+                      {STAGE_LABELS[c.stage] || c.stage}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">{score != null && <ScoreRing score={score} size={30} />}</td>
+                  <td className="px-4 py-3 text-xs font-semibold"
+                    style={{ color: AGENT_META[c.updatedByAgent]?.color || C.muted }}>
+                    {AGENT_META[c.updatedByAgent]?.label || c.updatedByAgent || "—"}
+                  </td>
+                  <td className="px-4 py-3 text-xs" style={{ color: C.muted }}>
+                    {c.enteredAt ? new Date(c.enteredAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—"}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {c.stage === "INTERVIEW_SCHEDULED" || c.stage === "OFFER" ? (
+                        <span className="text-xs" style={{ color: C.muted }}>Manage in Board view</span>
+                      ) : (
+                        <>
+                          {actions.map(({ label, next }) => (
+                            <button key={next} disabled={isMoving}
+                              onClick={() => next === "INTERVIEW_SCHEDULED"
+                                ? setScheduleModal({ candidateId: c.candidateId, candidateName: c.candidateName, requisitionId: c.requisitionId, nextType: "PHONE_SCREEN" })
+                                : handleMove(c.candidateId, next, c.requisitionId)
+                              }
+                              className="text-xs font-semibold px-2.5 py-1 rounded-lg text-white"
+                              style={{ backgroundColor: C.accent, opacity: isMoving ? 0.5 : 1 }}>
+                              {label}
+                            </button>
+                          ))}
+                          {c.stage === "HIRED" && (
+                            <button disabled={isMoving}
+                              onClick={() => handleMove(c.candidateId, "NO_SHOW", c.requisitionId)}
+                              className="text-xs font-semibold px-2.5 py-1 rounded-lg"
+                              style={{ color: C.warning, border: `1px solid ${C.warning}55`, opacity: isMoving ? 0.5 : 1 }}>
+                              Mark as No-Show
+                            </button>
+                          )}
+                          {c.stage !== "REJECTED" && c.stage !== "HIRED" && c.stage !== "NO_SHOW" && (
+                            <button disabled={isMoving}
+                              onClick={() => handleMove(c.candidateId, "REJECTED", c.requisitionId)}
+                              className="text-xs font-semibold px-2.5 py-1 rounded-lg"
+                              style={{ color: C.danger, border: `1px solid ${C.danger}33`, opacity: isMoving ? 0.5 : 1 }}>
+                              Reject
+                            </button>
+                          )}
+                          {c.stage === "SHORTLISTED" && onDraftOutreach && (
+                            <button onClick={() => onDraftOutreach(c)}
+                              className="text-xs font-semibold px-2.5 py-1 rounded-lg flex items-center gap-1"
+                              style={{ color: C.accent, border: `1px solid ${C.accent}55` }}>
+                              <Mail size={11} /> Send Outreach
+                            </button>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        {sorted.length === 0 && (
+          <p className="text-sm text-center py-10" style={{ color: C.muted }}>No candidates in this stage.</p>
+        )}
+      </Card>
+    </div>
   );
 }
 
 function PipelineView() {
   const { data: reqs } = useApi("/requisitions");
-  const [reqId, setReqId] = useState(null);
+  const [reqId, setReqId] = useState("ALL"); // "ALL" or a numeric requisition id
+  const [viewMode, setViewMode] = useState("board"); // "board" | "list"
+  const [stageFilter, setStageFilter] = useState("ALL");
+  const [sortBy, setSortBy] = useState("enteredAt"); // "name" | "score" | "stage" | "enteredAt"
+  const [sortDir, setSortDir] = useState("desc");
   const [movingId, setMovingId] = useState(null);
   const [completingRoundId, setCompletingRoundId] = useState(null);
   const [simulatingResponseId, setSimulatingResponseId] = useState(null);
@@ -1191,6 +1684,7 @@ function PipelineView() {
   const [recordReplyText, setRecordReplyText] = useState("");
   const [recordingResponse, setRecordingResponse] = useState(false);
   const [offerModal, setOfferModal] = useState(null);
+  const [outreach, setOutreach] = useState(null);
   const [offerForm, setOfferForm] = useState({ salaryAmount: "", currency: "MYR", startDate: "", expiryDate: "", notes: "" });
   const [submittingOffer, setSubmittingOffer] = useState(false);
   const [updatingOfferId, setUpdatingOfferId] = useState(null);
@@ -1204,10 +1698,6 @@ function PipelineView() {
   const [newRoleModal, setNewRoleModal] = useState(false);
   const [roleForm, setRoleForm] = useState({ title: "", department: "", location: "", experienceLevel: "MID", description: "", requiredSkills: "", requiredInterviewRounds: 2 });
   const [savingRole, setSavingRole] = useState(false);
-
-  useEffect(() => {
-    if (reqs && reqs.length > 0 && !reqId) setReqId(reqs[0].id);
-  }, [reqs, reqId]);
 
   async function handleCreateRole() {
     if (!roleForm.title.trim()) return;
@@ -1227,15 +1717,20 @@ function PipelineView() {
     }
   }
 
-  const { data: board, loading, error, reload } = useApi(
-    reqId ? `/orchestrator/pipeline/${reqId}` : null,
-    [reqId]
-  );
+  const isAllRoles = reqId === "ALL";
+  const singleBoardApi = useApi(!isAllRoles && reqId ? `/orchestrator/pipeline/${reqId}` : null, [reqId]);
+  const allPaths = isAllRoles && reqs ? reqs.map(r => `/orchestrator/pipeline/${r.id}`) : null;
+  const allBoardsApi = useApiMulti(allPaths, [isAllRoles, reqs?.length]);
 
-  async function handleMove(candidateId, nextStage) {
+  const board = isAllRoles ? (allBoardsApi.data ? mergePipelineBoards(allBoardsApi.data) : null) : singleBoardApi.data;
+  const loading = isAllRoles ? allBoardsApi.loading : singleBoardApi.loading;
+  const error = isAllRoles ? allBoardsApi.error : singleBoardApi.error;
+  const reload = isAllRoles ? allBoardsApi.reload : singleBoardApi.reload;
+
+  async function handleMove(candidateId, nextStage, candidateReqId) {
     setMovingId(candidateId);
     try {
-      await apiFetch(`/orchestrator/pipeline/${reqId}/candidates/${candidateId}/stage`, {
+      await apiFetch(`/orchestrator/pipeline/${candidateReqId ?? reqId}/candidates/${candidateId}/stage`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ stage: nextStage }),
@@ -1304,7 +1799,7 @@ function PipelineView() {
   async function handleCreateOffer() {
     setSubmittingOffer(true);
     try {
-      await apiFetch(`/orchestrator/pipeline/${reqId}/candidates/${offerModal.candidateId}/offer`, {
+      await apiFetch(`/orchestrator/pipeline/${offerModal.requisitionId ?? reqId}/candidates/${offerModal.candidateId}/offer`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...offerForm, salaryAmount: offerForm.salaryAmount ? Number(offerForm.salaryAmount) : null }),
@@ -1365,7 +1860,7 @@ function PipelineView() {
   async function handleScheduleInterview() {
     setScheduling(true);
     try {
-      const result = await apiFetch(`/orchestrator/pipeline/${reqId}/candidates/${scheduleModal.candidateId}/schedule-interview`, {
+      const result = await apiFetch(`/orchestrator/pipeline/${scheduleModal.requisitionId ?? reqId}/candidates/${scheduleModal.candidateId}/schedule-interview`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(scheduleForm),
@@ -1379,7 +1874,18 @@ function PipelineView() {
     }
   }
 
-  const visibleStages = PIPELINE_STAGES.filter(s => s !== "REJECTED");
+  async function handleDraftOutreach(c) {
+    setOutreach({ loading: true, matchId: c.matchId, candidateName: c.candidateName, requisitionTitle: c.requisitionTitle, candidateEmail: c.candidateEmail });
+    try {
+      const url = c.matchId
+        ? `/sourcing/matches/${c.matchId}/draft-outreach`
+        : `/sourcing/outreach/draft-by-candidate?candidateId=${c.candidateId}&requisitionId=${c.requisitionId}`;
+      const result = await apiFetch(url, { method: "POST" });
+      setOutreach({ loading: false, ...result });
+    } catch { setOutreach(null); }
+  }
+
+  const visibleStages = PIPELINE_STAGES.filter(s => s !== "REJECTED" && s !== "NO_SHOW");
 
   return (
     <div>
@@ -1388,10 +1894,23 @@ function PipelineView() {
         action={
           <div className="flex items-center gap-2">
             {reqs && (
-              <Select value={reqId || ""} onChange={e => setReqId(Number(e.target.value))}>
+              <Select value={reqId} onChange={e => setReqId(e.target.value === "ALL" ? "ALL" : Number(e.target.value))}>
+                <option value="ALL">All Roles</option>
                 {reqs.map(r => <option key={r.id} value={r.id}>{r.title}</option>)}
               </Select>
             )}
+            <div className="flex p-1 rounded-xl" style={{ background: C.surface, border: `1px solid ${C.border}` }}>
+              <button onClick={() => setViewMode("board")}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors"
+                style={{ background: viewMode === "board" ? C.accent : "transparent", color: viewMode === "board" ? "#fff" : C.muted }}>
+                <LayoutGrid size={13} /> Board
+              </button>
+              <button onClick={() => setViewMode("list")}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors"
+                style={{ background: viewMode === "list" ? C.accent : "transparent", color: viewMode === "list" ? "#fff" : C.muted }}>
+                <List size={13} /> List
+              </button>
+            </div>
             <Btn variant="primary" onClick={() => setNewRoleModal(true)}>
               <Plus size={13} /> New Role
             </Btn>
@@ -1404,6 +1923,8 @@ function PipelineView() {
         }
       />
 
+      <FailedNotificationsBanner />
+
       {error && <ErrorBanner message={error} onRetry={reload} />}
 
       {loading && (
@@ -1412,7 +1933,16 @@ function PipelineView() {
         </div>
       )}
 
-      {board && (
+      {board && viewMode === "list" && (
+        <PipelineListView board={board} isAllRoles={isAllRoles}
+          stageFilter={stageFilter} setStageFilter={setStageFilter}
+          sortBy={sortBy} setSortBy={setSortBy} sortDir={sortDir} setSortDir={setSortDir}
+          movingId={movingId} handleMove={handleMove}
+          setScheduleModal={setScheduleModal} setScheduleForm={setScheduleForm}
+          setOfferModal={setOfferModal} onDraftOutreach={handleDraftOutreach} />
+      )}
+
+      {board && viewMode === "board" && (
         <div className="flex gap-3 overflow-x-auto pb-4" style={{ minHeight: 0 }}>
           {visibleStages.map((stage) => {
             const candidates = (board.stages?.[stage]) || [];
@@ -1434,13 +1964,18 @@ function PipelineView() {
                     const actions = STAGE_ACTIONS[stage] || [];
                     const isMoving = movingId === c.candidateId;
                     return (
-                      <div key={c.candidateId} className="p-3 rounded-xl border"
+                      <div key={`${c.candidateId}-${c.requisitionId}`} className="p-3 rounded-xl border"
                         style={{ borderColor: C.border, backgroundColor: "#F8FAFC" }}>
                         <div className="flex items-center gap-2 mb-1.5">
                           <Avatar name={c.candidateName} size={28} />
-                          <p className="text-xs font-semibold truncate" style={{ color: C.text }}>
-                            {c.candidateName}
-                          </p>
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold truncate" style={{ color: C.text }}>
+                              {c.candidateName}
+                            </p>
+                            {isAllRoles && c.requisitionTitle && (
+                              <p className="text-[9px] truncate" style={{ color: C.muted }}>{c.requisitionTitle}</p>
+                            )}
+                          </div>
                         </div>
                         {(c.screeningScore ?? c.sourcingMatchScore) != null && (
                           <ScoreRing score={c.screeningScore ?? c.sourcingMatchScore} size={30} />
@@ -1684,7 +2219,7 @@ function PipelineView() {
                                   })()}
                                 </div>
                               ) : (
-                                <button onClick={() => setOfferModal({ candidateId: c.candidateId, candidateName: c.candidateName })}
+                                <button onClick={() => setOfferModal({ candidateId: c.candidateId, candidateName: c.candidateName, requisitionId: c.requisitionId })}
                                   className="w-full text-[10px] font-semibold py-1 rounded-lg text-white"
                                   style={{ backgroundColor: C.success }}>
                                   + Create Offer
@@ -1790,7 +2325,7 @@ function PipelineView() {
                                   <button
                                     onClick={() => {
                                       setScheduleForm(f => ({ ...f, interviewType: nextType, confirmedSlot: "", notes: "" }));
-                                      setScheduleModal({ candidateId: c.candidateId, candidateName: c.candidateName, nextType });
+                                      setScheduleModal({ candidateId: c.candidateId, candidateName: c.candidateName, requisitionId: c.requisitionId, nextType });
                                     }}
                                     className="w-full text-[10px] font-semibold py-1 rounded-lg text-white"
                                     style={{ backgroundColor: C.accent }}>
@@ -1803,7 +2338,7 @@ function PipelineView() {
                                       <button
                                         onClick={() => {
                                           setScheduleForm(f => ({ ...f, interviewType: nextType, confirmedSlot: "", notes: "" }));
-                                          setScheduleModal({ candidateId: c.candidateId, candidateName: c.candidateName, nextType });
+                                          setScheduleModal({ candidateId: c.candidateId, candidateName: c.candidateName, requisitionId: c.requisitionId, nextType });
                                         }}
                                         className="w-full text-[10px] font-semibold py-1 rounded-lg"
                                         style={{ color: C.accent, border: `1px solid ${C.accent}55` }}>
@@ -1811,7 +2346,7 @@ function PipelineView() {
                                       </button>
                                     )}
                                     <button
-                                      onClick={() => setOfferModal({ candidateId: c.candidateId, candidateName: c.candidateName })}
+                                      onClick={() => setOfferModal({ candidateId: c.candidateId, candidateName: c.candidateName, requisitionId: c.requisitionId })}
                                       className="w-full text-[10px] font-semibold py-1 rounded-lg text-white"
                                       style={{ backgroundColor: C.success }}>
                                       Advance to Offer
@@ -1819,7 +2354,7 @@ function PipelineView() {
                                   </>
                                 )}
                                 <button disabled={isMoving}
-                                  onClick={() => handleMove(c.candidateId, "REJECTED")}
+                                  onClick={() => handleMove(c.candidateId, "REJECTED", c.requisitionId)}
                                   className="w-full text-[10px] font-semibold py-1 rounded-lg transition-opacity"
                                   style={{ color: C.danger, border: `1px solid ${C.danger}33`, opacity: isMoving ? 0.5 : 1 }}>
                                   Reject
@@ -1830,25 +2365,40 @@ function PipelineView() {
                         })()}
 
                         {/* Stage action buttons for non-interview stages */}
-                        {stage !== "INTERVIEW_SCHEDULED" && actions.length > 0 && (
+                        {stage !== "INTERVIEW_SCHEDULED" && (actions.length > 0 || stage === "HIRED") && (
                           <div className="mt-2 space-y-1">
                             {actions.map(({ label, next }) => (
                               <button key={next} disabled={isMoving}
                                 onClick={() => next === "INTERVIEW_SCHEDULED"
-                                  ? setScheduleModal({ candidateId: c.candidateId, candidateName: c.candidateName, nextType: "PHONE_SCREEN" })
-                                  : handleMove(c.candidateId, next)
+                                  ? setScheduleModal({ candidateId: c.candidateId, candidateName: c.candidateName, requisitionId: c.requisitionId, nextType: "PHONE_SCREEN" })
+                                  : handleMove(c.candidateId, next, c.requisitionId)
                                 }
                                 className="w-full text-[10px] font-semibold py-1 rounded-lg text-white transition-opacity"
                                 style={{ backgroundColor: C.accent, opacity: isMoving ? 0.5 : 1 }}>
                                 {isMoving ? "Moving…" : label}
                               </button>
                             ))}
-                            {stage !== "REJECTED" && (
+                            {stage === "HIRED" && (
                               <button disabled={isMoving}
-                                onClick={() => handleMove(c.candidateId, "REJECTED")}
+                                onClick={() => handleMove(c.candidateId, "NO_SHOW", c.requisitionId)}
+                                className="w-full text-[10px] font-semibold py-1 rounded-lg transition-opacity"
+                                style={{ color: C.warning, border: `1px solid ${C.warning}55`, background: `${C.warning}10`, opacity: isMoving ? 0.5 : 1 }}>
+                                Mark as No-Show
+                              </button>
+                            )}
+                            {stage !== "REJECTED" && stage !== "HIRED" && (
+                              <button disabled={isMoving}
+                                onClick={() => handleMove(c.candidateId, "REJECTED", c.requisitionId)}
                                 className="w-full text-[10px] font-semibold py-1 rounded-lg transition-opacity"
                                 style={{ color: C.danger, border: `1px solid ${C.danger}33`, opacity: isMoving ? 0.5 : 1 }}>
                                 Reject
+                              </button>
+                            )}
+                            {stage === "SHORTLISTED" && (
+                              <button onClick={() => handleDraftOutreach(c)}
+                                className="w-full text-[10px] font-semibold py-1 rounded-lg flex items-center justify-center gap-1"
+                                style={{ color: C.accent, border: `1px solid ${C.accent}55` }}>
+                                <Mail size={10} /> Send Outreach
                               </button>
                             )}
                           </div>
@@ -2441,6 +2991,8 @@ function PipelineView() {
           </Card>
         </div>
       )}
+
+      <OutreachModal outreach={outreach} onClose={() => setOutreach(null)} onSent={reload} />
     </div>
   );
 }
@@ -2605,7 +3157,7 @@ function ResumeSources() {
 
 function SourcingView({ setActive }) {
   const { data: reqs } = useApi("/requisitions?status=OPEN");
-  const [reqId, setReqId] = useState(null);
+  const [reqId, setReqId] = useState("ALL"); // "ALL" or a numeric requisition id
   const [sourcingTab, setSourcingTab] = useState("matches"); // "matches" | "sources"
   const [showForm, setShowForm] = useState(false);
   const [inputMode, setInputMode] = useState("manual");
@@ -2656,14 +3208,17 @@ function SourcingView({ setActive }) {
   const [csvFile, setCsvFile] = useState(null);
   const [submitError, setSubmitError] = useState(null);
 
-  useEffect(() => {
-    if (reqs && reqs.length > 0 && !reqId) setReqId(reqs[0].id);
-  }, [reqs, reqId]);
+  const isAllRoles = reqId === "ALL";
+  const singleMatchesApi = useApi(!isAllRoles && reqId ? `/sourcing/requisition/${reqId}/matches` : null, [reqId]);
+  const allMatchPaths = isAllRoles && reqs ? reqs.map(r => `/sourcing/requisition/${r.id}/matches`) : null;
+  const allMatchesApi = useApiMulti(allMatchPaths, [isAllRoles, reqs?.length]);
 
-  const { data: matches, loading, error, reload } = useApi(
-    reqId ? `/sourcing/requisition/${reqId}/matches` : null,
-    [reqId]
-  );
+  const matches = isAllRoles
+    ? (allMatchesApi.data ? allMatchesApi.data.flat().sort((a, b) => (b.matchScore ?? -1) - (a.matchScore ?? -1)) : null)
+    : singleMatchesApi.data;
+  const loading = isAllRoles ? allMatchesApi.loading : singleMatchesApi.loading;
+  const error = isAllRoles ? allMatchesApi.error : singleMatchesApi.error;
+  const reload = isAllRoles ? allMatchesApi.reload : singleMatchesApi.reload;
 
   function closeModal() {
     setShowForm(false);
@@ -2756,7 +3311,7 @@ function SourcingView({ setActive }) {
     setSubmitting(true);
     setSubmitError(null);
     try {
-      const targetRequisitionId = matchScope === "selected" ? reqId : null;
+      const targetRequisitionId = matchScope === "selected" && !isAllRoles ? reqId : null;
       await apiFetch("/sourcing/talent-pool", { method: "POST", body: JSON.stringify({ ...form, targetRequisitionId }) });
       closeModal();
       reload();
@@ -2777,7 +3332,7 @@ function SourcingView({ setActive }) {
       fd.append("candidateName", fileForm.candidateName);
       if (fileForm.email) fd.append("candidateEmail", fileForm.email);
       fd.append("sourceChannel", fileForm.sourceChannel);
-      if (matchScope === "selected" && reqId) fd.append("targetRequisitionId", reqId);
+      if (matchScope === "selected" && reqId && !isAllRoles) fd.append("targetRequisitionId", reqId);
       fd.append("resume", uploadFile);
       await apiFetch("/sourcing/talent-pool/upload", { method: "POST", body: fd });
       closeModal();
@@ -2796,7 +3351,7 @@ function SourcingView({ setActive }) {
     try {
       const fd = new FormData();
       fd.append("file", csvFile);
-      if (matchScope === "selected" && reqId) fd.append("targetRequisitionId", reqId);
+      if (matchScope === "selected" && reqId && !isAllRoles) fd.append("targetRequisitionId", reqId);
       const result = await apiFetch("/sourcing/talent-pool/csv", { method: "POST", body: fd });
       setCsvResult(result);
       reload();
@@ -2826,7 +3381,8 @@ function SourcingView({ setActive }) {
         action={
           <div className="flex gap-2">
             {sourcingTab === "matches" && reqs && (
-              <Select value={reqId || ""} onChange={e => setReqId(Number(e.target.value))}>
+              <Select value={reqId} onChange={e => setReqId(e.target.value === "ALL" ? "ALL" : Number(e.target.value))}>
+                <option value="ALL">All Roles</option>
                 {reqs.map(r => <option key={r.id} value={r.id}>{r.title}</option>)}
               </Select>
             )}
@@ -2877,6 +3433,9 @@ function SourcingView({ setActive }) {
                     </div>
                     {m.candidateHeadline && (
                       <p className="text-xs mt-0.5" style={{ color: C.muted }}>{m.candidateHeadline}</p>
+                    )}
+                    {isAllRoles && m.requisitionTitle && (
+                      <p className="text-[10px] mt-0.5 font-medium" style={{ color: C.accent }}>{m.requisitionTitle}</p>
                     )}
                   </div>
                 </div>
@@ -3178,18 +3737,22 @@ function SourcingView({ setActive }) {
                   }}>
                   All Open Roles
                 </button>
-                <button type="button" onClick={() => setMatchScope("selected")}
+                <button type="button" disabled={isAllRoles} onClick={() => setMatchScope("selected")}
                   className="flex-1 text-xs font-semibold py-1.5 px-2 rounded-lg transition-all"
                   style={{
                     background: matchScope === "selected" ? "#fff" : "transparent",
                     color: matchScope === "selected" ? C.accent : C.muted,
                     boxShadow: matchScope === "selected" ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
+                    opacity: isAllRoles ? 0.5 : 1,
+                    cursor: isAllRoles ? "not-allowed" : "pointer",
                   }}>
                   This Role Only
                 </button>
               </div>
               <p className="text-xs mt-1.5" style={{ color: C.muted }}>
-                {matchScope === "selected" && reqs?.find(r => r.id === reqId)
+                {isAllRoles
+                  ? 'Select a specific role above (instead of "All Roles") to scope matching to just that role.'
+                  : matchScope === "selected" && reqs?.find(r => r.id === reqId)
                   ? `Candidate will be matched only against "${reqs.find(r => r.id === reqId).title}".`
                   : "Candidate will be matched against every currently open role."}
               </p>
@@ -3236,7 +3799,7 @@ function SourcingView({ setActive }) {
                 <div>
                   <label className="text-xs font-semibold block mb-1.5" style={{ color: C.muted }}>Resume File (PDF or TXT)</label>
                   <label className="flex flex-col items-center justify-center gap-2 w-full py-6 rounded-xl border-2 border-dashed cursor-pointer transition-colors"
-                    style={{ borderColor: uploadFile ? C.accent : C.border, background: uploadFile ? "#EEF2FF" : "transparent" }}>
+                    style={{ borderColor: uploadFile ? C.accent : C.border, background: uploadFile ? "#E6F3FB" : "transparent" }}>
                     <UploadCloud size={22} style={{ color: uploadFile ? C.accent : C.muted }} />
                     <span className="text-xs font-medium" style={{ color: uploadFile ? C.accent : C.muted }}>
                       {uploadFile ? uploadFile.name : "Click to select PDF or TXT file"}
@@ -3317,7 +3880,7 @@ function SourcingView({ setActive }) {
                       </button>
                     </div>
                     <label className="flex flex-col items-center justify-center gap-2 w-full py-6 rounded-xl border-2 border-dashed cursor-pointer transition-colors"
-                      style={{ borderColor: csvFile ? C.accent : C.border, background: csvFile ? "#EEF2FF" : "transparent" }}>
+                      style={{ borderColor: csvFile ? C.accent : C.border, background: csvFile ? "#E6F3FB" : "transparent" }}>
                       <UploadCloud size={22} style={{ color: csvFile ? C.accent : C.muted }} />
                       <span className="text-xs font-medium" style={{ color: csvFile ? C.accent : C.muted }}>
                         {csvFile ? csvFile.name : "Click to select CSV file"}
@@ -3340,6 +3903,113 @@ function SourcingView({ setActive }) {
           </Card>
         </div>
       )}
+    </div>
+  );
+}
+
+// ============================================================
+// SHARED OUTREACH MODAL
+// Used by Screening page, Applicants panel, and Pipeline board/list.
+// Props:
+//   outreach: null | { loading, matchId, candidateName, requisitionTitle, draft, candidateEmail }
+//   onClose: () => void
+//   onSent: () => void  (called after email is sent, so parent can reload)
+// ============================================================
+function OutreachModal({ outreach, onClose, onSent }) {
+  const [draft, setDraft] = useState(outreach?.draft || "");
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  // Sync draft text when outreach prop changes (e.g. after loading completes)
+  useEffect(() => { setDraft(outreach?.draft || ""); }, [outreach?.draft]);
+
+  if (!outreach) return null;
+
+  async function send() {
+    setSending(true);
+    try {
+      await apiFetch(`/sourcing/matches/${outreach.matchId}/send-outreach`, {
+        method: "POST",
+        body: JSON.stringify({ emailBody: draft }),
+      });
+      setSent(true);
+      onSent?.();
+      setTimeout(() => { onClose(); setSent(false); }, 1800);
+    } catch (err) {
+      alert("Failed to send: " + err.message);
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ backgroundColor: "rgba(15,23,42,0.5)", backdropFilter: "blur(4px)" }}>
+      <Card className="w-full max-w-lg p-6">
+        <div className="flex items-start justify-between mb-4">
+          <div>
+            <h2 className="font-bold text-lg" style={{ color: C.text }}>Draft Outreach</h2>
+            {outreach.candidateName && (
+              <p className="text-sm mt-0.5" style={{ color: C.muted }}>
+                {outreach.candidateName}{outreach.requisitionTitle ? ` · ${outreach.requisitionTitle}` : ""}
+              </p>
+            )}
+          </div>
+          <button onClick={onClose}
+            className="w-8 h-8 rounded-xl flex items-center justify-center hover:bg-slate-100">
+            <X size={16} style={{ color: C.muted }} />
+          </button>
+        </div>
+
+        {outreach.loading ? (
+          <div className="flex flex-col items-center justify-center py-12 gap-3">
+            <Spinner size={24} />
+            <p className="text-sm" style={{ color: C.muted }}>Crafting a personalised message…</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {outreach.candidateEmail && (
+              <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl"
+                style={{ backgroundColor: `${C.accent}08`, border: `1px solid ${C.accent}22` }}>
+                <Mail size={13} style={{ color: C.accent }} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>Send to</p>
+                  <p className="text-sm font-semibold truncate" style={{ color: C.text }}>{outreach.candidateEmail}</p>
+                </div>
+                <button onClick={() => { navigator.clipboard.writeText(outreach.candidateEmail); setCopied("email"); setTimeout(() => setCopied(false), 2000); }}
+                  className="text-[10px] font-semibold px-2 py-1 rounded-lg border shrink-0"
+                  style={{ borderColor: copied === "email" ? C.success : C.border, color: copied === "email" ? C.success : C.muted }}>
+                  {copied === "email" ? "✓ Copied!" : "Copy"}
+                </button>
+              </div>
+            )}
+            <div>
+              <label className="text-xs font-semibold block mb-1.5" style={{ color: C.muted }}>
+                AI-generated draft — edit before sending
+              </label>
+              <textarea rows={7}
+                className="w-full text-sm px-4 py-3 rounded-xl border outline-none resize-none leading-relaxed"
+                style={{ borderColor: C.border, color: C.text }}
+                value={draft}
+                onChange={e => setDraft(e.target.value)}
+                disabled={sent}
+              />
+            </div>
+            <div className="flex gap-2">
+              <Btn variant="primary" className="flex-1 justify-center" disabled={sending || sent} onClick={send}>
+                {sent ? <CheckCircle2 size={14} /> : sending ? <Spinner size={14} /> : <Mail size={14} />}
+                {sent ? "Sent!" : sending ? "Sending…" : "Send Email"}
+              </Btn>
+              <Btn variant="secondary"
+                onClick={() => { navigator.clipboard.writeText(draft); setCopied("msg"); setTimeout(() => setCopied(false), 2000); }}>
+                {copied === "msg" ? "✓ Copied" : "Copy"}
+              </Btn>
+              <Btn variant="secondary" onClick={onClose}>Close</Btn>
+            </div>
+          </div>
+        )}
+      </Card>
     </div>
   );
 }
@@ -3478,7 +4148,7 @@ function ScreeningDetailModal({ result, onClose, onDecision }) {
 
 function ScreeningView() {
   const { data: reqs } = useApi("/requisitions?status=OPEN");
-  const [reqId, setReqId] = useState(null);
+  const [reqId, setReqId] = useState("ALL"); // "ALL" or a numeric requisition id
   const [selected, setSelected] = useState(null);
   const [showUpload, setShowUpload] = useState(false);
   const [uploadForm, setUploadForm] = useState({ candidateName:"", candidateEmail:"" });
@@ -3489,15 +4159,19 @@ function ScreeningView() {
   const [uploadError, setUploadError] = useState(null);
   const [parsing, setParsing] = useState(false);
   const fileRef = useRef();
+  const [outreach, setOutreach] = useState(null);
 
-  useEffect(() => {
-    if (reqs && reqs.length > 0 && !reqId) setReqId(reqs[0].id);
-  }, [reqs, reqId]);
+  const isAllRoles = reqId === "ALL";
+  const singleResultsApi = useApi(!isAllRoles && reqId ? `/screening/requisition/${reqId}` : null, [reqId]);
+  const allResultsPaths = isAllRoles && reqs ? reqs.map(r => `/screening/requisition/${r.id}`) : null;
+  const allResultsApi = useApiMulti(allResultsPaths, [isAllRoles, reqs?.length]);
 
-  const { data: results, loading, error, reload } = useApi(
-    reqId ? `/screening/requisition/${reqId}` : null,
-    [reqId]
-  );
+  const results = isAllRoles
+    ? (allResultsApi.data ? allResultsApi.data.flat().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)) : null)
+    : singleResultsApi.data;
+  const loading = isAllRoles ? allResultsApi.loading : singleResultsApi.loading;
+  const error = isAllRoles ? allResultsApi.error : singleResultsApi.error;
+  const reload = isAllRoles ? allResultsApi.reload : singleResultsApi.reload;
 
   async function handleDecision(screeningId, decision, notes) {
     await apiFetch(`/screening/${screeningId}/review`, {
@@ -3507,10 +4181,10 @@ function ScreeningView() {
     reload();
   }
 
-  async function handleShortlist(candidateId) {
+  async function handleShortlist(candidateId, candidateReqId) {
     setShortlisting(candidateId);
     try {
-      await apiFetch(`/orchestrator/pipeline/${reqId}/candidates/${candidateId}/stage`, {
+      await apiFetch(`/orchestrator/pipeline/${candidateReqId ?? reqId}/candidates/${candidateId}/stage`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ stage: "SHORTLISTED" }),
@@ -3534,6 +4208,17 @@ function ScreeningView() {
     }
   }
 
+  async function handleDraftOutreach(r) {
+    setOutreach({ loading: true, matchId: r.matchId, candidateName: r.candidateName, requisitionTitle: r.requisitionTitle });
+    try {
+      const url = r.matchId
+        ? `/sourcing/matches/${r.matchId}/draft-outreach`
+        : `/sourcing/outreach/draft-by-candidate?candidateId=${r.candidateId}&requisitionId=${r.requisitionId}`;
+      const result = await apiFetch(url, { method: "POST" });
+      setOutreach({ loading: false, ...result });
+    } catch { setOutreach(null); }
+  }
+
   async function handleUpload(e) {
     e.preventDefault();
     if (!uploadFile) return;
@@ -3542,7 +4227,7 @@ function ScreeningView() {
     const fd = new FormData();
     fd.append("candidateName", uploadForm.candidateName);
     fd.append("candidateEmail", uploadForm.candidateEmail);
-    fd.append("requisitionId", String(reqId));
+    if (!isAllRoles) fd.append("requisitionId", String(reqId));
     fd.append("resume", uploadFile);
     try {
       await apiFetch("/screening/evaluate-upload", { method: "POST", body: fd });
@@ -3566,7 +4251,8 @@ function ScreeningView() {
         action={
           <div className="flex gap-2">
             {reqs && (
-              <Select value={reqId || ""} onChange={e => setReqId(Number(e.target.value))}>
+              <Select value={reqId} onChange={e => setReqId(e.target.value === "ALL" ? "ALL" : Number(e.target.value))}>
+                <option value="ALL">All Roles</option>
                 {reqs.map(r => <option key={r.id} value={r.id}>{r.title}</option>)}
               </Select>
             )}
@@ -3576,6 +4262,12 @@ function ScreeningView() {
           </div>
         }
       />
+
+      {isAllRoles && (
+        <p className="text-xs mb-3" style={{ color: C.muted }}>
+          "All Roles" is selected — this candidate will be screened against every currently open role.
+        </p>
+      )}
 
       {error && <ErrorBanner message={error} onRetry={reload} />}
 
@@ -3606,6 +4298,9 @@ function ScreeningView() {
                         <Avatar name={r.candidateName} size={34} />
                         <div>
                           <p className="font-semibold" style={{ color: C.text }}>{r.candidateName}</p>
+                          {isAllRoles && r.requisitionTitle && (
+                            <p className="text-xs" style={{ color: C.muted }}>{r.requisitionTitle}</p>
+                          )}
                         </div>
                       </div>
                     </td>
@@ -3619,23 +4314,22 @@ function ScreeningView() {
                         if (stage === "INTERVIEW_SCHEDULED") return <span className="text-xs font-semibold px-2 py-0.5 rounded-full text-white" style={{ backgroundColor: C.accent }}>Interview</span>;
                         if (stage === "OFFER")       return <span className="text-xs font-semibold px-2 py-0.5 rounded-full text-white" style={{ backgroundColor: C.accent }}>Offer</span>;
                         if (stage === "HIRED")       return <span className="text-xs font-semibold px-2 py-0.5 rounded-full text-white" style={{ backgroundColor: C.success }}>Hired</span>;
+                        if (stage === "NO_SHOW")     return <span className="text-xs font-semibold px-2 py-0.5 rounded-full text-white" style={{ backgroundColor: C.warning }}>No Show</span>;
                         return <span className="text-xs font-semibold" style={{ color: C.warning }}>Awaiting review</span>;
                       })()}
                     </td>
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-2 flex-wrap">
-                        {!["SHORTLISTED","INTERVIEW_SCHEDULED","OFFER","HIRED","REJECTED"].includes(r.pipelineStage) && (() => {
+                        {!["SHORTLISTED","INTERVIEW_SCHEDULED","OFFER","HIRED","REJECTED","NO_SHOW"].includes(r.pipelineStage) && (() => {
                           const rec = r.recommendation;
                           return (<>
-                            {/* Always show Shortlist — even for REJECT recommendation the recruiter can override */}
                             <button
                               disabled={shortlisting === r.candidateId}
-                              onClick={() => handleShortlist(r.candidateId)}
+                              onClick={() => handleShortlist(r.candidateId, r.requisitionId)}
                               className="text-xs font-semibold px-3 py-1.5 rounded-lg text-white"
                               style={{ backgroundColor: C.success, opacity: shortlisting === r.candidateId ? 0.5 : 1 }}>
                               {shortlisting === r.candidateId ? "…" : rec === "REJECT" ? "Override & Shortlist" : "Shortlist"}
                             </button>
-                            {/* Show Reject button — only for REJECT or REVIEW recommendations */}
                             {(rec === "REJECT" || rec === "REVIEW") && (
                               <button
                                 disabled={rejecting === r.id}
@@ -3647,6 +4341,14 @@ function ScreeningView() {
                             )}
                           </>);
                         })()}
+                        {r.pipelineStage === "SHORTLISTED" && (
+                          <button
+                            onClick={() => handleDraftOutreach(r)}
+                            className="text-xs font-semibold px-3 py-1.5 rounded-lg"
+                            style={{ color: C.accent, border: `1px solid ${C.accent}55`, backgroundColor: `${C.accent}08` }}>
+                            <span className="flex items-center gap-1"><Mail size={11} /> Send Outreach</span>
+                          </button>
+                        )}
                         <Btn variant="secondary" onClick={() => setSelected(r)}>View</Btn>
                       </div>
                     </td>
@@ -3666,18 +4368,28 @@ function ScreeningView() {
         onClose={() => setSelected(null)}
         onDecision={handleDecision}
       />
+      <OutreachModal
+        outreach={outreach}
+        onClose={() => setOutreach(null)}
+        onSent={reload}
+      />
 
       {showUpload && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
           style={{ backgroundColor: "rgba(15,23,42,0.5)", backdropFilter: "blur(4px)" }}>
           <Card className="w-full max-w-md p-6">
-            <div className="flex items-center justify-between mb-5">
+            <div className="flex items-center justify-between mb-1">
               <h2 className="font-bold text-lg" style={{ color: C.text }}>Screen a Resume</h2>
               <button onClick={() => { setShowUpload(false); setUploadError(null); }}
                 className="w-8 h-8 rounded-xl flex items-center justify-center hover:bg-slate-100">
                 <X size={16} />
               </button>
             </div>
+            <p className="text-xs mb-4" style={{ color: C.muted }}>
+              {isAllRoles
+                ? "Will be screened against every currently open role."
+                : `Will be screened against "${reqs?.find(r => r.id === reqId)?.title || "the selected role"}".`}
+            </p>
             <form onSubmit={handleUpload} className="space-y-3">
               <div>
                 <Input label="Candidate Name" required value={uploadForm.candidateName}
@@ -3691,7 +4403,7 @@ function ScreeningView() {
                   Resume File (PDF or TXT)
                 </label>
                 <div
-                  className="border-2 border-dashed rounded-xl p-6 text-center cursor-pointer hover:border-indigo-300 transition-colors"
+                  className="border-2 border-dashed rounded-xl p-6 text-center cursor-pointer hover:border-blue-300 transition-colors"
                   style={{ borderColor: uploadFile ? C.accent : C.border }}
                   onClick={() => fileRef.current?.click()}>
                   <UploadCloud size={24} className="mx-auto mb-2" style={{ color: C.muted }} />
@@ -3922,7 +4634,7 @@ function ReferralsView({ currentUser = {} }) {
                   placeholder="Skills, experience, key background..." />
               </div>
               <div className="p-3.5 rounded-xl flex items-start gap-2.5"
-                style={{ background: "linear-gradient(135deg,#EEF2FF,#F5F3FF)", border: "1px solid #C7D2FE" }}>
+                style={{ background: "linear-gradient(135deg,#E6F3FB,#EAF0F7)", border: "1px solid #B8DCF2" }}>
                 <Sparkles size={14} className="shrink-0 mt-0.5" style={{ color: C.accent }} />
                 <p className="text-xs" style={{ color: C.muted }}>
                   The Referral Agent will auto-match this candidate against all open roles
@@ -4058,7 +4770,7 @@ function SchedulingView() {
                   {(s.proposedSlots || []).map((slot) => (
                     <button key={slot}
                       onClick={() => handleConfirm(s.id, slot)}
-                      className="text-xs font-mono px-4 py-2 rounded-xl border hover:border-indigo-300 hover:bg-indigo-50 transition-colors flex items-center gap-1.5"
+                      className="text-xs font-mono px-4 py-2 rounded-xl border hover:border-blue-300 hover:bg-blue-50 transition-colors flex items-center gap-1.5"
                       style={{ borderColor: C.border, color: C.text }}>
                       <Clock size={11} style={{ color: C.accent }} />
                       {formatDateTime(slot)}
@@ -4119,7 +4831,7 @@ function SchedulingView() {
                 </Select>
               </div>
               <div className="p-3.5 rounded-xl flex items-start gap-2.5"
-                style={{ background: "linear-gradient(135deg,#EEF2FF,#F5F3FF)", border: "1px solid #C7D2FE" }}>
+                style={{ background: "linear-gradient(135deg,#E6F3FB,#EAF0F7)", border: "1px solid #B8DCF2" }}>
                 <Sparkles size={14} className="shrink-0 mt-0.5" style={{ color: C.accent }} />
                 <p className="text-xs" style={{ color: C.muted }}>
                   Claude will generate 3 interview slot suggestions and a draft candidate
@@ -4213,7 +4925,7 @@ function PublicReferralPage() {
       <div className="w-full max-w-lg">
         <div className="flex items-center gap-3 justify-center mb-6">
           <div className="w-10 h-10 rounded-2xl flex items-center justify-center"
-            style={{ background: "linear-gradient(135deg,#6366F1,#8B5CF6)" }}>
+            style={{ background: "#248EC2" }}>
             <Sparkles size={20} color="#fff" />
           </div>
           <div>
@@ -4293,7 +5005,7 @@ function PublicReferralPage() {
             </div>
 
             <div className="p-3.5 rounded-xl flex items-start gap-2.5"
-              style={{ background: "linear-gradient(135deg,#EEF2FF,#F5F3FF)", border: "1px solid #C7D2FE" }}>
+              style={{ background: "linear-gradient(135deg,#E6F3FB,#EAF0F7)", border: "1px solid #B8DCF2" }}>
               <Sparkles size={14} className="shrink-0 mt-0.5" style={{ color: C.accent }} />
               <p className="text-xs" style={{ color: C.muted }}>
                 Our AI agent will automatically match this candidate to the best open role and notify the recruiting team.
@@ -4345,14 +5057,18 @@ export default function App() {
   const displayUser = userMeta || { fullName: user.username, role: "" };
 
   const views = {
-    dashboard:  <Dashboard setActive={setActive} />,
-    roles:      <RolesView setActive={setActive} />,
-    pipeline:   <PipelineView />,
-    sourcing:        <SourcingView setActive={setActive} />,
-    "sync-sources":  <div className="space-y-6"><h1 className="text-xl font-bold" style={{color:"var(--color-text,#0F172A)"}}>Sync Sources</h1><ResumeSources /></div>,
-    screening:       <ScreeningView />,
-    referrals:       <ReferralsView currentUser={displayUser} />,
-    scheduling:      <SchedulingView />,
+    dashboard:    <Dashboard setActive={setActive} />,
+    roles:        <RolesView setActive={setActive} />,
+    pipeline:     <PipelineView />,
+    screening:    <ScreeningView />,
+    referrals:    <ReferralsView currentUser={displayUser} />,
+    scheduling:   null,
+    integrations: (
+      <div>
+        <TopBar title="Integrations" subtitle="Manage job board connections and candidate import sources" />
+        <div className="p-8"><ResumeSources /></div>
+      </div>
+    ),
   };
 
   return (

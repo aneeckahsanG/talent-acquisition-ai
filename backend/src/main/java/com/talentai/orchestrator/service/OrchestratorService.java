@@ -48,7 +48,7 @@ public class OrchestratorService {
 
     private static final List<String> STAGE_ORDER = List.of(
             "SOURCED", "SCREENED", "SHORTLISTED", "REFERRAL_MATCHED",
-            "INTERVIEW_SCHEDULED", "OFFER", "HIRED", "REJECTED"
+            "INTERVIEW_SCHEDULED", "OFFER", "HIRED", "REJECTED", "NO_SHOW"
     );
 
     private final PipelineStageRepository pipelineStageRepository;
@@ -132,6 +132,7 @@ public class OrchestratorService {
                     .updatedByAgent(stage.getUpdatedByAgent())
                     .notes(stage.getNotes())
                     .enteredAt(stage.getEnteredAt())
+                    .matchId(sourcingMatch != null ? sourcingMatch.getId() : null)
                     .screeningScore(screening != null ? screening.getOverallScore() : null)
                     .screeningRecommendation(screening != null ? screening.getRecommendation() : null)
                     .sourcingMatchScore(sourcingMatch != null ? sourcingMatch.getMatchScore() : null)
@@ -150,16 +151,49 @@ public class OrchestratorService {
     }
 
     public PipelineCandidateResponse moveStage(Long requisitionId, Long candidateId, String newStage) {
+        return moveStage(requisitionId, candidateId, newStage, "HUMAN");
+    }
+
+    /**
+     * Moves a candidate to a new pipeline stage, sending the standard candidate
+     * notification email on SHORTLISTED/REJECTED. Creates the pipeline entry if
+     * one doesn't exist yet (e.g. a direct applicant who was never proactively
+     * sourced) rather than requiring it to pre-exist.
+     *
+     * @param actor who initiated this change — "HUMAN" (recruiter, via the
+     *              pipeline board) or "ORCHESTRATOR" (the agentic orchestrator).
+     */
+    public PipelineCandidateResponse moveStage(Long requisitionId, Long candidateId, String newStage, String actor) {
         PipelineStage ps = pipelineStageRepository
                 .findByCandidateIdAndRequisitionId(candidateId, requisitionId)
-                .orElseThrow(() -> new IllegalArgumentException("Pipeline entry not found"));
+                .orElseGet(() -> {
+                    PipelineStage np = new PipelineStage();
+                    np.setCandidateId(candidateId);
+                    np.setRequisitionId(requisitionId);
+                    return np;
+                });
         ps.setStage(newStage);
-        ps.setUpdatedByAgent("HUMAN");
+        ps.setUpdatedByAgent(actor);
         ps.setEnteredAt(java.time.LocalDateTime.now());
         pipelineStageRepository.save(ps);
 
         Candidate candidate = candidateRepository.findById(candidateId).orElse(null);
         JobRequisition req = jobRequisitionRepository.findById(requisitionId).orElse(null);
+
+        // Keep the direct-application status (SourcingMatch.status, surfaced in
+        // the Sourcing Agent / Applicants Panel views) in sync with the pipeline
+        // stage. Without this, a stage change made here (agent or pipeline
+        // board) leaves those views showing a stale "APPLIED" status — which
+        // also re-exposes the Shortlist/Reject buttons on an already-decided
+        // candidate, risking a second, contradictory action (e.g. rejecting +
+        // emailing someone the pipeline still shows as SHORTLISTED).
+        if (("SHORTLISTED".equals(newStage) || "REJECTED".equals(newStage))) {
+            sourcingMatchRepository.findByCandidateIdAndRequisitionId(candidateId, requisitionId)
+                    .ifPresent(m -> {
+                        m.setStatus(newStage);
+                        sourcingMatchRepository.save(m);
+                    });
+        }
 
         // Enforce required interview rounds before advancing to OFFER
         if ("OFFER".equals(newStage) && req != null) {
@@ -172,25 +206,15 @@ public class OrchestratorService {
             }
         }
 
-        // Notify candidate on key stage changes
-        if (candidate != null && candidate.getEmail() != null && req != null) {
-            if ("SHORTLISTED".equals(newStage)) {
-                String body = "Dear " + candidate.getFullName().split(" ")[0] + ",\n\n"
-                        + "We are pleased to inform you that you have been shortlisted for the "
-                        + req.getTitle() + " position.\n\n"
-                        + "Our recruiting team will be in touch shortly with next steps.\n\n"
-                        + "Best regards,\nHuman Resources\nTalentAcquisition AI";
-                emailService.sendHtml(candidate.getEmail(), "You've been shortlisted – " + req.getTitle(),
-                        emailService.wrapInTemplate(body, "TA"));
-            } else if ("REJECTED".equals(newStage)) {
-                String body = "Dear " + candidate.getFullName().split(" ")[0] + ",\n\n"
-                        + "Thank you for your interest in the " + req.getTitle() + " position. "
-                        + "After careful consideration, we have decided to move forward with other candidates at this time.\n\n"
-                        + "We appreciate the time you invested and encourage you to apply for future openings.\n\n"
-                        + "Best regards,\nHuman Resources\nTalentAcquisition AI";
-                emailService.sendHtml(candidate.getEmail(), "Application Update – " + req.getTitle(),
-                        emailService.wrapInTemplate(body, "TA"));
-            }
+        // Notify candidate on rejection. SHORTLISTED is an internal pipeline
+        // signal only — the candidate-facing "good news" moment is the
+        // personalized outreach email, which is drafted separately and always
+        // requires explicit recruiter approval before sending.
+        if (candidate != null && candidate.getEmail() != null && req != null && "REJECTED".equals(newStage)) {
+            boolean hadInterview = interviewScheduleRepository
+                    .findByCandidateIdAndRequisitionIdOrderByCreatedAtAsc(candidateId, requisitionId)
+                    .stream().anyMatch(i -> "COMPLETED".equals(i.getStatus()));
+            emailService.sendRejectionEmail(candidateId, requisitionId, candidate.getEmail(), candidate.getFullName(), req.getTitle(), hadInterview);
         }
         var screening = screeningResultRepository.findByCandidateIdAndRequisitionId(candidateId, requisitionId).orElse(null);
         var match = sourcingMatchRepository.findByCandidateIdAndRequisitionId(candidateId, requisitionId).orElse(null);
@@ -202,7 +226,7 @@ public class OrchestratorService {
                 .requisitionId(requisitionId)
                 .requisitionTitle(req != null ? req.getTitle() : null)
                 .stage(newStage)
-                .updatedByAgent("HUMAN")
+                .updatedByAgent(actor)
                 .enteredAt(ps.getEnteredAt())
                 .screeningScore(screening != null ? screening.getOverallScore() : null)
                 .screeningRecommendation(screening != null ? screening.getRecommendation() : null)

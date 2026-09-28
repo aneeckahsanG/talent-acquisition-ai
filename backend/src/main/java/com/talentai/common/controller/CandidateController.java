@@ -35,6 +35,35 @@ public class CandidateController {
         return ResponseEntity.ok(toSummary(candidate));
     }
 
+    /** Corrects a candidate's contact email (e.g. a typo on application). */
+    @PatchMapping("/{id}")
+    public ResponseEntity<CandidateSummary> update(@PathVariable Long id, @RequestBody UpdateCandidateRequest request) {
+        Candidate candidate = candidateRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Candidate not found: " + id));
+
+        if (request.getEmail() != null) {
+            String newEmail = request.getEmail().trim().toLowerCase();
+            if (newEmail.isBlank()) {
+                throw new IllegalArgumentException("Email cannot be blank.");
+            }
+            if (!newEmail.matches("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$")) {
+                throw new IllegalArgumentException("Not a valid email address.");
+            }
+            if (!newEmail.equals(candidate.getEmail())) {
+                candidateRepository.findFirstByEmailOrderByIdAsc(newEmail).ifPresent(existing -> {
+                    if (!existing.getId().equals(id)) {
+                        throw new IllegalArgumentException(
+                                "Another candidate (" + existing.getFullName() + ") already uses this email.");
+                    }
+                });
+                candidate.setEmail(newEmail);
+            }
+        }
+
+        candidate = candidateRepository.save(candidate);
+        return ResponseEntity.ok(toSummary(candidate));
+    }
+
     private CandidateSummary toSummary(Candidate c) {
         return CandidateSummary.builder()
                 .id(c.getId())
@@ -67,5 +96,12 @@ public class CandidateController {
         private String resumeFilename;
         private String profileUrl;
         private LocalDateTime createdAt;
+    }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class UpdateCandidateRequest {
+        private String email;
     }
 }

@@ -2,6 +2,7 @@ package com.talentai.sourcing.controller;
 
 import com.talentai.common.repository.CandidateRepository;
 import com.talentai.common.repository.JobRequisitionRepository;
+import com.talentai.orchestrator.agent.RecruitingOrchestratorService;
 import com.talentai.screening.service.ScreeningAgentService;
 import com.talentai.sourcing.dto.SourcingDtos.DirectApplyRequest;
 import com.talentai.sourcing.repository.SourcingMatchRepository;
@@ -33,6 +34,7 @@ public class InboundApplicationController {
     private final SourcingMatchRepository sourcingMatchRepository;
     private final CandidateRepository candidateRepository;
     private final JobRequisitionRepository jobRequisitionRepository;
+    private final RecruitingOrchestratorService orchestratorService;
 
     /**
      * Receives an application from an external job board webhook.
@@ -80,8 +82,9 @@ public class InboundApplicationController {
 
             log.info("Inbound application accepted: '{}' → matchId {}", fullName, matchId);
 
-            // Trigger AI screening asynchronously so the webhook response returns immediately
-            triggerScreeningAsync(matchId, fullName, requisitionId);
+            // Hand the application to the agentic orchestrator — Claude decides the steps
+            // (screen, check pipeline, shortlist/reject, draft outreach) with human approval gates.
+            triggerAgentRun(matchId, fullName, requisitionId);
 
             return ResponseEntity.ok(Map.of(
                     "status", "received",
@@ -110,23 +113,25 @@ public class InboundApplicationController {
         }
     }
 
-    private void triggerScreeningAsync(Long matchId, String fullName, Long requisitionId) {
-        CompletableFuture.runAsync(() -> {
-            try {
+    private void triggerAgentRun(Long matchId, String fullName, Long requisitionId) {
+        try {
+            var match = sourcingMatchRepository.findById(matchId).orElse(null);
+            if (match == null) return;
+            var run = orchestratorService.startRunAsync(matchId, match.getCandidateId(), requisitionId, fullName);
+            log.info("Agent run {} started for inbound applicant '{}' → requisition {}", run.getId(), fullName, requisitionId);
+        } catch (Exception e) {
+            // Fallback: if the orchestrator cannot start, still screen the candidate directly
+            log.warn("Agent run failed to start for matchId {} ({}), falling back to direct screening", matchId, e.getMessage());
+            CompletableFuture.runAsync(() -> {
                 var match = sourcingMatchRepository.findById(matchId).orElse(null);
                 if (match == null) return;
-
                 var candidate = candidateRepository.findById(match.getCandidateId()).orElse(null);
                 var requisition = jobRequisitionRepository.findById(match.getRequisitionId()).orElse(null);
-                if (candidate == null || requisition == null) return;
-
-                log.info("Auto-screening inbound applicant '{}' for requisition '{}'", fullName, requisition.getTitle());
-                screeningAgentService.runScreeningInternal(candidate, requisition);
-                log.info("Auto-screening complete for '{}'", fullName);
-            } catch (Exception e) {
-                log.warn("Auto-screening failed for matchId {}: {}", matchId, e.getMessage());
-            }
-        });
+                if (candidate != null && requisition != null) {
+                    screeningAgentService.runScreeningInternal(candidate, requisition);
+                }
+            });
+        }
     }
 
     private String str(Map<String, Object> map, String key, String defaultValue) {

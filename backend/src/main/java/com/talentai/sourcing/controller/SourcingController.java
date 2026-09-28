@@ -58,6 +58,13 @@ public class SourcingController {
         return ResponseEntity.ok(sourcingAgentService.draftOutreach(matchId));
     }
 
+    /** Draft outreach by candidateId + requisitionId — creates a match record if none exists. */
+    @PostMapping("/outreach/draft-by-candidate")
+    public ResponseEntity<OutreachDraftResponse> draftOutreachByCandidate(
+            @RequestParam Long candidateId, @RequestParam Long requisitionId) {
+        return ResponseEntity.ok(sourcingAgentService.draftOutreachForCandidate(candidateId, requisitionId));
+    }
+
     /** Parse name and email from a resume file for form auto-fill. */
     @PostMapping(value = "/talent-pool/parse-resume", consumes = "multipart/form-data")
     public ResponseEntity<ResumeParseResponse> parseResume(@RequestParam("resume") MultipartFile resume) throws IOException {

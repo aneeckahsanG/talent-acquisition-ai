@@ -17,6 +17,9 @@ backend/target/
 dummy_resume_*.txt
 sample_resume.txt
 
+# Personal notes — kept local, not shared
+docs/
+
 # OS
 .DS_Store
 Thumbs.db

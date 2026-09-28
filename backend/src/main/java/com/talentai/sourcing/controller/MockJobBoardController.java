@@ -620,36 +620,38 @@ load();
                 .build();
         mockApplicationRepository.save(app);
 
-        // If the role has a webhook URL registered, POST the application to it
+        // If the role has a webhook URL registered, POST the application to it.
+        // Fire-and-forget: the application is already saved above, so the
+        // candidate's "submitted" response must not wait on the receiving
+        // side's processing (which can include multiple Claude API calls).
         if (mockJobRoleId != null) {
             mockJobRoleRepository.findById(mockJobRoleId).ifPresent(role -> {
                 if (role.getWebhookUrl() != null && !role.getWebhookUrl().isBlank()) {
-                    try {
-                        Map<String, Object> webhookPayload = new HashMap<>();
-                        webhookPayload.put("fullName", fullName);
-                        webhookPayload.put("email", email.trim().toLowerCase());
-                        webhookPayload.put("headline", headline);
-                        webhookPayload.put("skills", skills);
-                        webhookPayload.put("resumeText", resumeText);
-                        webhookPayload.put("yearsExperience", yearsExp);
-                        webhookPayload.put("source", "TALENTBOARD");
-                        webhookPayload.put("jobTitle", role.getTitle());
-                        webhookPayload.put("company", role.getCompany());
+                    Map<String, Object> webhookPayload = new HashMap<>();
+                    webhookPayload.put("fullName", fullName);
+                    webhookPayload.put("email", email.trim().toLowerCase());
+                    webhookPayload.put("headline", headline);
+                    webhookPayload.put("skills", skills);
+                    webhookPayload.put("resumeText", resumeText);
+                    webhookPayload.put("yearsExperience", yearsExp);
+                    webhookPayload.put("source", "TALENTBOARD");
+                    webhookPayload.put("jobTitle", role.getTitle());
+                    webhookPayload.put("company", role.getCompany());
 
-                        String webhookResponse = webClientBuilder.build()
-                                .post()
-                                .uri(role.getWebhookUrl())
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .bodyValue(webhookPayload)
-                                .retrieve()
-                                .bodyToMono(String.class)
-                                .timeout(Duration.ofSeconds(10))
-                                .block();
-
-                        log.info("Webhook delivered for '{}' → {} | response: {}", fullName, role.getWebhookUrl(), webhookResponse);
-                    } catch (Exception e) {
-                        log.warn("Webhook delivery failed for '{}' → {}: {}", fullName, role.getWebhookUrl(), e.getMessage());
-                    }
+                    webClientBuilder.build()
+                            .post()
+                            .uri(role.getWebhookUrl())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .bodyValue(webhookPayload)
+                            .retrieve()
+                            .bodyToMono(String.class)
+                            .timeout(Duration.ofSeconds(30))
+                            .subscribe(
+                                    webhookResponse -> log.info("Webhook delivered for '{}' → {} | response: {}",
+                                            fullName, role.getWebhookUrl(), webhookResponse),
+                                    error -> log.warn("Webhook delivery failed for '{}' → {}: {}",
+                                            fullName, role.getWebhookUrl(), error.getMessage())
+                            );
                 }
             });
         }
