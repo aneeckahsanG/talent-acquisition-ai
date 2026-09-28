@@ -48,6 +48,16 @@ spring:
 server:
   port: 8080
 
+spring:
+  ai:
+    anthropic:
+      api-key: ${CLAUDE_API_KEY:}
+      chat:
+        options:
+          model: claude-sonnet-4-6
+          max-tokens: 2048
+
+# Legacy config used by ClaudeApiClient — will be removed once migration is complete
 claude:
   api:
     key: ${CLAUDE_API_KEY:}
