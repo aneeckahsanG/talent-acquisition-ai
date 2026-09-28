@@ -4213,7 +4213,7 @@ function ScreeningView() {
     setSendingEmail(screeningResultId);
     try {
       await apiFetch(`/screening/${screeningResultId}/send-rejection-email`, { method: "POST" });
-      alert("Rejection email sent.");
+      reload();
     } catch (e) {
       alert("Failed to send rejection email: " + (e.message ?? "unknown error"));
     } finally {
@@ -4352,33 +4352,45 @@ function ScreeningView() {
                                 {rejecting === r.id ? "…" : "Reject"}
                               </button>
                               {rec === "REJECT" && (
-                                <button
-                                  disabled={sendingEmail === r.id}
-                                  onClick={() => handleSendRejectionEmail(r.id)}
-                                  className="text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1"
-                                  style={{ color: C.muted, border: `1px solid ${C.border}`, backgroundColor: "transparent", opacity: sendingEmail === r.id ? 0.5 : 1 }}>
-                                  <Mail size={11} />{sendingEmail === r.id ? "Sending…" : "Send Rejection Email"}
-                                </button>
+                                r.rejectionEmailSent
+                                  ? <span className="text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1" style={{ color: C.success, border: `1px solid ${C.success}55`, backgroundColor: `${C.success}08` }}>
+                                      <Mail size={11} /> Email Sent
+                                    </span>
+                                  : <button
+                                      disabled={sendingEmail === r.id}
+                                      onClick={() => handleSendRejectionEmail(r.id)}
+                                      className="text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1"
+                                      style={{ color: C.muted, border: `1px solid ${C.border}`, backgroundColor: "transparent", opacity: sendingEmail === r.id ? 0.5 : 1 }}>
+                                      <Mail size={11} />{sendingEmail === r.id ? "Sending…" : "Send Rejection Email"}
+                                    </button>
                               )}
                             </>)}
                           </>);
                         })()}
                         {r.pipelineStage === "SHORTLISTED" && (
-                          <button
-                            onClick={() => handleDraftOutreach(r)}
-                            className="text-xs font-semibold px-3 py-1.5 rounded-lg"
-                            style={{ color: C.accent, border: `1px solid ${C.accent}55`, backgroundColor: `${C.accent}08` }}>
-                            <span className="flex items-center gap-1"><Mail size={11} /> Send Outreach</span>
-                          </button>
+                          r.outreachSent
+                            ? <span className="text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1" style={{ color: C.success, border: `1px solid ${C.success}55`, backgroundColor: `${C.success}08` }}>
+                                <Mail size={11} /> Outreach Sent
+                              </span>
+                            : <button
+                                onClick={() => handleDraftOutreach(r)}
+                                className="text-xs font-semibold px-3 py-1.5 rounded-lg"
+                                style={{ color: C.accent, border: `1px solid ${C.accent}55`, backgroundColor: `${C.accent}08` }}>
+                                <span className="flex items-center gap-1"><Mail size={11} /> Send Outreach</span>
+                              </button>
                         )}
                         {r.pipelineStage === "REJECTED" && (
-                          <button
-                            disabled={sendingEmail === r.id}
-                            onClick={() => handleSendRejectionEmail(r.id)}
-                            className="text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1"
-                            style={{ color: C.muted, border: `1px solid ${C.border}`, backgroundColor: "transparent", opacity: sendingEmail === r.id ? 0.5 : 1 }}>
-                            <Mail size={11} />{sendingEmail === r.id ? "Sending…" : "Send Rejection Email"}
-                          </button>
+                          r.rejectionEmailSent
+                            ? <span className="text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1" style={{ color: C.success, border: `1px solid ${C.success}55`, backgroundColor: `${C.success}08` }}>
+                                <Mail size={11} /> Email Sent
+                              </span>
+                            : <button
+                                disabled={sendingEmail === r.id}
+                                onClick={() => handleSendRejectionEmail(r.id)}
+                                className="text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1"
+                                style={{ color: C.muted, border: `1px solid ${C.border}`, backgroundColor: "transparent", opacity: sendingEmail === r.id ? 0.5 : 1 }}>
+                                <Mail size={11} />{sendingEmail === r.id ? "Sending…" : "Send Rejection Email"}
+                              </button>
                         )}
                         <Btn variant="secondary" onClick={() => setSelected(r)}>View</Btn>
                       </div>

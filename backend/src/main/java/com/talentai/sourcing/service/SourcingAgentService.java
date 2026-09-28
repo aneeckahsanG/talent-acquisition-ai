@@ -384,6 +384,31 @@ public class SourcingAgentService {
                 .build();
     }
 
+    /**
+     * Draft outreach by candidateId + requisitionId.
+     * Looks up the existing match, or creates a proactive one if none exists.
+     */
+    @Transactional
+    public OutreachDraftResponse draftOutreachForCandidate(Long candidateId, Long requisitionId) {
+        SourcingMatch match = sourcingMatchRepository
+                .findByCandidateIdAndRequisitionId(candidateId, requisitionId)
+                .orElseGet(() -> {
+                    Candidate c = candidateRepository.findById(candidateId)
+                            .orElseThrow(() -> new IllegalArgumentException("Candidate not found: " + candidateId));
+                    JobRequisition req = jobRequisitionRepository.findById(requisitionId)
+                            .orElseThrow(() -> new IllegalArgumentException("Requisition not found: " + requisitionId));
+                    return sourcingMatchRepository.save(SourcingMatch.builder()
+                            .candidateId(c.getId())
+                            .requisitionId(req.getId())
+                            .matchScore(java.math.BigDecimal.ZERO)
+                            .matchRationale("Manual draft request")
+                            .status("NEW")
+                            .isProactive(true)
+                            .build());
+                });
+        return draftOutreach(match.getId());
+    }
+
     /** Sends the (possibly edited) outreach email to the candidate. */
     public void sendOutreach(Long matchId, String emailBody) {
         SourcingMatch match = sourcingMatchRepository.findById(matchId)
@@ -401,7 +426,7 @@ public class SourcingAgentService {
         emailService.sendHtml(candidate.getEmail(), subject,
                 emailService.wrapInTemplate(emailBody, "TA"));
 
-        match.setStatus("REVIEWED");
+        match.setStatus("OUTREACH_SENT");
         sourcingMatchRepository.save(match);
 
         activityLogRepository.save(AgentActivityLog.builder()

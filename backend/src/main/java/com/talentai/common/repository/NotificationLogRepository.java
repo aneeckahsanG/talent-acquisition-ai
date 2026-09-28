@@ -8,4 +8,8 @@ import java.util.List;
 public interface NotificationLogRepository extends JpaRepository<NotificationLog, Long> {
     List<NotificationLog> findByStatusOrderByCreatedAtDesc(String status);
     List<NotificationLog> findByRequisitionIdAndStatusOrderByCreatedAtDesc(Long requisitionId, String status);
+    boolean existsByCandidateIdAndRequisitionIdAndNotificationTypeAndStatus(
+            Long candidateId, Long requisitionId, String notificationType, String status);
+    java.util.Optional<NotificationLog> findTopByCandidateIdAndRequisitionIdAndNotificationTypeOrderByCreatedAtDesc(
+            Long candidateId, Long requisitionId, String notificationType);
 }

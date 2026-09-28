@@ -75,17 +75,27 @@ public class EmailService {
         String html = wrapInTemplate(body, "TA");
 
         SendResult result = trySend(toEmail, subject, html);
-        notificationLogRepository.save(NotificationLog.builder()
-                .candidateId(candidateId)
-                .requisitionId(requisitionId)
-                .notificationType("REJECTION")
-                .recipientEmail(toEmail)
-                .subject(subject)
-                .body(html)
-                .status(result.success ? "SENT" : "FAILED")
-                .errorMessage(result.success ? null : result.errorMessage)
-                .createdAt(LocalDateTime.now())
-                .build());
+        // Update the existing log record (written synchronously before this async send)
+        // so we don't duplicate, and so the body/errorMessage are filled in.
+        notificationLogRepository
+                .findTopByCandidateIdAndRequisitionIdAndNotificationTypeOrderByCreatedAtDesc(
+                        candidateId, requisitionId, "REJECTION")
+                .ifPresentOrElse(log -> {
+                    log.setBody(html);
+                    log.setStatus(result.success ? "SENT" : "FAILED");
+                    log.setErrorMessage(result.success ? null : result.errorMessage);
+                    notificationLogRepository.save(log);
+                }, () -> notificationLogRepository.save(NotificationLog.builder()
+                        .candidateId(candidateId)
+                        .requisitionId(requisitionId)
+                        .notificationType("REJECTION")
+                        .recipientEmail(toEmail)
+                        .subject(subject)
+                        .body(html)
+                        .status(result.success ? "SENT" : "FAILED")
+                        .errorMessage(result.success ? null : result.errorMessage)
+                        .createdAt(LocalDateTime.now())
+                        .build()));
     }
 
     /**

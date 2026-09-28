@@ -54,6 +54,8 @@ public class ScreeningAgentService {
     private final PipelineStageRepository pipelineStageRepository;
     private final AgentActivityLogRepository activityLogRepository;
     private final com.talentai.common.service.EmailService emailService;
+    private final com.talentai.common.repository.NotificationLogRepository notificationLogRepository;
+    private final com.talentai.sourcing.repository.SourcingMatchRepository sourcingMatchRepository;
 
     private record ParsedNameEmail(String name, String email) {}
 
@@ -387,6 +389,19 @@ public class ScreeningAgentService {
             throw new IllegalStateException("Candidate has no email address on file");
         }
 
+        // Save the log record synchronously so the button flips immediately on reload,
+        // even though the actual SMTP send is async.
+        String subject = "Application Update – " + requisition.getTitle();
+        notificationLogRepository.save(com.talentai.common.entity.NotificationLog.builder()
+                .candidateId(candidate.getId())
+                .requisitionId(requisition.getId())
+                .notificationType("REJECTION")
+                .recipientEmail(candidate.getEmail())
+                .subject(subject)
+                .status("SENT")
+                .createdAt(java.time.LocalDateTime.now())
+                .build());
+
         emailService.sendRejectionEmail(
                 candidate.getId(), requisition.getId(),
                 candidate.getEmail(), candidate.getFullName(),
@@ -417,6 +432,15 @@ public class ScreeningAgentService {
                 .map(com.talentai.common.entity.PipelineStage::getStage)
                 .orElse(null);
 
+        boolean rejectionEmailSent = notificationLogRepository
+                .existsByCandidateIdAndRequisitionIdAndNotificationTypeAndStatus(
+                        result.getCandidateId(), result.getRequisitionId(), "REJECTION", "SENT");
+
+        boolean outreachSent = sourcingMatchRepository
+                .findByCandidateIdAndRequisitionId(result.getCandidateId(), result.getRequisitionId())
+                .map(m -> "OUTREACH_SENT".equals(m.getStatus()))
+                .orElse(false);
+
         return ScreeningResultResponse.builder()
                 .id(result.getId())
                 .candidateId(result.getCandidateId())
@@ -436,6 +460,8 @@ public class ScreeningAgentService {
                 .reviewerNotes(result.getReviewerNotes())
                 .pipelineStage(pipelineStage)
                 .createdAt(result.getCreatedAt() != null ? result.getCreatedAt() : LocalDateTime.now())
+                .rejectionEmailSent(rejectionEmailSent)
+                .outreachSent(outreachSent)
                 .build();
     }
 

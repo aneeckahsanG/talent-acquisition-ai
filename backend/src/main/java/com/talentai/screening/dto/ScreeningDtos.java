@@ -52,6 +52,8 @@ public class ScreeningDtos {
         private String reviewerNotes;
         private String pipelineStage;
         private LocalDateTime createdAt;
+        private Boolean rejectionEmailSent;
+        private Boolean outreachSent;
     }
 
     @Data
