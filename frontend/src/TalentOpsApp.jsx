@@ -427,12 +427,13 @@ function LoginScreen({ onLogin }) {
 // ============================================================
 function Sidebar({ active, setActive, user, onLogout }) {
   const nav = [
-    { id: "dashboard",  label: "Dashboard",         icon: LayoutGrid },
-    { id: "roles",      label: "Open Roles",         icon: Briefcase  },
-    { id: "pipeline",   label: "Pipeline",           icon: Activity   },
-    { id: "screening",  label: "Screening Agent",    icon: FileCheck  },
-    { id: "referrals",  label: "Referral Agent",     icon: UserPlus   },
-    { id: "scheduling", label: "Coordination Agent", icon: Calendar   },
+    { id: "dashboard",    label: "Dashboard",         icon: LayoutGrid },
+    { id: "roles",        label: "Open Roles",         icon: Briefcase  },
+    { id: "pipeline",     label: "Pipeline",           icon: Activity   },
+    { id: "screening",    label: "Screening Agent",    icon: FileCheck  },
+    { id: "referrals",    label: "Referral Agent",     icon: UserPlus   },
+    { id: "scheduling",   label: "Coordination Agent", icon: Calendar   },
+    { id: "integrations", label: "Integrations",       icon: Globe      },
   ];
 
   return (
@@ -5057,13 +5058,18 @@ export default function App() {
   const displayUser = userMeta || { fullName: user.username, role: "" };
 
   const views = {
-    dashboard:  <Dashboard setActive={setActive} />,
-    roles:      <RolesView setActive={setActive} />,
-    pipeline:   <PipelineView />,
-    sourcing:   null,
-    screening:  <ScreeningView />,
-    referrals:  <ReferralsView currentUser={displayUser} />,
-    scheduling: <SchedulingView />,
+    dashboard:    <Dashboard setActive={setActive} />,
+    roles:        <RolesView setActive={setActive} />,
+    pipeline:     <PipelineView />,
+    screening:    <ScreeningView />,
+    referrals:    <ReferralsView currentUser={displayUser} />,
+    scheduling:   <SchedulingView />,
+    integrations: (
+      <div>
+        <TopBar title="Integrations" subtitle="Manage job board connections and candidate import sources" />
+        <div className="p-8"><ResumeSources /></div>
+      </div>
+    ),
   };
 
   return (
