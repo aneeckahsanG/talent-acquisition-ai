@@ -53,6 +53,7 @@ public class ScreeningAgentService {
     private final ScreeningResultRepository screeningResultRepository;
     private final PipelineStageRepository pipelineStageRepository;
     private final AgentActivityLogRepository activityLogRepository;
+    private final com.talentai.common.service.EmailService emailService;
 
     private record ParsedNameEmail(String name, String email) {}
 
@@ -217,6 +218,7 @@ public class ScreeningAgentService {
         updatePipelineStage(candidate.getId(), requisition.getId(), result, allowReject);
         logActivity(candidate.getId(), requisition.getId(), result);
 
+
         return result;
     }
 
@@ -322,6 +324,41 @@ public class ScreeningAgentService {
         return toResponse(result, candidate, requisition);
     }
 
+    /** Screen a candidate from a resume file across all open requisitions. */
+    @Transactional
+    public List<ScreeningResultResponse> screenCandidateFromFileAllOpenRoles(
+            String candidateName, String candidateEmail, MultipartFile resumeFile) throws IOException {
+
+        List<JobRequisition> openRoles = jobRequisitionRepository.findAll().stream()
+                .filter(r -> "OPEN".equalsIgnoreCase(r.getStatus()))
+                .toList();
+
+        if (openRoles.isEmpty()) {
+            throw new IllegalStateException("No open requisitions found to screen against.");
+        }
+
+        String resumeText = pdfTextExtractor.extractText(resumeFile);
+        if (resumeText == null || resumeText.isBlank()) {
+            throw new IllegalArgumentException("Could not extract any text from the uploaded resume file.");
+        }
+
+        Candidate candidate = findOrCreateCandidate(
+                candidateName, candidateEmail, resumeText, resumeFile.getOriginalFilename(), "UPLOAD");
+
+        return openRoles.stream()
+                .map(req -> {
+                    try {
+                        ScreeningResult r = runScreening(candidate, req);
+                        return toResponse(r, candidate, req);
+                    } catch (Exception e) {
+                        log.warn("Screening failed for req {}: {}", req.getId(), e.getMessage());
+                        return null;
+                    }
+                })
+                .filter(r -> r != null)
+                .toList();
+    }
+
     public List<ScreeningResultResponse> getEdgeCases(Long requisitionId) {
         List<ScreeningResult> results = (requisitionId != null)
                 ? screeningResultRepository.findByRequisitionIdAndIsEdgeCaseTrue(requisitionId)
@@ -335,6 +372,25 @@ public class ScreeningAgentService {
                     return toResponse(r, candidate, req);
                 })
                 .toList();
+    }
+
+    /** Recruiter-triggered rejection email for a specific screening result. */
+    public void sendRejectionEmail(Long screeningResultId) {
+        ScreeningResult result = screeningResultRepository.findById(screeningResultId)
+                .orElseThrow(() -> new IllegalArgumentException("Screening result not found: " + screeningResultId));
+        Candidate candidate = candidateRepository.findById(result.getCandidateId())
+                .orElseThrow(() -> new IllegalStateException("Candidate not found"));
+        JobRequisition requisition = jobRequisitionRepository.findById(result.getRequisitionId())
+                .orElseThrow(() -> new IllegalStateException("Requisition not found"));
+
+        if (candidate.getEmail() == null || candidate.getEmail().isBlank()) {
+            throw new IllegalStateException("Candidate has no email address on file");
+        }
+
+        emailService.sendRejectionEmail(
+                candidate.getId(), requisition.getId(),
+                candidate.getEmail(), candidate.getFullName(),
+                requisition.getTitle(), false);
     }
 
     public ScreeningResultResponse getResultById(Long id) {

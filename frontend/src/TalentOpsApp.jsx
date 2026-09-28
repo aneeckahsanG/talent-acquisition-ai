@@ -4156,6 +4156,7 @@ function ScreeningView() {
   const [uploading, setUploading] = useState(false);
   const [shortlisting, setShortlisting] = useState(null);
   const [rejecting, setRejecting] = useState(null);
+  const [sendingEmail, setSendingEmail] = useState(null);
   const [uploadError, setUploadError] = useState(null);
   const [parsing, setParsing] = useState(false);
   const fileRef = useRef();
@@ -4205,6 +4206,18 @@ function ScreeningView() {
       reload();
     } finally {
       setRejecting(null);
+    }
+  }
+
+  async function handleSendRejectionEmail(screeningResultId) {
+    setSendingEmail(screeningResultId);
+    try {
+      await apiFetch(`/screening/${screeningResultId}/send-rejection-email`, { method: "POST" });
+      alert("Rejection email sent.");
+    } catch (e) {
+      alert("Failed to send rejection email: " + (e.message ?? "unknown error"));
+    } finally {
+      setSendingEmail(null);
     }
   }
 
@@ -4330,7 +4343,7 @@ function ScreeningView() {
                               style={{ backgroundColor: C.success, opacity: shortlisting === r.candidateId ? 0.5 : 1 }}>
                               {shortlisting === r.candidateId ? "…" : rec === "REJECT" ? "Override & Shortlist" : "Shortlist"}
                             </button>
-                            {(rec === "REJECT" || rec === "REVIEW") && (
+                            {(rec === "REJECT" || rec === "REVIEW") && (<>
                               <button
                                 disabled={rejecting === r.id}
                                 onClick={() => handleReject(r.id)}
@@ -4338,7 +4351,16 @@ function ScreeningView() {
                                 style={{ color: C.danger, border: `1px solid ${C.danger}55`, backgroundColor: `${C.danger}08`, opacity: rejecting === r.id ? 0.5 : 1 }}>
                                 {rejecting === r.id ? "…" : "Reject"}
                               </button>
-                            )}
+                              {rec === "REJECT" && (
+                                <button
+                                  disabled={sendingEmail === r.id}
+                                  onClick={() => handleSendRejectionEmail(r.id)}
+                                  className="text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1"
+                                  style={{ color: C.muted, border: `1px solid ${C.border}`, backgroundColor: "transparent", opacity: sendingEmail === r.id ? 0.5 : 1 }}>
+                                  <Mail size={11} />{sendingEmail === r.id ? "Sending…" : "Send Rejection Email"}
+                                </button>
+                              )}
+                            </>)}
                           </>);
                         })()}
                         {r.pipelineStage === "SHORTLISTED" && (
@@ -4347,6 +4369,15 @@ function ScreeningView() {
                             className="text-xs font-semibold px-3 py-1.5 rounded-lg"
                             style={{ color: C.accent, border: `1px solid ${C.accent}55`, backgroundColor: `${C.accent}08` }}>
                             <span className="flex items-center gap-1"><Mail size={11} /> Send Outreach</span>
+                          </button>
+                        )}
+                        {r.pipelineStage === "REJECTED" && (
+                          <button
+                            disabled={sendingEmail === r.id}
+                            onClick={() => handleSendRejectionEmail(r.id)}
+                            className="text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1"
+                            style={{ color: C.muted, border: `1px solid ${C.border}`, backgroundColor: "transparent", opacity: sendingEmail === r.id ? 0.5 : 1 }}>
+                            <Mail size={11} />{sendingEmail === r.id ? "Sending…" : "Send Rejection Email"}
                           </button>
                         )}
                         <Btn variant="secondary" onClick={() => setSelected(r)}>View</Btn>

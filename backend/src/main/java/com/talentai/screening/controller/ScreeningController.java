@@ -77,6 +77,13 @@ public class ScreeningController {
         return ResponseEntity.ok(screeningAgentService.getEdgeCases(requisitionId));
     }
 
+    /** Recruiter manually sends a rejection email to the candidate. */
+    @PostMapping("/{screeningResultId}/send-rejection-email")
+    public ResponseEntity<Void> sendRejectionEmail(@PathVariable Long screeningResultId) {
+        screeningAgentService.sendRejectionEmail(screeningResultId);
+        return ResponseEntity.noContent().build();
+    }
+
     /** Human-in-the-loop: record a recruiter's final ADVANCE/REJECT decision on an edge case. */
     @PostMapping("/{screeningResultId}/review")
     public ResponseEntity<ScreeningResultResponse> recordReviewDecision(
