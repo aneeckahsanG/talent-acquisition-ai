@@ -432,7 +432,6 @@ function Sidebar({ active, setActive, user, onLogout }) {
     { id: "pipeline",     label: "Pipeline",           icon: Activity   },
     { id: "screening",    label: "Screening Agent",    icon: FileCheck  },
     { id: "referrals",    label: "Referral Agent",     icon: UserPlus   },
-    { id: "scheduling",   label: "Coordination Agent", icon: Calendar   },
     { id: "integrations", label: "Integrations",       icon: Globe      },
   ];
 
@@ -5063,7 +5062,7 @@ export default function App() {
     pipeline:     <PipelineView />,
     screening:    <ScreeningView />,
     referrals:    <ReferralsView currentUser={displayUser} />,
-    scheduling:   <SchedulingView />,
+    scheduling:   null,
     integrations: (
       <div>
         <TopBar title="Integrations" subtitle="Manage job board connections and candidate import sources" />
