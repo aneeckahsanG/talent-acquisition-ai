@@ -15,6 +15,7 @@ import com.talentai.common.repository.PipelineStageRepository;
 import com.talentai.referral.dto.ReferralDtos.*;
 import com.talentai.referral.entity.Referral;
 import com.talentai.referral.repository.ReferralRepository;
+import com.talentai.screening.service.ScreeningAgentService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -53,6 +54,7 @@ public class ReferralAgentService {
     private final PipelineStageRepository pipelineStageRepository;
     private final AgentActivityLogRepository activityLogRepository;
     private final AppUserRepository appUserRepository;
+    private final ScreeningAgentService screeningAgentService;
 
 
     /** Public submission — no portal account required. Referrer identity comes from form fields. */
@@ -90,6 +92,7 @@ public class ReferralAgentService {
                 .build());
 
         referral = runMatching(referral, candidate);
+        autoScreen(referral, candidate);
         return toResponse(referral, candidate, null);
     }
 
@@ -129,10 +132,25 @@ public class ReferralAgentService {
                 .details("Referred by " + referrer.getFullName())
                 .build());
 
-        // Auto-match against open roles
+        // Auto-match against open roles, then auto-screen
         referral = runMatching(referral, candidate);
+        autoScreen(referral, candidate);
 
         return toResponse(referral, candidate, referrer);
+    }
+
+    private void autoScreen(Referral referral, Candidate candidate) {
+        Long reqId = referral.getMatchedRequisitionId();
+        if (reqId == null || candidate.getResumeText() == null || candidate.getResumeText().isBlank()) return;
+        JobRequisition req = jobRequisitionRepository.findById(reqId).orElse(null);
+        if (req == null) return;
+        try {
+            screeningAgentService.runScreeningInternal(candidate, req);
+            referral.setStatus("SCREENING");
+            referralRepository.save(referral);
+        } catch (Exception e) {
+            log.warn("Auto-screening failed for referral {} candidate {}: {}", referral.getId(), candidate.getId(), e.getMessage());
+        }
     }
 
     private Referral runMatching(Referral referral, Candidate candidate) {
