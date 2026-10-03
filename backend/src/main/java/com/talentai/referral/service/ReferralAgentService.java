@@ -69,6 +69,9 @@ public class ReferralAgentService {
                     .sourceChannel("REFERRAL")
                     .build();
             candidate = candidateRepository.save(candidate);
+        } else if (request.getResumeText() != null && !request.getResumeText().isBlank()) {
+            candidate.setResumeText(request.getResumeText());
+            candidate = candidateRepository.save(candidate);
         }
 
         Referral referral = Referral.builder()
@@ -109,6 +112,9 @@ public class ReferralAgentService {
                     .resumeText(request.getResumeText())
                     .sourceChannel("REFERRAL")
                     .build();
+            candidate = candidateRepository.save(candidate);
+        } else if (request.getResumeText() != null && !request.getResumeText().isBlank()) {
+            candidate.setResumeText(request.getResumeText());
             candidate = candidateRepository.save(candidate);
         }
 

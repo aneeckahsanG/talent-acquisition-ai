@@ -4670,7 +4670,7 @@ function ReferralsView({ currentUser = {} }) {
         subtitle="Submit referrals and let the agent auto-match against open roles"
         action={
           <Btn onClick={() => {
-            setForm(f => ({ ...f, referrerName: currentUser.fullName || f.referrerName }));
+            setForm({ candidateName:"", candidateEmail:"", resumeText:"", relationshipNotes:"", requisitionId:"", referrerName: currentUser.fullName || "", referrerPosition:"" });
             setShowForm(true);
           }}>
             <UserPlus size={14} /> Submit Referral
