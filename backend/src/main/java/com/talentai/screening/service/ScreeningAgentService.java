@@ -84,12 +84,30 @@ public class ScreeningAgentService {
         if (resumeText == null || resumeText.isBlank()) {
             throw new IllegalArgumentException("Could not extract any text from the uploaded resume file.");
         }
-        // Try regex first for speed
+        // Regex extraction for speed / fallback
         String email = null;
         java.util.regex.Matcher emailMatcher = java.util.regex.Pattern
                 .compile("[a-zA-Z0-9._%+\\-]+@[a-zA-Z0-9.\\-]+\\.[a-zA-Z]{2,}")
                 .matcher(resumeText);
         if (emailMatcher.find()) email = emailMatcher.group();
+
+        // Heuristic name: first non-blank line that looks like a person's name
+        // (2–5 words, no special chars except hyphens/apostrophes, title-cased or all-caps)
+        String heuristicName = null;
+        for (String line : resumeText.split("\\r?\\n")) {
+            String trimmed = line.trim();
+            if (trimmed.isBlank()) continue;
+            if (trimmed.matches("[A-Za-z][A-Za-z'\\-]*(\\s+[A-Za-z][A-Za-z'\\-]*){1,4}")) {
+                StringBuilder sb = new StringBuilder();
+                for (String word : trimmed.split("\\s+")) {
+                    if (!sb.isEmpty()) sb.append(" ");
+                    sb.append(Character.toUpperCase(word.charAt(0)))
+                      .append(word.substring(1).toLowerCase());
+                }
+                heuristicName = sb.toString();
+                break;
+            }
+        }
 
         // Use Claude to extract name (and email fallback)
         String prompt = "Extract the candidate's full name and email address from the following resume text. " +
@@ -103,13 +121,18 @@ public class ScreeningAgentService {
                     .entity(ParsedNameEmail.class);
             String parsedName = parsed.name() != null ? parsed.name() : "";
             String parsedEmail = parsed.email() != null ? parsed.email() : "";
+            String finalName = parsedName.isBlank() ? (heuristicName != null ? heuristicName : "") : parsedName;
             return ParsedResumeResponse.builder()
-                    .name(parsedName.isBlank() ? "" : parsedName)
+                    .name(finalName)
                     .email(parsedEmail.isBlank() ? (email != null ? email : "") : parsedEmail)
                     .resumeText(resumeText)
                     .build();
         } catch (Exception e) {
-            return ParsedResumeResponse.builder().name("").email(email != null ? email : "").resumeText(resumeText).build();
+            return ParsedResumeResponse.builder()
+                    .name(heuristicName != null ? heuristicName : "")
+                    .email(email != null ? email : "")
+                    .resumeText(resumeText)
+                    .build();
         }
     }
 
