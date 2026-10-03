@@ -4634,8 +4634,8 @@ function ReferralsView({ currentUser = {} }) {
       const parsed = await apiFetch("/screening/parse-resume", { method: "POST", body: fd });
       setForm(f => ({
         ...f,
-        candidateName: parsed.name || f.candidateName,
-        candidateEmail: parsed.email || f.candidateEmail,
+        candidateName: parsed.name || "",
+        candidateEmail: parsed.email || "",
         resumeText: parsed.resumeText || f.resumeText,
       }));
     } catch (err) {
