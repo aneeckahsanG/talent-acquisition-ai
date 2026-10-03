@@ -177,13 +177,41 @@ public class OrchestratorDtos {
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
+    public static class RequisitionScreeningStats {
+        private Long requisitionId;
+        private String requisitionTitle;
+        private long total;
+        private long advanced;
+        private long rejected;
+        private long review;
+        private double passRate; // advanced / total * 100
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class InsightsResponse {
+        private List<RequisitionScreeningStats> screeningByRequisition;
+        private Map<String, Long> recommendationBreakdown; // ADVANCE, REJECT, REVIEW counts
+        private List<String> topRequiredSkills;            // from open requisitions
+        private long totalScreened;
+        private double overallPassRate;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
     public static class DashboardSummaryResponse {
         private long openRequisitions;
         private long totalCandidates;
-        private long candidatesScreenedToday;
+        private long candidatesInPipeline;
+        private long candidatesScreenedThisWeek;
         private long edgeCasesAwaitingReview;
-        private long referralsInProgress;
+        private long stalledCandidates;
         private long interviewsScheduled;
+        private long avgDaysToFill;
         private List<ActivityLogEntryResponse> recentActivity;
     }
 }

@@ -3,7 +3,7 @@ import {
   LayoutGrid, Search, FileCheck, UserPlus, Calendar, Activity,
   ChevronRight, ChevronUp, ChevronDown, Sparkles, CheckCircle2, XCircle, AlertCircle, Clock,
   Briefcase, Mail, X, ArrowRight, Bell, LogOut, Loader2, UploadCloud,
-  RefreshCw, Plus, Globe, List, ArrowUp, ArrowDown, ArrowUpDown,
+  RefreshCw, Plus, Globe, List, ArrowUp, ArrowDown, ArrowUpDown, TrendingUp,
 } from "lucide-react";
 
 // ============================================================
@@ -489,12 +489,22 @@ function Sidebar({ active, setActive, user, onLogout }) {
 // ============================================================
 function Dashboard({ setActive }) {
   const { data: summary, loading, error, reload } = useApi("/orchestrator/dashboard");
+  const { data: insights, reload: reloadInsights } = useApi("/orchestrator/insights");
 
   const stats = summary ? [
-    { label: "Open Requisitions",        value: summary.openRequisitions,        icon: Briefcase,     color: C.accent,  nav: "roles"    },
-    { label: "Candidates in Pool",        value: summary.totalCandidates,          icon: Activity,      color: "#8B5CF6", nav: "sourcing" },
-    { label: "Edge Cases Awaiting Review",value: summary.edgeCasesAwaitingReview,  icon: AlertCircle,   color: C.warning, nav: "screening"},
-    { label: "Interviews Scheduled",      value: summary.interviewsScheduled,      icon: Calendar,      color: C.success, nav: "scheduling"},
+    { label: "Open Requisitions",    value: summary.openRequisitions,       icon: Briefcase,  color: C.accent,   nav: "roles"      },
+    { label: "Candidates in Pipeline",value: summary.candidatesInPipeline,   icon: Activity,   color: "#8B5CF6",  nav: "pipeline"   },
+    { label: "Screened This Week",    value: summary.candidatesScreenedThisWeek,icon: FileCheck, color: "#0EA5E9",  nav: "screening"  },
+    { label: "Edge Cases to Review", value: summary.edgeCasesAwaitingReview,icon: AlertCircle,color: C.warning,  nav: "screening"  },
+    { label: "Stalled Candidates",   value: summary.stalledCandidates,      icon: Clock,      color: C.danger,   nav: "pipeline"   },
+    { label: "Interviews Scheduled", value: summary.interviewsScheduled,    icon: Calendar,   color: C.success,  nav: "pipeline"   },
+  ] : [];
+
+  const funnelMax = summary ? Math.max(summary.candidatesInPipeline, summary.totalCandidates, 1) : 1;
+  const funnelStages = summary ? [
+    { label: "In Pipeline",        value: summary.candidatesInPipeline,       color: C.accent  },
+    { label: "Screened This Week", value: summary.candidatesScreenedThisWeek, color: "#8B5CF6" },
+    { label: "Interviews",     value: summary.interviewsScheduled,     color: C.success   },
   ] : [];
 
   return (
@@ -502,7 +512,7 @@ function Dashboard({ setActive }) {
       <TopBar title="Dashboard"
         subtitle="Real-time view of agent activity across talent acquisition"
         action={
-          <button onClick={reload} className="flex items-center gap-1.5 text-sm font-medium px-3 py-2 rounded-xl border"
+          <button onClick={() => { reload(); reloadInsights(); }} className="flex items-center gap-1.5 text-sm font-medium px-3 py-2 rounded-xl border"
             style={{ borderColor: C.border, color: C.muted }}>
             <RefreshCw size={13} /> Refresh
           </button>
@@ -511,10 +521,10 @@ function Dashboard({ setActive }) {
 
       {error && <ErrorBanner message={error} onRetry={reload} />}
 
-      {/* KPI cards */}
-      <div className="grid grid-cols-4 gap-4 mb-8">
+      {/* KPI cards — 3 per row */}
+      <div className="grid grid-cols-3 gap-4 mb-6">
         {loading
-          ? Array.from({ length: 4 }).map((_, i) => (
+          ? Array.from({ length: 6 }).map((_, i) => (
               <Card key={i} className="p-5">
                 <div className="h-8 w-16 bg-slate-100 rounded-lg animate-pulse mb-2" />
                 <div className="h-3 w-24 bg-slate-100 rounded animate-pulse" />
@@ -525,12 +535,15 @@ function Dashboard({ setActive }) {
               return (
                 <Card key={s.label} className="p-5 cursor-pointer hover:shadow-md transition-shadow"
                   onClick={() => s.nav && setActive(s.nav)}>
-                  <div className="w-9 h-9 rounded-xl flex items-center justify-center mb-3"
-                    style={{ backgroundColor: `${s.color}14` }}>
-                    <Icon size={18} style={{ color: s.color }} />
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="w-9 h-9 rounded-xl flex items-center justify-center"
+                      style={{ backgroundColor: `${s.color}18` }}>
+                      <Icon size={17} style={{ color: s.color }} />
+                    </div>
+                    <ChevronRight size={13} style={{ color: C.muted }} className="mt-1 opacity-50" />
                   </div>
-                  <p className="text-3xl font-bold font-mono" style={{ color: C.text }}>{s.value}</p>
-                  <p className="text-xs mt-1" style={{ color: C.muted }}>{s.label}</p>
+                  <p className="text-3xl font-bold font-mono mb-1" style={{ color: C.text }}>{s.value}</p>
+                  <p className="text-xs font-medium" style={{ color: C.muted }}>{s.label}</p>
                 </Card>
               );
             })}
@@ -555,36 +568,147 @@ function Dashboard({ setActive }) {
                     <div className="flex-1 h-3 bg-slate-100 rounded animate-pulse" />
                   </div>
                 ))
-              : (summary?.recentActivity || []).map((entry) => (
-                  <div key={entry.id}
-                    className="px-5 py-3.5 flex items-start gap-3 hover:bg-slate-50 transition-colors">
-                    <div className="mt-0.5"><AgentPill agent={entry.agentName} /></div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm" style={{ color: C.text }}>
-                        <span className="font-semibold">{entry.candidateName || "—"}</span>
-                        {entry.requisitionTitle && (
-                          <span style={{ color: C.muted }}> · {entry.requisitionTitle}</span>
-                        )}
-                      </p>
-                      <p className="text-xs mt-0.5" style={{ color: C.muted }}>{entry.details}</p>
+              : (summary?.recentActivity || []).length === 0
+                ? <p className="text-sm text-center py-10" style={{ color: C.muted }}>No recent activity</p>
+                : (summary?.recentActivity || []).map((entry) => (
+                    <div key={entry.id}
+                      className="px-5 py-3.5 flex items-start gap-3 hover:bg-slate-50 transition-colors">
+                      <div className="mt-0.5"><AgentPill agent={entry.agentName} /></div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm" style={{ color: C.text }}>
+                          <span className="font-semibold">{entry.candidateName || "—"}</span>
+                          {entry.requisitionTitle && (
+                            <span style={{ color: C.muted }}> · {entry.requisitionTitle}</span>
+                          )}
+                        </p>
+                        <p className="text-xs mt-0.5" style={{ color: C.muted }}>{entry.details}</p>
+                      </div>
+                      <span className="text-xs font-mono shrink-0 mt-0.5" style={{ color: C.muted }}>
+                        {timeAgo(entry.createdAt)}
+                      </span>
                     </div>
-                    <span className="text-xs font-mono shrink-0" style={{ color: C.muted }}>
-                      {timeAgo(entry.createdAt)}
-                    </span>
-                  </div>
-                ))}
+                  ))}
           </div>
         </Card>
 
-        {/* Edge cases */}
-        <Card className="overflow-hidden">
-          <div className="px-5 py-4 border-b flex items-center gap-2" style={{ borderColor: C.border }}>
-            <AlertCircle size={16} style={{ color: C.warning }} />
-            <h2 className="font-semibold text-sm" style={{ color: C.text }}>Needs Your Decision</h2>
-          </div>
-          <EdgeCasesList onViewAll={() => setActive("screening")} />
-        </Card>
+        {/* Right column */}
+        <div className="flex flex-col gap-6">
+          {/* Edge cases */}
+          <Card className="overflow-hidden">
+            <div className="px-5 py-4 border-b flex items-center gap-2" style={{ borderColor: C.border }}>
+              <AlertCircle size={16} style={{ color: C.warning }} />
+              <h2 className="font-semibold text-sm" style={{ color: C.text }}>Needs Your Decision</h2>
+            </div>
+            <EdgeCasesList onViewAll={() => setActive("screening")} />
+          </Card>
+
+          {/* Pipeline funnel */}
+          {!loading && (
+            <Card className="overflow-hidden">
+              <div className="px-5 py-4 border-b" style={{ borderColor: C.border }}>
+                <h2 className="font-semibold text-sm" style={{ color: C.text }}>Pipeline Overview</h2>
+              </div>
+              <div className="p-5 space-y-4">
+                {funnelStages.map((stage) => (
+                  <div key={stage.label}>
+                    <div className="flex justify-between text-xs mb-1.5">
+                      <span style={{ color: C.muted }}>{stage.label}</span>
+                      <span className="font-semibold font-mono tabular-nums" style={{ color: C.text }}>{stage.value}</span>
+                    </div>
+                    <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: `${stage.color}18` }}>
+                      <div className="h-full rounded-full transition-all duration-500"
+                        style={{
+                          width: `${Math.max(Math.round((stage.value / funnelMax) * 100), stage.value > 0 ? 4 : 0)}%`,
+                          backgroundColor: stage.color,
+                        }} />
+                    </div>
+                  </div>
+                ))}
+                <div className="pt-3 mt-1 border-t flex items-center justify-between" style={{ borderColor: C.border }}>
+                  <span className="text-xs" style={{ color: C.muted }}>Avg. days to fill</span>
+                  <span className="text-sm font-bold font-mono tabular-nums" style={{ color: summary?.avgDaysToFill > 0 ? C.text : C.muted }}>
+                    {summary?.avgDaysToFill > 0 ? `${summary.avgDaysToFill}d` : "—"}
+                  </span>
+                </div>
+              </div>
+            </Card>
+          )}
+        </div>
       </div>
+
+      {/* Talent Market Insights */}
+      {insights && (
+        <div className="mt-6">
+          <div className="flex items-center gap-2 mb-4">
+            <TrendingUp size={16} style={{ color: C.accent }} />
+            <h2 className="font-semibold text-sm" style={{ color: C.text }}>Talent Market Insights</h2>
+            <span className="ml-2 text-xs px-2 py-0.5 rounded-full font-medium"
+              style={{ backgroundColor: `${C.accent}18`, color: C.accent }}>Problem 5</span>
+          </div>
+          <div className="grid grid-cols-3 gap-4">
+            {/* Overall pass rate */}
+            <Card className="p-5">
+              <p className="text-xs font-medium mb-1" style={{ color: C.muted }}>Overall Pass Rate</p>
+              <p className="text-3xl font-bold font-mono tabular-nums mb-0.5" style={{ color: C.text }}>
+                {insights.overallPassRate}%
+              </p>
+              <p className="text-xs" style={{ color: C.muted }}>{insights.totalScreened} candidates screened</p>
+              <div className="mt-3 flex gap-2 text-xs">
+                {[
+                  { label: "Advance", key: "ADVANCE", color: C.success },
+                  { label: "Review",  key: "REVIEW",  color: C.warning },
+                  { label: "Reject",  key: "REJECT",  color: C.danger  },
+                ].map(({ label, key, color }) => (
+                  <div key={key} className="flex-1 rounded-lg p-2 text-center"
+                    style={{ backgroundColor: `${color}14` }}>
+                    <p className="font-bold font-mono" style={{ color }}>{insights.recommendationBreakdown?.[key] ?? 0}</p>
+                    <p style={{ color: C.muted }}>{label}</p>
+                  </div>
+                ))}
+              </div>
+            </Card>
+
+            {/* Screening by role */}
+            <Card className="p-5 col-span-2">
+              <p className="text-xs font-medium mb-3" style={{ color: C.muted }}>Screening Pass Rate by Role</p>
+              {insights.screeningByRequisition?.length === 0 && (
+                <p className="text-xs text-center py-4" style={{ color: C.muted }}>
+                  No screening data yet — run the sourcing &amp; screening agents to populate.
+                </p>
+              )}
+              <div className="space-y-3">
+                {(insights.screeningByRequisition || []).map((row) => (
+                  <div key={row.requisitionId}>
+                    <div className="flex justify-between text-xs mb-1">
+                      <span className="truncate max-w-[60%]" style={{ color: C.text }}>{row.requisitionTitle}</span>
+                      <span className="font-mono tabular-nums" style={{ color: C.muted }}>
+                        {row.advanced}/{row.total} · <span style={{ color: C.success }}>{row.passRate}%</span>
+                      </span>
+                    </div>
+                    <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: `${C.success}20` }}>
+                      <div className="h-full rounded-full transition-all duration-500"
+                        style={{ width: `${Math.max(row.passRate, row.total > 0 ? 2 : 0)}%`, backgroundColor: C.success }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {insights.topRequiredSkills?.length > 0 && (
+                <div className="mt-4 pt-4 border-t" style={{ borderColor: C.border }}>
+                  <p className="text-xs font-medium mb-2" style={{ color: C.muted }}>Top Required Skills (Open Roles)</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {insights.topRequiredSkills.map((skill) => (
+                      <span key={skill} className="text-xs px-2 py-0.5 rounded-full font-medium"
+                        style={{ backgroundColor: `${C.accent}18`, color: C.accent }}>
+                        {skill}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </Card>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

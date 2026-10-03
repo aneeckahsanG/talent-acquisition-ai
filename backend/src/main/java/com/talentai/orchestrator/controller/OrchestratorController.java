@@ -137,4 +137,10 @@ public class OrchestratorController {
     public ResponseEntity<DashboardSummaryResponse> getDashboard() {
         return ResponseEntity.ok(orchestratorService.getDashboardSummary());
     }
+
+    /** Talent market insights: screening pass rates, recommendation breakdown, top skills. */
+    @GetMapping("/insights")
+    public ResponseEntity<InsightsResponse> getInsights() {
+        return ResponseEntity.ok(orchestratorService.getInsights());
+    }
 }

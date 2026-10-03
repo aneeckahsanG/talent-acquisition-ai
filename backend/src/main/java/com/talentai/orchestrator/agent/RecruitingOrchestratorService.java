@@ -1,38 +1,39 @@
 package com.talentai.orchestrator.agent;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.talentai.common.client.ClaudeApiClient;
+import com.talentai.agent.service.HumanApprovalGate;
+import com.talentai.agent.tool.RecruitingTools;
+import com.talentai.common.service.PromptLoader;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * The agentic orchestrator: given a goal ("handle this new application"),
- * runs a Claude tool-use loop — Claude decides which tool to call next,
- * Java executes it, and the result is fed back until Claude finishes.
+ * Async agentic orchestrator — starts a run for an inbound application,
+ * drives the Spring AI tool-calling loop, and persists every run + its
+ * final summary to the database.
  *
- * Side-effectful tools (send email, reject) pause the run for human approval.
- * Every thought, tool call, and result is persisted as an AgentStep trace.
+ * HITL: high-risk tools in RecruitingTools call HumanApprovalGate.
+ * When approval is pending the tool returns a PENDING_APPROVAL message;
+ * the recruiter approves via /api/agent/approvals/{id}/approve and
+ * re-submits the run through AgentRunController.
  */
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class RecruitingOrchestratorService {
 
-    private static final int MAX_STEPS = 20; // hard budget so a run can never loop forever
+    private static final int MAX_STEPS = 20;
 
-    private final ClaudeApiClient claudeApiClient;
-    private final AgentToolExecutor toolExecutor;
+    private final ChatClient chatClient;
+    private final RecruitingTools recruitingTools;
+    private final HumanApprovalGate approvalGate;
+    private final PromptLoader promptLoader;
     private final AgentRunRepository runRepository;
     private final AgentStepRepository stepRepository;
-    private final com.talentai.common.service.PromptLoader promptLoader;
-    private final ObjectMapper mapper = new ObjectMapper();
 
     /** Start a new agent run asynchronously for an inbound application. */
     public AgentRun startRunAsync(Long matchId, Long candidateId, Long requisitionId, String candidateName) {
@@ -49,188 +50,84 @@ public class RecruitingOrchestratorService {
                 .updatedAt(LocalDateTime.now())
                 .build());
 
-        ArrayNode messages = mapper.createArrayNode();
-        ObjectNode userMsg = mapper.createObjectNode();
-        userMsg.put("role", "user");
-        userMsg.put("content", goal);
-        messages.add(userMsg);
-
-        CompletableFuture.runAsync(() -> runLoop(run.getId(), messages));
+        CompletableFuture.runAsync(() -> runLoop(run.getId(), goal));
         return run;
     }
 
-    /** Recruiter approves the pending gated tool — execute it and resume the loop. */
+    /** Called by AgentRunController — approve the paused action and resume the run. */
     public void approve(Long runId) {
-        AgentRun run = loadPaused(runId);
-        recordStep(runId, "APPROVAL_DECISION", run.getPendingTool(), "Recruiter APPROVED " + run.getPendingTool());
-
-        JsonNode input = readJson(run.getPendingInput());
-        String result = toolExecutor.execute(run.getPendingTool(), input.path("input"));
-        recordStep(runId, "TOOL_RESULT", run.getPendingTool(), result);
-
-        resumeWithToolResult(run, input.path("toolUseId").asText(), result);
+        resume(runId);
     }
 
-    /** Recruiter rejects the pending gated tool — tell the agent and let it adapt. */
+    /** Called by AgentRunController — reject the paused action and record the reason. */
     public void reject(Long runId, String reason) {
-        AgentRun run = loadPaused(runId);
-        recordStep(runId, "APPROVAL_DECISION", run.getPendingTool(), "Recruiter REJECTED " + run.getPendingTool()
-                + (reason == null || reason.isBlank() ? "" : " — " + reason));
-
-        JsonNode input = readJson(run.getPendingInput());
-        String result = "DECLINED: the recruiter declined this action."
-                + (reason == null || reason.isBlank() ? "" : " Reason: " + reason)
-                + " Do not retry it. Adapt and finish.";
-        resumeWithToolResult(run, input.path("toolUseId").asText(), result);
+        AgentRun run = runRepository.findById(runId)
+                .orElseThrow(() -> new IllegalArgumentException("Agent run not found: " + runId));
+        recordStep(runId, "APPROVAL_DECISION", null, "Recruiter rejected action. Reason: " + reason);
+        failRun(runId, "Recruiter rejected action: " + reason);
     }
 
-    // ---- the loop ----
-
-    /**
-     * Resumes a paused run. Claude requires every tool_use id from the
-     * pausing turn to be resolved together in ONE user message — so this
-     * merges any tool results already computed earlier in that same turn
-     * (pendingPriorResults) with the just-approved/declined tool's result,
-     * rather than sending the new result alone.
-     */
-    private void resumeWithToolResult(AgentRun run, String toolUseId, String result) {
-        ArrayNode messages = (ArrayNode) readJson(run.getConversation());
-
-        ArrayNode toolResults = mapper.createArrayNode();
-        if (run.getPendingPriorResults() != null) {
-            for (JsonNode block : readJson(run.getPendingPriorResults())) {
-                toolResults.add(block);
-            }
+    /** Re-submit a run after the recruiter approves a pending HITL gate. */
+    public void resume(Long runId) {
+        AgentRun run = runRepository.findById(runId)
+                .orElseThrow(() -> new IllegalArgumentException("Agent run not found: " + runId));
+        if (!"PAUSED_FOR_APPROVAL".equals(run.getStatus())) {
+            throw new IllegalStateException("Agent run " + runId + " is not awaiting approval");
         }
-        toolResults.add(toolResultBlock(toolUseId, result));
-
-        ObjectNode userMsg = mapper.createObjectNode();
-        userMsg.put("role", "user");
-        userMsg.set("content", toolResults);
-        messages.add(userMsg);
-
         run.setStatus("RUNNING");
-        run.setPendingTool(null);
-        run.setPendingInput(null);
-        run.setPendingPriorResults(null);
         run.setUpdatedAt(LocalDateTime.now());
         runRepository.save(run);
 
-        CompletableFuture.runAsync(() -> runLoop(run.getId(), messages));
+        recordStep(runId, "APPROVAL_DECISION", null, "Recruiter approved — resuming run");
+        CompletableFuture.runAsync(() -> runLoop(run.getId(), run.getGoal()));
     }
 
-    private void runLoop(Long runId, ArrayNode messages) {
+    private void runLoop(Long runId, String goal) {
         try {
-            for (int i = 0; i < MAX_STEPS; i++) {
-                JsonNode response = claudeApiClient.sendWithTools(promptLoader.load("orchestrator-agent"), messages, toolExecutor.toolDefinitions());
-                JsonNode content = response.path("content");
-                String stopReason = response.path("stop_reason").asText();
+            recordStep(runId, "START", null, "Goal: " + goal);
 
-                // Record the agent's reasoning text
-                for (JsonNode block : content) {
-                    if ("text".equals(block.path("type").asText()) && !block.path("text").asText().isBlank()) {
-                        recordStep(runId, "tool_use".equals(stopReason) ? "THOUGHT" : "FINAL",
-                                null, block.path("text").asText());
-                    }
-                }
+            String result = chatClient.prompt()
+                    .system(promptLoader.load("orchestrator-agent"))
+                    .user(goal)
+                    .tools(recruitingTools)
+                    .call()
+                    .content();
 
-                // Add assistant turn to conversation
-                ObjectNode assistantMsg = mapper.createObjectNode();
-                assistantMsg.put("role", "assistant");
-                assistantMsg.set("content", content);
-                messages.add(assistantMsg);
-
-                if (!"tool_use".equals(stopReason)) {
-                    completeRun(runId, extractText(content));
-                    return;
-                }
-
-                // Handle tool calls (usually one per turn)
-                ArrayNode toolResults = mapper.createArrayNode();
-                for (JsonNode block : content) {
-                    if (!"tool_use".equals(block.path("type").asText())) continue;
-                    String toolName = block.path("name").asText();
-                    String toolUseId = block.path("id").asText();
-                    JsonNode input = block.path("input");
-
-                    recordStep(runId, "TOOL_CALL", toolName, input.toPrettyString());
-
-                    if (toolExecutor.requiresApproval(toolName)) {
-                        pauseForApproval(runId, messages, toolResults, toolName, toolUseId, input);
-                        return;
-                    }
-
-                    String result = toolExecutor.execute(toolName, input);
-                    recordStep(runId, "TOOL_RESULT", toolName, result);
-                    toolResults.add(toolResultBlock(toolUseId, result));
-                }
-
-                ObjectNode userMsg = mapper.createObjectNode();
-                userMsg.put("role", "user");
-                userMsg.set("content", toolResults);
-                messages.add(userMsg);
+            // Check if a HITL gate fired inside a tool — tools return PENDING_APPROVAL in their text
+            if (result != null && result.contains("PENDING_APPROVAL")) {
+                recordStep(runId, "APPROVAL_REQUEST", null, result);
+                AgentRun run = runRepository.findById(runId).orElseThrow();
+                run.setStatus("PAUSED_FOR_APPROVAL");
+                run.setUpdatedAt(LocalDateTime.now());
+                runRepository.save(run);
+                log.info("Agent run {} paused — awaiting recruiter approval", runId);
+            } else {
+                completeRun(runId, result);
             }
-            failRun(runId, "Step budget exhausted (" + MAX_STEPS + " turns) — run stopped as a safety measure.");
         } catch (Exception e) {
             log.error("Agent run {} failed: {}", runId, e.getMessage(), e);
             failRun(runId, "Run failed: " + e.getMessage());
         }
     }
 
-    private void pauseForApproval(Long runId, ArrayNode messages, ArrayNode priorResultsThisTurn,
-                                   String toolName, String toolUseId, JsonNode input) {
-        ObjectNode pending = mapper.createObjectNode();
-        pending.put("toolUseId", toolUseId);
-        pending.set("input", input);
-
-        AgentRun run = runRepository.findById(runId).orElseThrow();
-        run.setStatus("PAUSED_FOR_APPROVAL");
-        run.setPendingTool(toolName);
-        run.setPendingInput(pending.toString());
-        // Results from other tool_use blocks Claude bundled into this same
-        // turn (if any) — can't be sent back yet since Claude requires every
-        // tool_use id from a turn to be resolved together in one message.
-        // Held here and merged in once this gate is approved/declined.
-        run.setPendingPriorResults(priorResultsThisTurn.isEmpty() ? null : priorResultsThisTurn.toString());
-        run.setConversation(messages.toString());
-        run.setUpdatedAt(LocalDateTime.now());
-        runRepository.save(run);
-
-        recordStep(runId, "APPROVAL_REQUEST", toolName,
-                "Agent wants to call '" + toolName + "' and is waiting for recruiter approval.\nInput: "
-                        + input.toPrettyString());
-        log.info("Agent run {} paused — awaiting approval for {}", runId, toolName);
-    }
-
     private void completeRun(Long runId, String summary) {
+        recordStep(runId, "FINAL", null, summary);
         AgentRun run = runRepository.findById(runId).orElseThrow();
         run.setStatus("COMPLETED");
         run.setResultSummary(summary);
-        run.setConversation(null); // no longer needed
         run.setUpdatedAt(LocalDateTime.now());
         runRepository.save(run);
         log.info("Agent run {} completed", runId);
     }
 
     private void failRun(Long runId, String message) {
+        recordStep(runId, "ERROR", null, message);
         runRepository.findById(runId).ifPresent(run -> {
             run.setStatus("FAILED");
             run.setResultSummary(message);
             run.setUpdatedAt(LocalDateTime.now());
             runRepository.save(run);
         });
-        recordStep(runId, "ERROR", null, message);
-    }
-
-    // ---- helpers ----
-
-    private AgentRun loadPaused(Long runId) {
-        AgentRun run = runRepository.findById(runId)
-                .orElseThrow(() -> new IllegalArgumentException("Agent run not found: " + runId));
-        if (!"PAUSED_FOR_APPROVAL".equals(run.getStatus())) {
-            throw new IllegalStateException("Agent run " + runId + " is not awaiting approval (status: " + run.getStatus() + ")");
-        }
-        return run;
     }
 
     private synchronized void recordStep(Long runId, String type, String toolName, String content) {
@@ -243,29 +140,5 @@ public class RecruitingOrchestratorService {
                 .content(content)
                 .createdAt(LocalDateTime.now())
                 .build());
-    }
-
-    private ObjectNode toolResultBlock(String toolUseId, String result) {
-        ObjectNode block = mapper.createObjectNode();
-        block.put("type", "tool_result");
-        block.put("tool_use_id", toolUseId);
-        block.put("content", result);
-        return block;
-    }
-
-    private String extractText(JsonNode content) {
-        StringBuilder sb = new StringBuilder();
-        for (JsonNode block : content) {
-            if ("text".equals(block.path("type").asText())) sb.append(block.path("text").asText());
-        }
-        return sb.toString();
-    }
-
-    private JsonNode readJson(String json) {
-        try {
-            return mapper.readTree(json);
-        } catch (Exception e) {
-            throw new IllegalStateException("Corrupt agent state JSON", e);
-        }
     }
 }

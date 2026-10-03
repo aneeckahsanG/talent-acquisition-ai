@@ -23,11 +23,16 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
+import java.util.Arrays;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 /**
  * ORCHESTRATOR AGENT
  *
@@ -721,20 +726,101 @@ public class OrchestratorService {
         long openRequisitions = jobRequisitionRepository.findByStatus("OPEN").size();
         long totalCandidates = candidateRepository.count();
 
-        LocalDateTime startOfDay = LocalDate.now().atStartOfDay();
-        long screenedToday = screeningResultRepository.countScreenedSince(startOfDay);
+        LocalDateTime startOfWeek = LocalDate.now().with(DayOfWeek.MONDAY).atStartOfDay();
+        long screenedThisWeek = screeningResultRepository.countScreenedSince(startOfWeek);
         long edgeCases = screeningResultRepository.countUnresolvedEdgeCases();
-        long referralsInProgress = referralRepository.countInProgress();
         long interviewsScheduled = interviewScheduleRepository.countActiveInterviews();
+
+        long candidatesInPipeline = pipelineStageRepository.countDistinctActiveCandidates();
+        LocalDateTime stalledCutoff = LocalDateTime.now().minus(5, ChronoUnit.DAYS);
+        long stalledCandidates = pipelineStageRepository.countStalledCandidates(stalledCutoff);
+
+        // Average days from req creation to first HIRED pipeline entry
+        List<com.talentai.common.entity.PipelineStage> hiredStages = pipelineStageRepository.findByStage("HIRED");
+        long avgDaysToFill = (long) hiredStages.stream()
+                .mapToLong(ps -> jobRequisitionRepository.findById(ps.getRequisitionId())
+                        .filter(r -> r.getCreatedAt() != null && ps.getEnteredAt() != null)
+                        .map(r -> ChronoUnit.DAYS.between(r.getCreatedAt(), ps.getEnteredAt()))
+                        .filter(d -> d > 0)
+                        .orElse(0L))
+                .filter(d -> d > 0)
+                .average()
+                .orElse(0);
 
         return DashboardSummaryResponse.builder()
                 .openRequisitions(openRequisitions)
                 .totalCandidates(totalCandidates)
-                .candidatesScreenedToday(screenedToday)
+                .candidatesInPipeline(candidatesInPipeline)
+                .candidatesScreenedThisWeek(screenedThisWeek)
                 .edgeCasesAwaitingReview(edgeCases)
-                .referralsInProgress(referralsInProgress)
+                .stalledCandidates(stalledCandidates)
                 .interviewsScheduled(interviewsScheduled)
+                .avgDaysToFill(avgDaysToFill)
                 .recentActivity(getRecentActivity(null, 10))
+                .build();
+    }
+
+    public InsightsResponse getInsights() {
+        List<com.talentai.screening.entity.ScreeningResult> allResults =
+                screeningResultRepository.findAll();
+
+        // Per-requisition breakdown
+        Map<Long, List<com.talentai.screening.entity.ScreeningResult>> byReq =
+                allResults.stream().collect(Collectors.groupingBy(
+                        r -> r.getRequisitionId() != null ? r.getRequisitionId() : -1L));
+
+        List<RequisitionScreeningStats> screeningByRequisition = byReq.entrySet().stream()
+                .filter(e -> e.getKey() >= 0)
+                .map(e -> {
+                    Long reqId = e.getKey();
+                    List<com.talentai.screening.entity.ScreeningResult> results = e.getValue();
+                    long total = results.size();
+                    long advanced = results.stream().filter(r -> "ADVANCE".equals(r.getRecommendation())).count();
+                    long rejected = results.stream().filter(r -> "REJECT".equals(r.getRecommendation())).count();
+                    long review = results.stream().filter(r -> "REVIEW".equals(r.getRecommendation())).count();
+                    double passRate = total > 0 ? (advanced * 100.0 / total) : 0.0;
+                    String title = jobRequisitionRepository.findById(reqId)
+                            .map(JobRequisition::getTitle).orElse("Unknown Role");
+                    return RequisitionScreeningStats.builder()
+                            .requisitionId(reqId).requisitionTitle(title)
+                            .total(total).advanced(advanced).rejected(rejected).review(review)
+                            .passRate(Math.round(passRate * 10.0) / 10.0)
+                            .build();
+                })
+                .sorted(Comparator.comparingLong(RequisitionScreeningStats::getTotal).reversed())
+                .collect(Collectors.toList());
+
+        // Overall recommendation breakdown
+        Map<String, Long> breakdown = Map.of(
+                "ADVANCE", allResults.stream().filter(r -> "ADVANCE".equals(r.getRecommendation())).count(),
+                "REJECT",  allResults.stream().filter(r -> "REJECT".equals(r.getRecommendation())).count(),
+                "REVIEW",  allResults.stream().filter(r -> "REVIEW".equals(r.getRecommendation())).count()
+        );
+
+        // Top required skills across open requisitions
+        List<String> topSkills = jobRequisitionRepository.findByStatus("OPEN").stream()
+                .filter(r -> r.getRequiredSkills() != null && !r.getRequiredSkills().isBlank())
+                .flatMap(r -> Arrays.stream(r.getRequiredSkills().split("[,;\\n]+")))
+                .map(String::trim)
+                .filter(s -> !s.isBlank())
+                .collect(Collectors.groupingBy(s -> s, Collectors.counting()))
+                .entrySet().stream()
+                .sorted(Map.Entry.<String, Long>comparingByValue().reversed())
+                .limit(10)
+                .map(Map.Entry::getKey)
+                .collect(Collectors.toList());
+
+        long totalScreened = allResults.size();
+        long totalAdvanced = breakdown.get("ADVANCE");
+        double overallPassRate = totalScreened > 0
+                ? Math.round(totalAdvanced * 1000.0 / totalScreened) / 10.0 : 0.0;
+
+        return InsightsResponse.builder()
+                .screeningByRequisition(screeningByRequisition)
+                .recommendationBreakdown(breakdown)
+                .topRequiredSkills(topSkills)
+                .totalScreened(totalScreened)
+                .overallPassRate(overallPassRate)
                 .build();
     }
 }

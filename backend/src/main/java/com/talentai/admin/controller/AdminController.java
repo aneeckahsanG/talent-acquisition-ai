@@ -1,6 +1,7 @@
 package com.talentai.admin.controller;
 
 import com.talentai.admin.dto.AdminDtos.*;
+import com.talentai.admin.repository.InterviewScheduleRepository;
 import com.talentai.admin.service.AdminAgentService;
 import com.talentai.common.repository.AgentActivityLogRepository;
 import com.talentai.common.repository.PipelineStageRepository;
@@ -25,6 +26,7 @@ public class AdminController {
     private final ReferralRepository referralRepository;
     private final PipelineStageRepository pipelineStageRepository;
     private final AgentActivityLogRepository agentActivityLogRepository;
+    private final InterviewScheduleRepository interviewScheduleRepository;
 
     /** Propose interview slots + a draft outreach message for a candidate. */
     @PostMapping("/interviews/propose")
@@ -60,6 +62,7 @@ public class AdminController {
     /** Delete all sourcing, screening, referral, pipeline, and activity log records. */
     @DeleteMapping("/cleanup")
     public ResponseEntity<Map<String, String>> cleanup() {
+        interviewScheduleRepository.deleteAll();
         sourcingMatchRepository.deleteAll();
         screeningResultRepository.deleteAll();
         referralRepository.deleteAll();
