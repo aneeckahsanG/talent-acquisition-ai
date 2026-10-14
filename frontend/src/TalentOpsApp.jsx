@@ -4457,6 +4457,17 @@ function ScreeningView() {
                     </td>
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-2 flex-wrap">
+                        {/* Auto-rejected: recruiter can override and shortlist */}
+                        {r.pipelineStage === "REJECTED" && !r.reviewerDecision && (
+                          <button
+                            disabled={shortlisting === r.candidateId}
+                            onClick={() => handleShortlist(r.candidateId, r.requisitionId)}
+                            className="text-xs font-semibold px-3 py-1.5 rounded-lg text-white"
+                            style={{ backgroundColor: C.accent, opacity: shortlisting === r.candidateId ? 0.5 : 1 }}>
+                            {shortlisting === r.candidateId ? "…" : "Override & Shortlist"}
+                          </button>
+                        )}
+                        {/* Pending review: shortlist or reject */}
                         {!["SHORTLISTED","INTERVIEW_SCHEDULED","OFFER","HIRED","REJECTED","NO_SHOW"].includes(r.pipelineStage) && (() => {
                           const rec = r.recommendation;
                           return (<>

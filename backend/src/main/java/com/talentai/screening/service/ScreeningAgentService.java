@@ -192,14 +192,14 @@ public class ScreeningAgentService {
         return candidateRepository.save(candidate);
     }
 
-    /** Called by SourcingAgentService to auto-screen after a match is created.
-     *  Never auto-rejects — caps pipeline at SCREENED so a human makes the final call. */
+    /** Called by SourcingAgentService / ReferralAgentService to auto-screen after a match.
+     *  Auto-rejects clear REJECT decisions; edge cases and REVIEW are held for human review. */
     @Transactional
     public void runScreeningInternal(Candidate candidate, JobRequisition requisition) {
         if (screeningResultRepository.findByCandidateIdAndRequisitionId(candidate.getId(), requisition.getId()).isPresent()) {
             return;
         }
-        runScreening(candidate, requisition, false);
+        runScreening(candidate, requisition, true);
     }
 
     private ScreeningResult runScreening(Candidate candidate, JobRequisition requisition) {
@@ -282,8 +282,11 @@ public class ScreeningAgentService {
                         .requisitionId(requisitionId)
                         .build());
 
-        // Always cap at SCREENED — human must confirm any advance or reject
-        String newStage = "SCREENED";
+        // Auto-reject clear REJECT decisions; edge cases and REVIEW stay at SCREENED for human review
+        String newStage = (allowReject
+                && "REJECT".equals(result.getRecommendation())
+                && !Boolean.TRUE.equals(result.getIsEdgeCase()))
+                ? "REJECTED" : "SCREENED";
 
         stage.setStage(newStage);
         stage.setUpdatedByAgent(AGENT_NAME);
