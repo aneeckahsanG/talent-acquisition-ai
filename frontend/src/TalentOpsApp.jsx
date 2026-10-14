@@ -4478,7 +4478,7 @@ function ScreeningView() {
                               style={{ backgroundColor: C.success, opacity: shortlisting === r.candidateId ? 0.5 : 1 }}>
                               {shortlisting === r.candidateId ? "…" : rec === "REJECT" ? "Override & Shortlist" : "Shortlist"}
                             </button>
-                            {(rec === "REJECT" || rec === "REVIEW") && (<>
+                            {rec === "REVIEW" && (
                               <button
                                 disabled={rejecting === r.id}
                                 onClick={() => handleReject(r.id)}
@@ -4486,7 +4486,9 @@ function ScreeningView() {
                                 style={{ color: C.danger, border: `1px solid ${C.danger}55`, backgroundColor: `${C.danger}08`, opacity: rejecting === r.id ? 0.5 : 1 }}>
                                 {rejecting === r.id ? "…" : "Reject"}
                               </button>
-                              {rec === "REJECT" && (
+                            )}
+                            {rec === "REJECT" && (<>
+                              {(
                                 r.rejectionEmailSent
                                   ? <span className="text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1" style={{ color: C.success, border: `1px solid ${C.success}55`, backgroundColor: `${C.success}08` }}>
                                       <Mail size={11} /> Email Sent
