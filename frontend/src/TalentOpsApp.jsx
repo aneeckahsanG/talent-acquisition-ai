@@ -250,7 +250,7 @@ function AgentPill({ agent }) {
 }
 
 function Avatar({ name = "?", size = 36 }) {
-  const colors = ["#6366F1","#8B5CF6","#EC4899","#F59E0B","#10B981","#3B82F6","#EF4444"];
+  const colors = ["#6366F1","#8B5CF6","#0EA5E9","#F59E0B","#10B981","#3B82F6","#64748B"];
   const idx = (name || "?").charCodeAt(0) % colors.length;
   const initials = (name || "?").split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase();
   return (
@@ -466,7 +466,7 @@ function Sidebar({ active, setActive, user, onLogout }) {
         })}
       </nav>
 
-      <div className="px-4 py-4 border-t" style={{ borderColor: "#1E293B" }}>
+      <div className="px-4 py-4 border-t" style={{ borderColor: "rgba(255,255,255,0.15)" }}>
         <div className="flex items-center gap-3 px-2 mb-3">
           <Avatar name={user?.fullName || "User"} size={34} />
           <div className="min-w-0 flex-1">
@@ -5088,8 +5088,8 @@ function PublicReferralPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: C.bg }}>
-      <div className="w-full max-w-lg">
+    <div className="min-h-screen flex items-center justify-center p-6" style={{ backgroundColor: C.bg }}>
+      <div className="w-full max-w-2xl">
         <div className="flex items-center gap-3 justify-center mb-6">
           <div className="w-10 h-10 rounded-2xl flex items-center justify-center"
             style={{ background: "#248EC2" }}>
@@ -5254,7 +5254,7 @@ export default function App() {
           <Avatar name={displayUser.fullName} size={32} />
         </div>
         <main className="flex-1 overflow-y-auto" style={{ padding: active === "pipeline" ? "1.5rem" : "2rem" }}>
-          <div className={active === "pipeline" ? "" : "max-w-6xl mx-auto"}>
+          <div className={active === "pipeline" || active === "referrals" ? "" : "max-w-6xl mx-auto"}>
             {views[active]}
           </div>
         </main>
