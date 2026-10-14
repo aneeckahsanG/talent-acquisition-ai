@@ -1,0 +1,39 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:talentai-test;DB_CLOSE_DELAY=-1;MODE=PostgreSQL
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration/h2
+    baseline-on-migrate: true
+
+  h2:
+    console:
+      enabled: false
+
+  # Disable mail sending during tests
+  mail:
+    host: localhost
+    port: 25
+    username:
+    password:
+
+  ai:
+    anthropic:
+      api-key: ${CLAUDE_API_KEY:}
+      chat:
+        options:
+          model: claude-sonnet-4-6
+          max-tokens: 2048
+          # temperature: 0 for deterministic responses in consistency tests
+          temperature: 0.0
