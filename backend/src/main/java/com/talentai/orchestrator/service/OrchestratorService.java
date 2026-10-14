@@ -20,6 +20,7 @@ import com.talentai.referral.repository.ReferralRepository;
 import com.talentai.screening.repository.ScreeningResultRepository;
 import com.talentai.sourcing.repository.SourcingMatchRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
@@ -47,6 +48,7 @@ import java.util.stream.Collectors;
  * by the other agents and presents it cohesively. Stage transitions
  * themselves are driven by the individual agents (and human reviewers).
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class OrchestratorService {
@@ -504,6 +506,13 @@ public class OrchestratorService {
                 .build();
         interview = interviewScheduleRepository.save(interview);
 
+        // Send invitation email immediately after scheduling
+        try {
+            sendInvitationEmail(interview.getId());
+        } catch (Exception e) {
+            log.warn("Could not send interview invitation email for interview {}: {}", interview.getId(), e.getMessage());
+        }
+
         // Move pipeline stage
         PipelineStage ps = pipelineStageRepository
                 .findByCandidateIdAndRequisitionId(candidateId, requisitionId)
@@ -567,6 +576,13 @@ public class OrchestratorService {
         interview.setCandidateReply(null);
         interview.setCandidateRepliedAt(null);
         interviewScheduleRepository.save(interview);
+
+        // Send rescheduled invitation email
+        try {
+            sendInvitationEmail(interview.getId());
+        } catch (Exception e) {
+            log.warn("Could not send rescheduled interview invitation email for interview {}: {}", interview.getId(), e.getMessage());
+        }
 
         return InterviewScheduledResponse.builder()
                 .interviewId(interview.getId())

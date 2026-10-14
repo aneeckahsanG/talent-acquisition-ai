@@ -2,11 +2,19 @@ package com.talentai.admin.controller;
 
 import com.talentai.admin.dto.AdminDtos.*;
 import com.talentai.admin.repository.InterviewScheduleRepository;
+import com.talentai.admin.repository.OfferNegotiationHistoryRepository;
+import com.talentai.admin.repository.OfferRepository;
+import com.talentai.admin.repository.CandidateStatusUpdateRepository;
 import com.talentai.admin.service.AdminAgentService;
 import com.talentai.common.repository.AgentActivityLogRepository;
+import com.talentai.common.repository.CandidateRepository;
+import com.talentai.common.repository.NotificationLogRepository;
 import com.talentai.common.repository.PipelineStageRepository;
+import com.talentai.orchestrator.agent.AgentRunRepository;
+import com.talentai.orchestrator.agent.AgentStepRepository;
 import com.talentai.referral.repository.ReferralRepository;
 import com.talentai.screening.repository.ScreeningResultRepository;
+import com.talentai.sourcing.repository.MockApplicationRepository;
 import com.talentai.sourcing.repository.SourcingMatchRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -27,6 +35,14 @@ public class AdminController {
     private final PipelineStageRepository pipelineStageRepository;
     private final AgentActivityLogRepository agentActivityLogRepository;
     private final InterviewScheduleRepository interviewScheduleRepository;
+    private final OfferNegotiationHistoryRepository offerNegotiationHistoryRepository;
+    private final OfferRepository offerRepository;
+    private final CandidateStatusUpdateRepository candidateStatusUpdateRepository;
+    private final CandidateRepository candidateRepository;
+    private final NotificationLogRepository notificationLogRepository;
+    private final AgentRunRepository agentRunRepository;
+    private final AgentStepRepository agentStepRepository;
+    private final MockApplicationRepository mockApplicationRepository;
 
     /** Propose interview slots + a draft outreach message for a candidate. */
     @PostMapping("/interviews/propose")
@@ -59,15 +75,23 @@ public class AdminController {
         return ResponseEntity.ok(adminAgentService.getStatusUpdatesForCandidate(candidateId));
     }
 
-    /** Delete all sourcing, screening, referral, pipeline, and activity log records. */
+    /** Delete all records except job requisitions, resume sources, mock job roles, and users. */
     @DeleteMapping("/cleanup")
     public ResponseEntity<Map<String, String>> cleanup() {
+        agentStepRepository.deleteAll();
+        agentRunRepository.deleteAll();
         interviewScheduleRepository.deleteAll();
+        offerNegotiationHistoryRepository.deleteAll();
+        offerRepository.deleteAll();
         sourcingMatchRepository.deleteAll();
         screeningResultRepository.deleteAll();
         referralRepository.deleteAll();
         pipelineStageRepository.deleteAll();
+        candidateStatusUpdateRepository.deleteAll();
         agentActivityLogRepository.deleteAll();
+        notificationLogRepository.deleteAll();
+        mockApplicationRepository.deleteAll();
+        candidateRepository.deleteAll();
         return ResponseEntity.ok(Map.of("status", "cleaned"));
     }
 }
