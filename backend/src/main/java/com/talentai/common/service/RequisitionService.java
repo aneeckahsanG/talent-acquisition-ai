@@ -65,6 +65,22 @@ public class RequisitionService {
     }
 
     @Transactional
+    public RequisitionResponse update(Long id, CreateRequisitionRequest request) {
+        JobRequisition req = jobRequisitionRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Job requisition not found: " + id));
+
+        if (request.getTitle() != null)           req.setTitle(request.getTitle());
+        if (request.getDepartment() != null)      req.setDepartment(request.getDepartment());
+        if (request.getLocation() != null)        req.setLocation(request.getLocation());
+        if (request.getDescription() != null)     req.setDescription(request.getDescription());
+        if (request.getRequiredSkills() != null)  req.setRequiredSkills(request.getRequiredSkills());
+        if (request.getExperienceLevel() != null) req.setExperienceLevel(request.getExperienceLevel());
+        if (request.getRequiredInterviewRounds() != null) req.setRequiredInterviewRounds(request.getRequiredInterviewRounds());
+
+        return toResponse(jobRequisitionRepository.save(req));
+    }
+
+    @Transactional
     public RequisitionResponse updateStatus(Long id, String status) {
         JobRequisition req = jobRequisitionRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Job requisition not found: " + id));

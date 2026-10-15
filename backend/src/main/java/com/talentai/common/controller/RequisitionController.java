@@ -32,6 +32,11 @@ public class RequisitionController {
         return ResponseEntity.ok(requisitionService.create(request, authentication.getName()));
     }
 
+    @PatchMapping("/{id}")
+    public ResponseEntity<RequisitionResponse> update(@PathVariable Long id, @RequestBody CreateRequisitionRequest request) {
+        return ResponseEntity.ok(requisitionService.update(id, request));
+    }
+
     @PatchMapping("/{id}/status")
     public ResponseEntity<RequisitionResponse> updateStatus(@PathVariable Long id, @RequestBody Map<String, String> body) {
         return ResponseEntity.ok(requisitionService.updateStatus(id, body.get("status")));

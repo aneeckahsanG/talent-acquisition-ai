@@ -3,7 +3,7 @@ import {
   LayoutGrid, Search, FileCheck, UserPlus, Calendar, Activity,
   ChevronRight, ChevronUp, ChevronDown, Sparkles, CheckCircle2, XCircle, AlertCircle, Clock,
   Briefcase, Mail, X, ArrowRight, Bell, LogOut, Loader2, UploadCloud,
-  RefreshCw, Plus, Globe, List, ArrowUp, ArrowDown, ArrowUpDown, TrendingUp,
+  RefreshCw, Plus, Globe, List, ArrowUp, ArrowDown, ArrowUpDown, TrendingUp, Pencil,
 } from "lucide-react";
 
 // ============================================================
@@ -771,8 +771,41 @@ function RolesView({ setActive }) {
   const [parsing, setParsing]     = useState(false);
   const [parseMode, setParseMode] = useState(false);  // toggle paste vs manual
   const [updatingStatus, setUpdatingStatus] = useState(null);
+  const [editModal, setEditModal] = useState(null);   // RequisitionResponse | null
+  const [editForm, setEditForm]   = useState({});
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const filtered = (roles || []).filter(r => filter === "ALL" || r.status === filter);
+
+  function openEditModal(e, r) {
+    e.stopPropagation();
+    setEditForm({
+      title: r.title || "",
+      department: r.department || "",
+      location: r.location || "",
+      experienceLevel: r.experienceLevel || "MID",
+      requiredSkills: r.requiredSkills || "",
+      description: r.description || "",
+      requiredInterviewRounds: r.requiredInterviewRounds ?? 2,
+    });
+    setEditModal(r);
+  }
+
+  async function handleSaveEdit() {
+    if (!editForm.title.trim()) return;
+    setSavingEdit(true);
+    try {
+      await apiFetch(`/requisitions/${editModal.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(editForm),
+      });
+      setEditModal(null);
+      reload();
+    } finally {
+      setSavingEdit(false);
+    }
+  }
 
   async function handleParseJd() {
     if (!jdText.trim()) return;
@@ -963,8 +996,15 @@ function RolesView({ setActive }) {
                     style={{ backgroundColor: `${C.accent}12` }}>
                     <Briefcase size={16} style={{ color: C.accent }} />
                   </div>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
-                    style={{ backgroundColor: st.bg, color: st.color }}>{st.label}</span>
+                  <div className="flex items-center gap-1.5">
+                    <button onClick={e => openEditModal(e, r)}
+                      className="w-6 h-6 rounded-lg flex items-center justify-center hover:bg-slate-100 transition-colors"
+                      title="Edit role">
+                      <Pencil size={12} style={{ color: C.muted }} />
+                    </button>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                      style={{ backgroundColor: st.bg, color: st.color }}>{st.label}</span>
+                  </div>
                 </div>
                 <h3 className="font-bold text-sm mb-1" style={{ color: C.text }}>{r.title}</h3>
                 <p className="text-xs mb-1" style={{ color: C.muted }}>
@@ -988,6 +1028,92 @@ function RolesView({ setActive }) {
               <p className="text-sm" style={{ color: C.muted }}>No roles found. Create one to get started.</p>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Edit Role Modal */}
+      {editModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ backgroundColor: "rgba(15,23,42,0.5)", backdropFilter: "blur(4px)" }}>
+          <Card className="w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-start justify-between mb-5">
+              <div>
+                <h2 className="font-bold text-lg" style={{ color: C.text }}>Edit Role</h2>
+                <p className="text-sm mt-0.5" style={{ color: C.muted }}>{editModal.title}</p>
+              </div>
+              <button onClick={() => setEditModal(null)}
+                className="w-8 h-8 rounded-xl flex items-center justify-center hover:bg-slate-100">
+                <X size={16} style={{ color: C.muted }} />
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold mb-1.5" style={{ color: C.muted }}>Job Title <span style={{ color: C.danger }}>*</span></label>
+                <input type="text" value={editForm.title}
+                  onChange={e => setEditForm(f => ({ ...f, title: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-xl border text-sm"
+                  style={{ borderColor: editForm.title ? C.border : `${C.danger}88`, color: C.text, backgroundColor: C.bg }} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold mb-1.5" style={{ color: C.muted }}>Department</label>
+                  <input type="text" value={editForm.department}
+                    onChange={e => setEditForm(f => ({ ...f, department: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-xl border text-sm"
+                    style={{ borderColor: C.border, color: C.text, backgroundColor: C.bg }} />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold mb-1.5" style={{ color: C.muted }}>Location</label>
+                  <input type="text" value={editForm.location}
+                    onChange={e => setEditForm(f => ({ ...f, location: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-xl border text-sm"
+                    style={{ borderColor: C.border, color: C.text, backgroundColor: C.bg }} />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold mb-2" style={{ color: C.muted }}>Experience Level</label>
+                <div className="flex gap-2 flex-wrap">
+                  {[["JUNIOR","Junior"],["MID","Mid-Level"],["SENIOR","Senior"],["LEAD","Lead / Principal"]].map(([v,l]) => (
+                    <button key={v} onClick={() => setEditForm(f => ({ ...f, experienceLevel: v }))}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors"
+                      style={{ borderColor: editForm.experienceLevel === v ? C.accent : C.border, backgroundColor: editForm.experienceLevel === v ? `${C.accent}15` : "transparent", color: editForm.experienceLevel === v ? C.accent : C.muted }}>{l}</button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold mb-1.5" style={{ color: C.muted }}>Required Skills <span style={{ color: C.border }}>(comma-separated)</span></label>
+                <input type="text" value={editForm.requiredSkills}
+                  onChange={e => setEditForm(f => ({ ...f, requiredSkills: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-xl border text-sm"
+                  style={{ borderColor: C.border, color: C.text, backgroundColor: C.bg }} />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold mb-1.5" style={{ color: C.muted }}>Interview Rounds Required</label>
+                <div className="flex gap-2">
+                  {[1,2,3,4].map(n => (
+                    <button key={n} onClick={() => setEditForm(f => ({ ...f, requiredInterviewRounds: n }))}
+                      className="px-4 py-1.5 rounded-xl border text-sm font-semibold transition-colors"
+                      style={{ borderColor: editForm.requiredInterviewRounds === n ? C.accent : C.border, backgroundColor: editForm.requiredInterviewRounds === n ? `${C.accent}15` : "transparent", color: editForm.requiredInterviewRounds === n ? C.accent : C.muted }}>
+                      {n}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold mb-1.5" style={{ color: C.muted }}>Job Description <span style={{ color: C.border }}>(optional)</span></label>
+                <textarea rows={3} value={editForm.description}
+                  onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-xl border text-sm resize-none"
+                  style={{ borderColor: C.border, color: C.text, backgroundColor: C.bg }} />
+              </div>
+              <div className="flex gap-2 pt-1">
+                <Btn variant="primary" onClick={handleSaveEdit} disabled={savingEdit || !editForm.title.trim()}>
+                  {savingEdit ? <><Spinner size={13} /> Saving…</> : "Save Changes"}
+                </Btn>
+                <Btn variant="secondary" onClick={() => setEditModal(null)}>Cancel</Btn>
+              </div>
+            </div>
+          </Card>
         </div>
       )}
 
