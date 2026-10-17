@@ -60,3 +60,10 @@ app:
   jwt:
     secret: ${JWT_SECRET:change-this-to-a-long-random-secret-in-production-min-256-bits}
     expirationMs: 86400000
+  sftp:
+    port: ${SFTP_PORT:2222}
+    username: ${SFTP_USERNAME:hr}
+    password: ${SFTP_PASSWORD:change-me}
+    host-key-path: ${SFTP_HOST_KEY_PATH:./data/sftp-hostkey.ser}
+  cv-inbox:
+    root-path: ${CV_INBOX_ROOT:./data/cv-inbox}

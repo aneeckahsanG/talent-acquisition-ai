@@ -19,26 +19,28 @@ import java.io.IOException;
 public class PdfTextExtractor {
 
     public String extractText(MultipartFile file) throws IOException {
-        String filename = file.getOriginalFilename();
-        String contentType = file.getContentType();
+        return extractText(file.getOriginalFilename(), file.getBytes());
+    }
 
-        if (filename != null && filename.toLowerCase().endsWith(".pdf")
-                || "application/pdf".equals(contentType)) {
-            return extractFromPdf(file);
+    /** Same extraction logic as {@link #extractText(MultipartFile)}, for callers that only have
+     *  raw file bytes (e.g. files read from disk rather than an HTTP upload). */
+    public String extractText(String filename, byte[] content) throws IOException {
+        if (filename != null && filename.toLowerCase().endsWith(".pdf")) {
+            return extractFromPdf(filename, content);
         }
 
         // Fallback: treat as plain text (.txt, .md, etc.)
-        return new String(file.getBytes());
+        return new String(content);
     }
 
-    private String extractFromPdf(MultipartFile file) throws IOException {
-        try (PDDocument document = Loader.loadPDF(file.getBytes())) {
+    private String extractFromPdf(String filename, byte[] content) throws IOException {
+        try (PDDocument document = Loader.loadPDF(content)) {
             PDFTextStripper stripper = new PDFTextStripper();
             String text = stripper.getText(document);
             return text == null ? "" : text.trim();
         } catch (Exception e) {
-            log.error("Failed to extract text from PDF: {}", file.getOriginalFilename(), e);
-            throw new IOException("Could not parse PDF file: " + file.getOriginalFilename(), e);
+            log.error("Failed to extract text from PDF: {}", filename, e);
+            throw new IOException("Could not parse PDF file: " + filename, e);
         }
     }
 }
