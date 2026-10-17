@@ -59,7 +59,7 @@ import java.util.Map;
 public class SourcingAgentService {
 
     private static final String AGENT_NAME = "SOURCING";
-    private static final BigDecimal HIGH_FIT_THRESHOLD = new BigDecimal("70");
+    public static final BigDecimal HIGH_FIT_THRESHOLD = new BigDecimal("70");
 
     @org.springframework.beans.factory.annotation.Value("${app.demo-mode:false}")
     private boolean demoMode;

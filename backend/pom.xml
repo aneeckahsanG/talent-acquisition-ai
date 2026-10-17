@@ -145,6 +145,21 @@
             <version>5.9</version>
         </dependency>
 
+        <!-- Embedded SFTP server for the CV Inbox feature -->
+        <dependency>
+            <groupId>org.apache.sshd</groupId>
+            <artifactId>sshd-sftp</artifactId>
+            <version>2.13.2</version>
+        </dependency>
+
+        <!-- SFTP client (with HTTP CONNECT proxy support) for connecting out to an
+             external SFTP server in the CV Inbox feature -->
+        <dependency>
+            <groupId>com.github.mwiede</groupId>
+            <artifactId>jsch</artifactId>
+            <version>0.2.21</version>
+        </dependency>
+
         <!-- Test -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
