@@ -4582,16 +4582,44 @@ function ResumeSources() {
     } finally { setSaving(false); }
   }
 
+  // Sync runs async on the backend, so instead of guessing a fixed delay before
+  // refreshing (which can show a stale "0 added" if AI calls retry/take longer),
+  // poll until each source's lastSyncAt actually moves past its pre-sync value.
+  async function pollUntilSynced(ids, beforeMap, { maxAttempts = 20, intervalMs = 1000 } = {}) {
+    for (let i = 0; i < maxAttempts; i++) {
+      await new Promise(r => setTimeout(r, intervalMs));
+      let latest;
+      try {
+        latest = await apiFetch("/sourcing/resume-sources");
+      } catch {
+        continue;
+      }
+      const allDone = ids.every(id => {
+        const src = latest?.find(s => s.id === id);
+        return src && src.lastSyncAt !== beforeMap[id];
+      });
+      if (allDone) return;
+    }
+  }
+
   async function syncOne(id) {
+    const before = sources?.find(s => s.id === id)?.lastSyncAt;
     setSyncing(s => ({ ...s, [id]: true }));
     await apiFetch(`/sourcing/resume-sources/${id}/sync`, { method: "POST" });
-    setTimeout(() => { setSyncing(s => ({ ...s, [id]: false })); reloadSources(); }, 4000);
+    await pollUntilSynced([id], { [id]: before });
+    setSyncing(s => ({ ...s, [id]: false }));
+    reloadSources();
   }
 
   async function syncAll() {
+    const activeSources = (sources || []).filter(s => s.active);
+    const beforeMap = {};
+    activeSources.forEach(s => { beforeMap[s.id] = s.lastSyncAt; });
     await apiFetch("/sourcing/resume-sources/sync-all", { method: "POST" });
-    sources?.forEach(s => setSyncing(prev => ({ ...prev, [s.id]: true })));
-    setTimeout(() => { setSyncing({}); reloadSources(); }, 5000);
+    activeSources.forEach(s => setSyncing(prev => ({ ...prev, [s.id]: true })));
+    await pollUntilSynced(activeSources.map(s => s.id), beforeMap);
+    setSyncing({});
+    reloadSources();
   }
 
   async function toggleActive(id) {
