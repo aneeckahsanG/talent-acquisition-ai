@@ -4,6 +4,7 @@ import {
   ChevronRight, ChevronUp, ChevronDown, Sparkles, CheckCircle2, XCircle, AlertCircle, Clock,
   Briefcase, Mail, X, ArrowRight, Bell, LogOut, Loader2, UploadCloud,
   RefreshCw, Plus, Globe, List, ArrowUp, ArrowDown, ArrowUpDown, TrendingUp, Pencil,
+  History, FileText, Trash2,
 } from "lucide-react";
 
 // ============================================================
@@ -774,6 +775,11 @@ function RolesView({ setActive }) {
   const [editModal, setEditModal] = useState(null);   // RequisitionResponse | null
   const [editForm, setEditForm]   = useState({});
   const [savingEdit, setSavingEdit] = useState(false);
+  const [bulkModal, setBulkModal] = useState(false);
+  const [bulkText, setBulkText]   = useState("");
+  const [bulkParsing, setBulkParsing] = useState(false);
+  const [bulkParsed, setBulkParsed]   = useState(null);  // CreateRequisitionRequest[] | null
+  const [bulkSaving, setBulkSaving]   = useState(false);
 
   const filtered = (roles || []).filter(r => filter === "ALL" || r.status === filter);
 
@@ -860,6 +866,39 @@ function RolesView({ setActive }) {
       if (detail?.id === id) setDetail(d => ({ ...d, status }));
     } finally {
       setUpdatingStatus(null);
+    }
+  }
+
+  async function handleBulkParse() {
+    if (!bulkText.trim()) return;
+    setBulkParsing(true);
+    setBulkParsed(null);
+    try {
+      const parsed = await apiFetch("/requisitions/bulk-parse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: bulkText }),
+      });
+      setBulkParsed(parsed.map((r, i) => ({ ...r, _key: i })));
+    } finally {
+      setBulkParsing(false);
+    }
+  }
+
+  async function handleBulkCreate() {
+    if (!bulkParsed?.length) return;
+    setBulkSaving(true);
+    try {
+      await apiFetch("/requisitions/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(bulkParsed.map(({ _key, ...r }) => r)),
+      });
+      setBulkModal(false);
+      setBulkText(""); setBulkParsed(null);
+      reload();
+    } finally {
+      setBulkSaving(false);
     }
   }
 
@@ -970,6 +1009,9 @@ function RolesView({ setActive }) {
                 {s === "ALL" ? "All" : STATUS_STYLE[s]?.label}
               </button>
             ))}
+            <Btn variant="secondary" onClick={() => { setBulkModal(true); setBulkParsed(null); setBulkText(""); }}>
+              <FileText size={13} /> Bulk Import
+            </Btn>
             <Btn variant="primary" onClick={() => setNewRoleModal(true)}>
               <Plus size={13} /> New Role
             </Btn>
@@ -1028,6 +1070,120 @@ function RolesView({ setActive }) {
               <p className="text-sm" style={{ color: C.muted }}>No roles found. Create one to get started.</p>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Bulk Import Modal */}
+      {bulkModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ backgroundColor: "rgba(15,23,42,0.5)", backdropFilter: "blur(4px)" }}>
+          <Card className="w-full max-w-3xl p-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-start justify-between mb-5">
+              <div>
+                <h2 className="font-bold text-lg" style={{ color: C.text }}>Bulk Import Roles</h2>
+                <p className="text-sm mt-0.5" style={{ color: C.muted }}>Paste any unstructured text — job postings, a list of roles, emails — Claude will extract all roles</p>
+              </div>
+              <button onClick={() => { setBulkModal(false); setBulkParsed(null); setBulkText(""); }}
+                className="w-8 h-8 rounded-xl flex items-center justify-center hover:bg-slate-100">
+                <X size={16} style={{ color: C.muted }} />
+              </button>
+            </div>
+
+            {!bulkParsed ? (
+              <div className="space-y-3">
+                <textarea rows={12} placeholder={"Paste multiple job descriptions here. They can be separated by blank lines, dashes, or numbered. Example:\n\n1. Senior React Developer – Engineering, KL\n\n2. Data Engineer – Analytics, Remote\n\n---\nProduct Manager, Mid-Level, Kuala Lumpur…"}
+                  value={bulkText} onChange={e => setBulkText(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border text-sm resize-none font-mono"
+                  style={{ borderColor: C.border, color: C.text, backgroundColor: C.bg }} />
+                <div className="flex gap-2">
+                  <Btn variant="primary" onClick={handleBulkParse} disabled={bulkParsing || !bulkText.trim()}>
+                    {bulkParsing ? <><Spinner size={13} /> Extracting roles…</> : <><Sparkles size={13} /> Extract Roles with AI</>}
+                  </Btn>
+                  <Btn variant="secondary" onClick={() => { setBulkModal(false); setBulkText(""); }}>Cancel</Btn>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-semibold" style={{ color: C.success }}>
+                    ✓ {bulkParsed.length} role{bulkParsed.length !== 1 ? "s" : ""} extracted — review and edit before importing
+                  </p>
+                  <button onClick={() => { setBulkParsed(null); }}
+                    className="text-xs font-semibold px-2.5 py-1 rounded-lg border"
+                    style={{ color: C.muted, borderColor: C.border }}>
+                    ← Re-parse
+                  </button>
+                </div>
+
+                <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-1">
+                  {bulkParsed.map((r, idx) => (
+                    <div key={r._key} className="p-4 rounded-xl border" style={{ borderColor: C.border }}>
+                      <div className="flex items-start justify-between mb-3">
+                        <span className="text-xs font-bold px-2 py-0.5 rounded-full"
+                          style={{ backgroundColor: `${C.accent}12`, color: C.accent }}>Role {idx + 1}</span>
+                        <button onClick={() => setBulkParsed(p => p.filter(x => x._key !== r._key))}
+                          className="w-6 h-6 rounded-lg flex items-center justify-center hover:bg-red-50 transition-colors"
+                          title="Remove this role">
+                          <Trash2 size={12} style={{ color: C.danger }} />
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div className="col-span-2">
+                          <label className="block font-semibold mb-1" style={{ color: C.muted }}>Title *</label>
+                          <input value={r.title || ""} onChange={e => setBulkParsed(p => p.map(x => x._key === r._key ? { ...x, title: e.target.value } : x))}
+                            className="w-full px-2.5 py-1.5 rounded-lg border text-xs"
+                            style={{ borderColor: r.title ? C.border : `${C.danger}88`, color: C.text, backgroundColor: C.bg }} />
+                        </div>
+                        <div>
+                          <label className="block font-semibold mb-1" style={{ color: C.muted }}>Department</label>
+                          <input value={r.department || ""} onChange={e => setBulkParsed(p => p.map(x => x._key === r._key ? { ...x, department: e.target.value } : x))}
+                            className="w-full px-2.5 py-1.5 rounded-lg border text-xs"
+                            style={{ borderColor: C.border, color: C.text, backgroundColor: C.bg }} />
+                        </div>
+                        <div>
+                          <label className="block font-semibold mb-1" style={{ color: C.muted }}>Location</label>
+                          <input value={r.location || ""} onChange={e => setBulkParsed(p => p.map(x => x._key === r._key ? { ...x, location: e.target.value } : x))}
+                            className="w-full px-2.5 py-1.5 rounded-lg border text-xs"
+                            style={{ borderColor: C.border, color: C.text, backgroundColor: C.bg }} />
+                        </div>
+                        <div>
+                          <label className="block font-semibold mb-1" style={{ color: C.muted }}>Experience</label>
+                          <select value={r.experienceLevel || "MID"} onChange={e => setBulkParsed(p => p.map(x => x._key === r._key ? { ...x, experienceLevel: e.target.value } : x))}
+                            className="w-full px-2.5 py-1.5 rounded-lg border text-xs"
+                            style={{ borderColor: C.border, color: C.text, backgroundColor: C.bg }}>
+                            {[["JUNIOR","Junior"],["MID","Mid-Level"],["SENIOR","Senior"],["LEAD","Lead / Principal"]].map(([v,l]) => (
+                              <option key={v} value={v}>{l}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block font-semibold mb-1" style={{ color: C.muted }}>Interview Rounds</label>
+                          <select value={r.requiredInterviewRounds ?? 2} onChange={e => setBulkParsed(p => p.map(x => x._key === r._key ? { ...x, requiredInterviewRounds: Number(e.target.value) } : x))}
+                            className="w-full px-2.5 py-1.5 rounded-lg border text-xs"
+                            style={{ borderColor: C.border, color: C.text, backgroundColor: C.bg }}>
+                            {[1,2,3,4].map(n => <option key={n} value={n}>{n}</option>)}
+                          </select>
+                        </div>
+                        <div className="col-span-2">
+                          <label className="block font-semibold mb-1" style={{ color: C.muted }}>Required Skills</label>
+                          <input value={r.requiredSkills || ""} onChange={e => setBulkParsed(p => p.map(x => x._key === r._key ? { ...x, requiredSkills: e.target.value } : x))}
+                            className="w-full px-2.5 py-1.5 rounded-lg border text-xs"
+                            style={{ borderColor: C.border, color: C.text, backgroundColor: C.bg }} />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex gap-2 pt-1">
+                  <Btn variant="primary" onClick={handleBulkCreate} disabled={bulkSaving || bulkParsed.every(r => !r.title?.trim())}>
+                    {bulkSaving ? <><Spinner size={13} /> Creating…</> : <><Plus size={13} /> Create {bulkParsed.length} Role{bulkParsed.length !== 1 ? "s" : ""}</>}
+                  </Btn>
+                  <Btn variant="secondary" onClick={() => { setBulkModal(false); setBulkParsed(null); setBulkText(""); }}>Cancel</Btn>
+                </div>
+              </div>
+            )}
+          </Card>
         </div>
       )}
 
@@ -1757,7 +1913,7 @@ function FailedNotificationsBanner() {
 // they need more room than a table row can give them.
 function PipelineListView({
   board, isAllRoles, stageFilter, setStageFilter, sortBy, setSortBy, sortDir, setSortDir,
-  movingId, handleMove, setScheduleModal, setScheduleForm, setOfferModal, onDraftOutreach,
+  movingId, handleMove, setScheduleModal, setScheduleForm, setOfferModal, onDraftOutreach, onViewHistory,
 }) {
   const allCandidates = Object.values(board.stages || {}).flat();
   const filtered = stageFilter === "ALL" ? allCandidates : allCandidates.filter(c => c.stage === stageFilter);
@@ -1889,6 +2045,13 @@ function PipelineListView({
                           )}
                         </>
                       )}
+                      {onViewHistory && (
+                        <button onClick={() => onViewHistory(c.candidateId, c.candidateName)}
+                          className="w-6 h-6 rounded-lg flex items-center justify-center hover:bg-slate-100 transition-colors"
+                          title="View application history">
+                          <History size={12} style={{ color: C.muted }} />
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -1948,6 +2111,9 @@ function PipelineView() {
   const [newRoleModal, setNewRoleModal] = useState(false);
   const [roleForm, setRoleForm] = useState({ title: "", department: "", location: "", experienceLevel: "MID", description: "", requiredSkills: "", requiredInterviewRounds: 2 });
   const [savingRole, setSavingRole] = useState(false);
+  const [historyModal, setHistoryModal] = useState(null);  // { candidateId, candidateName }
+  const [historyData, setHistoryData] = useState(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   async function handleCreateRole() {
     if (!roleForm.title.trim()) return;
@@ -1964,6 +2130,18 @@ function PipelineView() {
       if (created?.id) setReqId(created.id);
     } finally {
       setSavingRole(false);
+    }
+  }
+
+  async function openHistory(candidateId, candidateName) {
+    setHistoryModal({ candidateId, candidateName });
+    setHistoryData(null);
+    setHistoryLoading(true);
+    try {
+      const data = await apiFetch(`/candidates/${candidateId}/history`);
+      setHistoryData(data);
+    } finally {
+      setHistoryLoading(false);
     }
   }
 
@@ -2189,7 +2367,8 @@ function PipelineView() {
           sortBy={sortBy} setSortBy={setSortBy} sortDir={sortDir} setSortDir={setSortDir}
           movingId={movingId} handleMove={handleMove}
           setScheduleModal={setScheduleModal} setScheduleForm={setScheduleForm}
-          setOfferModal={setOfferModal} onDraftOutreach={handleDraftOutreach} />
+          setOfferModal={setOfferModal} onDraftOutreach={handleDraftOutreach}
+          onViewHistory={openHistory} />
       )}
 
       {board && viewMode === "board" && (
@@ -2218,7 +2397,7 @@ function PipelineView() {
                         style={{ borderColor: C.border, backgroundColor: "#F8FAFC" }}>
                         <div className="flex items-center gap-2 mb-1.5">
                           <Avatar name={c.candidateName} size={28} />
-                          <div className="min-w-0">
+                          <div className="min-w-0 flex-1">
                             <p className="text-xs font-semibold truncate" style={{ color: C.text }}>
                               {c.candidateName}
                             </p>
@@ -2226,6 +2405,11 @@ function PipelineView() {
                               <p className="text-[9px] truncate" style={{ color: C.muted }}>{c.requisitionTitle}</p>
                             )}
                           </div>
+                          <button onClick={() => openHistory(c.candidateId, c.candidateName)}
+                            className="w-5 h-5 rounded-md flex items-center justify-center hover:bg-slate-200 flex-shrink-0"
+                            title="View history">
+                            <History size={10} style={{ color: C.muted }} />
+                          </button>
                         </div>
                         {(c.screeningScore ?? c.sourcingMatchScore) != null && (
                           <ScoreRing score={c.screeningScore ?? c.sourcingMatchScore} size={30} />
@@ -3243,6 +3427,99 @@ function PipelineView() {
       )}
 
       <OutreachModal outreach={outreach} onClose={() => setOutreach(null)} onSent={reload} />
+
+      {/* Candidate History Modal */}
+      {historyModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ backgroundColor: "rgba(15,23,42,0.5)", backdropFilter: "blur(4px)" }}>
+          <Card className="w-full max-w-lg p-6 max-h-[85vh] flex flex-col">
+            <div className="flex items-start justify-between mb-5 shrink-0">
+              <div>
+                <h2 className="font-bold text-lg" style={{ color: C.text }}>Application History</h2>
+                <p className="text-sm mt-0.5" style={{ color: C.muted }}>{historyModal.candidateName}</p>
+              </div>
+              <button onClick={() => setHistoryModal(null)}
+                className="w-8 h-8 rounded-xl flex items-center justify-center hover:bg-slate-100">
+                <X size={16} style={{ color: C.muted }} />
+              </button>
+            </div>
+
+            <div className="overflow-y-auto flex-1 pr-1">
+              {historyLoading && (
+                <div className="flex items-center justify-center py-12">
+                  <Spinner size={20} />
+                </div>
+              )}
+              {!historyLoading && historyData && historyData.events.length === 0 && (
+                <p className="text-sm text-center py-10" style={{ color: C.muted }}>No history found for this candidate.</p>
+              )}
+              {!historyLoading && historyData && historyData.events.length > 0 && (
+                <div className="relative">
+                  {/* Timeline line */}
+                  <div className="absolute left-4 top-2 bottom-2 w-0.5" style={{ backgroundColor: C.border }} />
+                  <div className="space-y-4">
+                    {historyData.events.map((ev, idx) => {
+                      const isStage = ev.type === "STAGE";
+                      const dotColor = isStage ? C.accent : C.success;
+                      const stageColor = isStage ? ({ REJECTED: C.danger, HIRED: C.success }[ev.stage] || C.accent) : C.success;
+                      return (
+                        <div key={idx} className="flex gap-4 pl-2">
+                          {/* Dot */}
+                          <div className="w-5 h-5 rounded-full border-2 border-white flex items-center justify-center flex-shrink-0 mt-0.5 z-10"
+                            style={{ backgroundColor: stageColor }}>
+                            {isStage
+                              ? <Activity size={9} color="#fff" />
+                              : <Mail size={9} color="#fff" />}
+                          </div>
+                          {/* Content */}
+                          <div className="flex-1 pb-1">
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                {isStage ? (
+                                  <>
+                                    <p className="text-xs font-bold" style={{ color: stageColor }}>
+                                      {STAGE_LABELS[ev.stage] || ev.stage}
+                                    </p>
+                                    <p className="text-[10px]" style={{ color: C.muted }}>{ev.requisitionTitle}</p>
+                                  </>
+                                ) : (
+                                  <>
+                                    <p className="text-xs font-bold" style={{ color: C.success }}>Notification sent</p>
+                                    <p className="text-[10px]" style={{ color: C.muted }}>via {ev.channel}</p>
+                                  </>
+                                )}
+                              </div>
+                              <p className="text-[10px] flex-shrink-0" style={{ color: C.muted }}>
+                                {ev.timestamp ? new Date(ev.timestamp).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—"}
+                              </p>
+                            </div>
+                            {isStage && ev.agent && (
+                              <p className="text-[10px] font-semibold mt-0.5"
+                                style={{ color: AGENT_META[ev.agent]?.color || C.muted }}>
+                                {AGENT_META[ev.agent]?.label || ev.agent}
+                              </p>
+                            )}
+                            {isStage && ev.notes && (
+                              <p className="text-[11px] mt-1 leading-relaxed" style={{ color: C.text }}>{ev.notes}</p>
+                            )}
+                            {!isStage && ev.message && (
+                              <p className="text-[11px] mt-1 leading-relaxed line-clamp-3" style={{ color: C.text }}>{ev.message}</p>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-4 pt-4 shrink-0" style={{ borderTop: `1px solid ${C.border}` }}>
+              <Btn variant="secondary" onClick={() => setHistoryModal(null)}>Close</Btn>
+            </div>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }

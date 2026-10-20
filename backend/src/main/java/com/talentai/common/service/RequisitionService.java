@@ -97,6 +97,68 @@ public class RequisitionService {
         return toResponse(saved);
     }
 
+    /** Parse multiple roles from one block of unstructured text (newline or header-separated JDs). */
+    public List<CreateRequisitionRequest> bulkParseJd(String rawText) {
+        String system = """
+                You are a structured data extractor. Given a block of text that describes one or more job roles (possibly separated by blank lines, horizontal rules, or numbered sections), extract each distinct role and return a JSON array.
+                Each element must be an object with these fields:
+                  title          - job title (string, required)
+                  department     - department or team (string, may be null)
+                  location       - location or "Remote" (string, may be null)
+                  experienceLevel - one of: JUNIOR, MID, SENIOR, LEAD (infer from content; default MID)
+                  requiredSkills  - comma-separated list of key skills/technologies (string, may be null)
+                  description    - concise 2-4 sentence summary of the role (string, may be null)
+                Return ONLY a valid JSON array, no markdown fences, no explanation.
+                Example: [{"title":"...","department":"...","location":"...","experienceLevel":"...","requiredSkills":"...","description":"..."}]
+                """;
+        try {
+            ParsedJd[] parsed = chatClient.prompt()
+                    .system(system)
+                    .user("Text:\n\n" + rawText)
+                    .call()
+                    .entity(ParsedJd[].class);
+            if (parsed == null || parsed.length == 0) return List.of();
+            return java.util.Arrays.stream(parsed).map(p -> {
+                CreateRequisitionRequest req = new CreateRequisitionRequest();
+                req.setTitle(p.title() != null ? p.title() : "");
+                req.setDepartment(p.department() != null ? p.department() : "");
+                req.setLocation(p.location() != null ? p.location() : "");
+                req.setExperienceLevel(p.experienceLevel() != null ? p.experienceLevel() : "MID");
+                req.setRequiredSkills(p.requiredSkills() != null ? p.requiredSkills() : "");
+                req.setDescription(p.description() != null ? p.description() : "");
+                return req;
+            }).toList();
+        } catch (Exception e) {
+            log.error("Failed to bulk-parse JD text", e);
+            throw new IllegalStateException("Could not parse job descriptions: " + e.getMessage());
+        }
+    }
+
+    /** Create multiple requisitions in one transaction. */
+    @Transactional
+    public List<RequisitionResponse> bulkCreate(List<CreateRequisitionRequest> requests, String username) {
+        Long userId = appUserRepository.findByUsername(username).map(AppUser::getId).orElse(null);
+        return requests.stream()
+                .filter(r -> r.getTitle() != null && !r.getTitle().isBlank())
+                .map(request -> {
+                    JobRequisition req = JobRequisition.builder()
+                            .title(request.getTitle())
+                            .department(request.getDepartment())
+                            .location(request.getLocation())
+                            .description(request.getDescription())
+                            .requiredSkills(request.getRequiredSkills())
+                            .experienceLevel(request.getExperienceLevel())
+                            .requiredInterviewRounds(request.getRequiredInterviewRounds() != null ? request.getRequiredInterviewRounds() : 2)
+                            .status("OPEN")
+                            .createdBy(userId)
+                            .build();
+                    JobRequisition saved = jobRequisitionRepository.save(req);
+                    eventPublisher.publishEvent(new RequisitionCreatedEvent(saved.getId()));
+                    return toResponse(saved);
+                })
+                .toList();
+    }
+
     public CreateRequisitionRequest parseJd(String rawText) {
         String system = """
                 You are a structured data extractor. Given a raw job description, extract the following fields and respond with ONLY valid JSON, no markdown fences.

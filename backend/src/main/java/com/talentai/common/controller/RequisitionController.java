@@ -46,4 +46,14 @@ public class RequisitionController {
     public ResponseEntity<CreateRequisitionRequest> parseJd(@RequestBody ParseJdRequest body) {
         return ResponseEntity.ok(requisitionService.parseJd(body.getText()));
     }
+
+    @PostMapping("/bulk-parse")
+    public ResponseEntity<List<CreateRequisitionRequest>> bulkParse(@RequestBody ParseJdRequest body) {
+        return ResponseEntity.ok(requisitionService.bulkParseJd(body.getText()));
+    }
+
+    @PostMapping("/bulk")
+    public ResponseEntity<List<RequisitionResponse>> bulkCreate(@RequestBody List<CreateRequisitionRequest> requests, Authentication authentication) {
+        return ResponseEntity.ok(requisitionService.bulkCreate(requests, authentication.getName()));
+    }
 }

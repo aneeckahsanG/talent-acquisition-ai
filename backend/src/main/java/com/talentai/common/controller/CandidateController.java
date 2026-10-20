@@ -1,7 +1,12 @@
 package com.talentai.common.controller;
 
+import com.talentai.admin.entity.CandidateStatusUpdate;
+import com.talentai.admin.repository.CandidateStatusUpdateRepository;
 import com.talentai.common.entity.Candidate;
+import com.talentai.common.entity.PipelineStage;
 import com.talentai.common.repository.CandidateRepository;
+import com.talentai.common.repository.JobRequisitionRepository;
+import com.talentai.common.repository.PipelineStageRepository;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -12,7 +17,11 @@ import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/candidates")
@@ -20,6 +29,9 @@ import java.util.List;
 public class CandidateController {
 
     private final CandidateRepository candidateRepository;
+    private final PipelineStageRepository pipelineStageRepository;
+    private final CandidateStatusUpdateRepository candidateStatusUpdateRepository;
+    private final JobRequisitionRepository jobRequisitionRepository;
 
     @GetMapping
     public ResponseEntity<List<CandidateSummary>> getAll() {
@@ -96,6 +108,80 @@ public class CandidateController {
         private String resumeFilename;
         private String profileUrl;
         private LocalDateTime createdAt;
+    }
+
+    /** Returns full application timeline for a candidate:
+     *  all pipeline stage transitions + notification messages, chronologically. */
+    @GetMapping("/{id}/history")
+    public ResponseEntity<CandidateHistory> getHistory(@PathVariable Long id) {
+        candidateRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Candidate not found: " + id));
+
+        // Build requisition title lookup
+        Map<Long, String> reqTitles = pipelineStageRepository.findByCandidateId(id).stream()
+                .map(PipelineStage::getRequisitionId)
+                .distinct()
+                .collect(Collectors.toMap(rid -> rid,
+                        rid -> jobRequisitionRepository.findById(rid)
+                                .map(r -> r.getTitle()).orElse("Unknown Role")));
+
+        List<HistoryEvent> events = new ArrayList<>();
+
+        // Stage transitions
+        pipelineStageRepository.findByCandidateId(id).forEach(ps ->
+                events.add(HistoryEvent.builder()
+                        .type("STAGE")
+                        .timestamp(ps.getEnteredAt())
+                        .stage(ps.getStage())
+                        .requisitionId(ps.getRequisitionId())
+                        .requisitionTitle(reqTitles.getOrDefault(ps.getRequisitionId(), "Unknown Role"))
+                        .agent(ps.getUpdatedByAgent())
+                        .notes(ps.getNotes())
+                        .build()));
+
+        // Status notification messages
+        candidateStatusUpdateRepository.findByCandidateIdOrderBySentAtDesc(id).forEach(su ->
+                events.add(HistoryEvent.builder()
+                        .type("NOTIFICATION")
+                        .timestamp(su.getSentAt())
+                        .channel(su.getChannel())
+                        .message(su.getMessage())
+                        .build()));
+
+        events.sort(Comparator.comparing(HistoryEvent::getTimestamp,
+                Comparator.nullsLast(Comparator.reverseOrder())));
+
+        return ResponseEntity.ok(CandidateHistory.builder()
+                .candidateId(id)
+                .events(events)
+                .build());
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class CandidateHistory {
+        private Long candidateId;
+        private List<HistoryEvent> events;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class HistoryEvent {
+        private String type;           // STAGE | NOTIFICATION
+        private LocalDateTime timestamp;
+        // STAGE fields
+        private String stage;
+        private Long requisitionId;
+        private String requisitionTitle;
+        private String agent;
+        private String notes;
+        // NOTIFICATION fields
+        private String channel;
+        private String message;
     }
 
     @Data
