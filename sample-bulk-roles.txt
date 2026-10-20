@@ -1,0 +1,82 @@
+================================================================================
+ROLE 1: Senior Backend Engineer (Java)
+================================================================================
+Department: Engineering
+Location: Kuala Lumpur (Hybrid)
+Experience: Senior
+
+We are looking for a Senior Backend Engineer with deep expertise in Java and
+Spring Boot to lead development of our core platform services. You will design
+and build scalable microservices, own CI/CD pipelines, and mentor junior
+engineers.
+
+Required Skills: Java, Spring Boot, Microservices, PostgreSQL, AWS, REST APIs,
+Docker, Kubernetes
+
+Interview Rounds: 3
+
+================================================================================
+ROLE 2: Data Analyst
+================================================================================
+Department: Analytics
+Location: Kuala Lumpur
+Experience: Mid-Level
+
+Join our analytics team to transform raw data into actionable business insights.
+You will build dashboards, write complex SQL queries, and work closely with
+product and marketing teams to drive data-informed decisions.
+
+Required Skills: SQL, Python, Power BI, Tableau, Excel, Data Modeling,
+Statistical Analysis
+
+Interview Rounds: 2
+
+================================================================================
+ROLE 3: AI/ML Engineer
+================================================================================
+Department: Engineering
+Location: Remote
+Experience: Senior
+
+We need an experienced AI/ML Engineer to design and deploy machine learning
+models at scale. You will work on NLP pipelines, recommendation systems, and
+model monitoring infrastructure using modern MLOps practices.
+
+Required Skills: Python, TensorFlow, PyTorch, MLOps, Kubernetes, NLP,
+Feature Engineering, AWS SageMaker
+
+Interview Rounds: 3
+
+================================================================================
+ROLE 4: Product Manager
+================================================================================
+Department: Product
+Location: Kuala Lumpur
+Experience: Mid-Level
+
+A Product Manager to own the roadmap for our recruiter-facing platform. You
+will gather requirements from stakeholders, write detailed specs, prioritise
+the backlog, and collaborate with engineering and design to ship features that
+delight users.
+
+Required Skills: Product Roadmap, User Stories, Agile, Jira, Stakeholder
+Management, Data Analysis, UX Thinking
+
+Interview Rounds: 2
+
+================================================================================
+ROLE 5: DevOps Engineer
+================================================================================
+Department: Infrastructure
+Location: Remote
+Experience: Senior
+
+Looking for a DevOps Engineer to own our cloud infrastructure and improve
+developer productivity. You will manage Kubernetes clusters, build CI/CD
+pipelines, enforce security best practices, and drive observability across
+all services.
+
+Required Skills: Kubernetes, Terraform, AWS, Docker, CI/CD, Prometheus,
+Grafana, Linux, Bash
+
+Interview Rounds: 2

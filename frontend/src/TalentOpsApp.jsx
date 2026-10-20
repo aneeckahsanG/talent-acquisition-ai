@@ -777,6 +777,7 @@ function RolesView({ setActive }) {
   const [savingEdit, setSavingEdit] = useState(false);
   const [bulkModal, setBulkModal] = useState(false);
   const [bulkText, setBulkText]   = useState("");
+  const [bulkInputMode, setBulkInputMode] = useState("upload"); // "upload" | "paste"
   const [bulkParsing, setBulkParsing] = useState(false);
   const [bulkParsed, setBulkParsed]   = useState(null);  // CreateRequisitionRequest[] | null
   const [bulkSaving, setBulkSaving]   = useState(false);
@@ -1009,7 +1010,7 @@ function RolesView({ setActive }) {
                 {s === "ALL" ? "All" : STATUS_STYLE[s]?.label}
               </button>
             ))}
-            <Btn variant="secondary" onClick={() => { setBulkModal(true); setBulkParsed(null); setBulkText(""); }}>
+            <Btn variant="secondary" onClick={() => { setBulkModal(true); setBulkParsed(null); setBulkText(""); setBulkInputMode("upload"); }}>
               <FileText size={13} /> Bulk Import
             </Btn>
             <Btn variant="primary" onClick={() => setNewRoleModal(true)}>
@@ -1083,7 +1084,7 @@ function RolesView({ setActive }) {
                 <h2 className="font-bold text-lg" style={{ color: C.text }}>Bulk Import Roles</h2>
                 <p className="text-sm mt-0.5" style={{ color: C.muted }}>Paste any unstructured text — job postings, a list of roles, emails — Claude will extract all roles</p>
               </div>
-              <button onClick={() => { setBulkModal(false); setBulkParsed(null); setBulkText(""); }}
+              <button onClick={() => { setBulkModal(false); setBulkParsed(null); setBulkText(""); setBulkInputMode("upload"); }}
                 className="w-8 h-8 rounded-xl flex items-center justify-center hover:bg-slate-100">
                 <X size={16} style={{ color: C.muted }} />
               </button>
@@ -1091,10 +1092,46 @@ function RolesView({ setActive }) {
 
             {!bulkParsed ? (
               <div className="space-y-3">
-                <textarea rows={12} placeholder={"Paste multiple job descriptions here. They can be separated by blank lines, dashes, or numbered. Example:\n\n1. Senior React Developer – Engineering, KL\n\n2. Data Engineer – Analytics, Remote\n\n---\nProduct Manager, Mid-Level, Kuala Lumpur…"}
-                  value={bulkText} onChange={e => setBulkText(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border text-sm resize-none font-mono"
-                  style={{ borderColor: C.border, color: C.text, backgroundColor: C.bg }} />
+                {/* Upload vs Paste tabs */}
+                <div className="flex gap-1 p-1 rounded-xl w-fit mb-1" style={{ backgroundColor: C.surface }}>
+                  {[["upload","Upload File"],["paste","Paste Text"]].map(([id, label]) => (
+                    <button key={id}
+                      onClick={() => setBulkInputMode(id)}
+                      className="px-4 py-1.5 rounded-lg text-xs font-semibold transition-colors"
+                      style={{ backgroundColor: bulkInputMode === id ? C.accent : "transparent", color: bulkInputMode === id ? "#fff" : C.muted }}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                {bulkInputMode === "upload" ? (
+                  <label className="flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed cursor-pointer transition-colors hover:border-blue-400"
+                    style={{ borderColor: C.border, minHeight: 200 }}>
+                    <input type="file" accept=".txt,.csv,.md,.doc,.docx" className="hidden"
+                      onChange={e => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        const reader = new FileReader();
+                        reader.onload = ev => { setBulkText(ev.target.result); setBulkInputMode("paste"); };
+                        reader.readAsText(file);
+                        e.target.value = "";
+                      }} />
+                    <FileText size={32} style={{ color: C.muted }} />
+                    <div className="text-center">
+                      <p className="text-sm font-semibold" style={{ color: C.text }}>Click to upload a file</p>
+                      <p className="text-xs mt-0.5" style={{ color: C.muted }}>.txt · .csv · .md · Supports any plain-text format</p>
+                    </div>
+                    {bulkText && (
+                      <p className="text-xs font-semibold" style={{ color: C.success }}>✓ File loaded — {bulkText.length} characters</p>
+                    )}
+                  </label>
+                ) : (
+                  <textarea rows={12} placeholder={"Paste multiple job descriptions here. They can be separated by blank lines, dashes, or numbered. Example:\n\n1. Senior React Developer – Engineering, KL\n\n2. Data Engineer – Analytics, Remote\n\n---\nProduct Manager, Mid-Level, Kuala Lumpur…"}
+                    value={bulkText} onChange={e => setBulkText(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border text-sm resize-none font-mono"
+                    style={{ borderColor: C.border, color: C.text, backgroundColor: C.bg }} />
+                )}
+
                 <div className="flex gap-2">
                   <Btn variant="primary" onClick={handleBulkParse} disabled={bulkParsing || !bulkText.trim()}>
                     {bulkParsing ? <><Spinner size={13} /> Extracting roles…</> : <><Sparkles size={13} /> Extract Roles with AI</>}
