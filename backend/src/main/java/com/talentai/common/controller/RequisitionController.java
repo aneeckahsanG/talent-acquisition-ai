@@ -56,4 +56,9 @@ public class RequisitionController {
     public ResponseEntity<List<RequisitionResponse>> bulkCreate(@RequestBody List<CreateRequisitionRequest> requests, Authentication authentication) {
         return ResponseEntity.ok(requisitionService.bulkCreate(requests, authentication.getName()));
     }
+
+    @PostMapping("/generate-jd")
+    public ResponseEntity<GenerateJdResponse> generateJd(@RequestBody GenerateJdRequest body) {
+        return ResponseEntity.ok(requisitionService.generateJd(body));
+    }
 }

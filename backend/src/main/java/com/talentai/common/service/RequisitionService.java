@@ -159,6 +159,97 @@ public class RequisitionService {
                 .toList();
     }
 
+    /** Generates a job description from whatever fields the recruiter has already filled in —
+     *  the reverse of {@link #parseJd}, which extracts fields from a pasted description. */
+    public GenerateJdResponse generateJd(GenerateJdRequest request) {
+        if (request.getTitle() == null || request.getTitle().isBlank()) {
+            throw new IllegalArgumentException("A job title is required to generate a description.");
+        }
+
+        String system = """
+                You are a recruiting copywriter who writes professional, LinkedIn-style job
+                postings. You will be given a job title and whatever other details happen to be
+                filled in (department, location, experience level, key skills) — some may be
+                missing. The job title is the primary signal: when other fields are sparse or
+                absent, infer realistic, conventional responsibilities and requirements for that
+                kind of role from the title and experience level alone, the way a seasoned
+                recruiter would when drafting a posting from just a title.
+
+                Write a thorough, segmented job description with these exact plain-text section
+                headers, each on its own line, each followed by a blank line:
+
+                About the Role
+                2-3 sentences on the role's purpose and impact on the team/product.
+
+                Key Responsibilities
+                5-7 bullet points, each starting with "• ", concrete and specific to the title
+                and seniority level (not generic filler).
+
+                What We're Looking For
+                5-7 bullet points starting with "• " — required skills/experience. Incorporate
+                every provided skill explicitly; add other realistic requirements implied by the
+                title/level to round it out.
+
+                Nice to Have
+                2-4 bullet points starting with "• " for complementary skills that aren't strictly
+                required.
+
+                Do not invent a company name. Do not wrap anything in markdown (no #, no **, no
+                markdown bullets like "-" or "*" — use "• " for every bullet). Respond with ONLY
+                the formatted description text, no preamble, no closing remarks.
+                """;
+
+        String userPrompt = """
+                Job Title: %s
+                Department: %s
+                Location: %s
+                Experience Level: %s
+                Key Skills: %s
+                """.formatted(
+                request.getTitle(),
+                nullToDash(request.getDepartment()),
+                nullToDash(request.getLocation()),
+                nullToDash(request.getExperienceLevel()),
+                nullToDash(request.getRequiredSkills()));
+
+        try {
+            String description = chatClient.prompt()
+                    .system(system)
+                    .user(userPrompt)
+                    .call()
+                    .content();
+            return new GenerateJdResponse(description != null ? description.trim() : "");
+        } catch (Exception e) {
+            log.error("Failed to generate job description for title '{}'", request.getTitle(), e);
+            throw new IllegalStateException(friendlyAiErrorMessage(e));
+        }
+    }
+
+    private String nullToDash(String value) {
+        return (value == null || value.isBlank()) ? "Not specified" : value;
+    }
+
+    /** Translates a raw Claude/Spring-AI exception (often a multi-line JSON error body from the
+     *  Anthropic API) into a short, human-readable message — the full detail is already logged
+     *  server-side via log.error above, so the client never needs to see the raw payload. */
+    private String friendlyAiErrorMessage(Exception e) {
+        String msg = e.getMessage();
+        String lower = msg != null ? msg.toLowerCase() : "";
+        if (lower.contains("credit balance") || lower.contains("credit_balance")) {
+            return "AI is unavailable right now — the Anthropic account has run out of API credits. Please top up billing and try again.";
+        }
+        if (lower.contains("authentication_error") || lower.contains("invalid x-api-key") || lower.contains("invalid api key")) {
+            return "AI is unavailable — the configured Anthropic API key appears to be missing or invalid.";
+        }
+        if (lower.contains("overloaded_error") || lower.contains("rate_limit")) {
+            return "AI is temporarily overloaded. Please try again in a moment.";
+        }
+        if (lower.contains("timeout") || lower.contains("connect")) {
+            return "Could not reach the AI service. Please check your connection and try again.";
+        }
+        return "AI is currently unavailable. Please try again later.";
+    }
+
     public CreateRequisitionRequest parseJd(String rawText) {
         String system = """
                 You are a structured data extractor. Given a raw job description, extract the following fields and respond with ONLY valid JSON, no markdown fences.
@@ -188,7 +279,7 @@ public class RequisitionService {
             return req;
         } catch (Exception e) {
             log.error("Failed to get or parse Claude JD response", e);
-            throw new IllegalStateException("Could not parse job description: " + e.getMessage());
+            throw new IllegalStateException(friendlyAiErrorMessage(e));
         }
     }
 

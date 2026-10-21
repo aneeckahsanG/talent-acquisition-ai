@@ -3,8 +3,7 @@ import {
   LayoutGrid, Search, FileCheck, UserPlus, Calendar, Activity,
   ChevronRight, ChevronUp, ChevronDown, Sparkles, CheckCircle2, XCircle, AlertCircle, Clock,
   Briefcase, Mail, X, ArrowRight, Bell, LogOut, Loader2, UploadCloud,
-  RefreshCw, Plus, Globe, List, ArrowUp, ArrowDown, ArrowUpDown, TrendingUp, Pencil,
-  History, FileText, Trash2,
+  RefreshCw, Plus, Globe, List, ArrowUp, ArrowDown, ArrowUpDown, TrendingUp, Pencil, Inbox, Settings,History, FileText, Trash2, Maximize2,
 } from "lucide-react";
 
 // ============================================================
@@ -434,6 +433,7 @@ function Sidebar({ active, setActive, user, onLogout }) {
     { id: "screening",    label: "Screening",          icon: FileCheck  },
     { id: "referrals",    label: "Referral",           icon: UserPlus   },
     { id: "integrations", label: "Integrations",       icon: Globe      },
+    { id: "cvInbox",      label: "CV Inbox",           icon: Inbox      },
   ];
 
   return (
@@ -761,6 +761,37 @@ const STATUS_STYLE = {
   CLOSED:  { bg: "#F1F5F9", color: "#64748B", label: "Closed" },
 };
 
+/** Large editable viewer for a job description — the inline textarea in the Create/Edit Role
+ *  forms is too small for the longer, segmented JDs the AI now generates (About the Role /
+ *  Key Responsibilities / etc.), so this gives a proper full-size view with the same
+ *  whitespace-preserving rendering used on the role detail page, while staying editable. */
+function JobDescriptionDialog({ value, onChange, onClose }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ backgroundColor: "rgba(15,23,42,0.5)", backdropFilter: "blur(4px)" }}>
+      <Card className="w-full max-w-2xl max-h-[85vh] flex flex-col">
+        <div className="px-6 py-4 border-b flex items-center justify-between shrink-0" style={{ borderColor: C.border }}>
+          <h2 className="text-lg font-bold" style={{ color: C.text }}>Job Description</h2>
+          <button onClick={onClose} className="w-8 h-8 rounded-xl flex items-center justify-center hover:bg-slate-100">
+            <X size={16} style={{ color: C.muted }} />
+          </button>
+        </div>
+        <div className="p-6 overflow-y-auto flex-1">
+          <textarea
+            value={value}
+            onChange={e => onChange(e.target.value)}
+            placeholder="Responsibilities, team context, what success looks like…"
+            className="w-full h-full min-h-[50vh] px-4 py-3 rounded-xl border text-sm leading-relaxed resize-none"
+            style={{ borderColor: C.border, color: C.text, backgroundColor: C.bg }} />
+        </div>
+        <div className="px-6 py-4 border-t flex justify-end shrink-0" style={{ borderColor: C.border }}>
+          <Btn onClick={onClose}>Done</Btn>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 function RolesView({ setActive }) {
   const { data: roles, loading, error, reload } = useApi("/requisitions");
   const [filter, setFilter] = useState("ALL");
@@ -771,6 +802,9 @@ function RolesView({ setActive }) {
   const [jdText, setJdText]       = useState("");
   const [parsing, setParsing]     = useState(false);
   const [parseMode, setParseMode] = useState(false);  // toggle paste vs manual
+  const [generatingJd, setGeneratingJd] = useState(false);
+  const [generateJdError, setGenerateJdError] = useState(null);
+  const [jdDialogOpen, setJdDialogOpen] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(null);
   const [editModal, setEditModal] = useState(null);   // RequisitionResponse | null
   const [editForm, setEditForm]   = useState({});
@@ -834,6 +868,30 @@ function RolesView({ setActive }) {
       setParseMode(false);
     } finally {
       setParsing(false);
+    }
+  }
+
+  async function handleGenerateJd() {
+    if (!roleForm.title.trim()) return;
+    setGeneratingJd(true);
+    setGenerateJdError(null);
+    try {
+      const result = await apiFetch("/requisitions/generate-jd", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: roleForm.title,
+          department: roleForm.department,
+          location: roleForm.location,
+          experienceLevel: roleForm.experienceLevel,
+          requiredSkills: roleForm.requiredSkills,
+        }),
+      });
+      setRoleForm(f => ({ ...f, description: result.description || "" }));
+    } catch (e) {
+      setGenerateJdError(e.message || "Could not generate a description.");
+    } finally {
+      setGeneratingJd(false);
     }
   }
 
@@ -927,7 +985,7 @@ function RolesView({ setActive }) {
             {detail.description && (
               <Card className="p-6">
                 <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: C.muted }}>Description</p>
-                <p className="text-sm leading-relaxed" style={{ color: C.text }}>{detail.description}</p>
+                <p className="text-sm leading-relaxed" style={{ color: C.text, whiteSpace: "pre-line" }}>{detail.description}</p>
               </Card>
             )}
             {sk.length > 0 && (
@@ -1410,12 +1468,41 @@ function RolesView({ setActive }) {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold mb-1.5" style={{ color: C.muted }}>Job Description <span style={{ color: C.border }}>(optional)</span></label>
-                  <textarea rows={3} placeholder="Responsibilities, team context, what success looks like…" value={roleForm.description}
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-xs font-semibold" style={{ color: C.muted }}>Job Description <span style={{ color: C.border }}>(optional)</span></label>
+                    <div className="flex items-center gap-3">
+                      <button type="button" onClick={handleGenerateJd}
+                        disabled={generatingJd || !roleForm.title.trim()}
+                        className="flex items-center gap-1 text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
+                        style={{ color: C.accent }}
+                        title={!roleForm.title.trim() ? "Enter a job title first" : "Generate with AI"}>
+                        {generatingJd ? <Spinner size={12} /> : <Sparkles size={12} />}
+                        {generatingJd ? "Generating…" : "Generate with AI"}
+                      </button>
+                      {roleForm.description && (
+                        <button type="button" onClick={() => setJdDialogOpen(true)}
+                          className="flex items-center gap-1 text-xs font-semibold" style={{ color: C.muted }}
+                          title="Open full view">
+                          <Maximize2 size={12} /> Expand
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <textarea rows={6} placeholder="Responsibilities, team context, what success looks like…" value={roleForm.description}
                     onChange={e => setRoleForm(f => ({ ...f, description: e.target.value }))}
                     className="w-full px-3 py-2 rounded-xl border text-sm resize-none"
                     style={{ borderColor: C.border, color: C.text, backgroundColor: C.bg }} />
+                  {generateJdError && (
+                    <p className="text-xs mt-1" style={{ color: C.danger }}>{generateJdError}</p>
+                  )}
                 </div>
+                {jdDialogOpen && (
+                  <JobDescriptionDialog
+                    value={roleForm.description}
+                    onChange={v => setRoleForm(f => ({ ...f, description: v }))}
+                    onClose={() => setJdDialogOpen(false)}
+                  />
+                )}
                 <div className="flex gap-2 pt-1">
                   <Btn variant="primary" onClick={handleCreateRole} disabled={savingRole || !roleForm.title.trim()}>
                     {savingRole ? <><Spinner size={13} /> Creating…</> : "Create Role"}
@@ -2151,6 +2238,33 @@ function PipelineView() {
   const [historyModal, setHistoryModal] = useState(null);  // { candidateId, candidateName }
   const [historyData, setHistoryData] = useState(null);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [generatingJd, setGeneratingJd] = useState(false);
+  const [generateJdError, setGenerateJdError] = useState(null);
+  const [jdDialogOpen, setJdDialogOpen] = useState(false);
+
+  async function handleGenerateJd() {
+    if (!roleForm.title.trim()) return;
+    setGeneratingJd(true);
+    setGenerateJdError(null);
+    try {
+      const result = await apiFetch("/requisitions/generate-jd", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: roleForm.title,
+          department: roleForm.department,
+          location: roleForm.location,
+          experienceLevel: roleForm.experienceLevel,
+          requiredSkills: roleForm.requiredSkills,
+        }),
+      });
+      setRoleForm(f => ({ ...f, description: result.description || "" }));
+    } catch (e) {
+      setGenerateJdError(e.message || "Could not generate a description.");
+    } finally {
+      setGeneratingJd(false);
+    }
+  }
 
   async function handleCreateRole() {
     if (!roleForm.title.trim()) return;
@@ -2981,15 +3095,44 @@ function PipelineView() {
 
               {/* Description */}
               <div>
-                <label className="block text-xs font-semibold mb-1.5" style={{ color: C.muted }}>
-                  Job Description <span style={{ color: C.border }}>(optional)</span>
-                </label>
-                <textarea rows={3} placeholder="Responsibilities, team context, what success looks like…"
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-semibold" style={{ color: C.muted }}>
+                    Job Description <span style={{ color: C.border }}>(optional)</span>
+                  </label>
+                  <div className="flex items-center gap-3">
+                    <button type="button" onClick={handleGenerateJd}
+                      disabled={generatingJd || !roleForm.title.trim()}
+                      className="flex items-center gap-1 text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
+                      style={{ color: C.accent }}
+                      title={!roleForm.title.trim() ? "Enter a job title first" : "Generate with AI"}>
+                      {generatingJd ? <Spinner size={12} /> : <Sparkles size={12} />}
+                      {generatingJd ? "Generating…" : "Generate with AI"}
+                    </button>
+                    {roleForm.description && (
+                      <button type="button" onClick={() => setJdDialogOpen(true)}
+                        className="flex items-center gap-1 text-xs font-semibold" style={{ color: C.muted }}
+                        title="Open full view">
+                        <Maximize2 size={12} /> Expand
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <textarea rows={6} placeholder="Responsibilities, team context, what success looks like…"
                   value={roleForm.description}
                   onChange={e => setRoleForm(f => ({ ...f, description: e.target.value }))}
                   className="w-full px-3 py-2 rounded-xl border text-sm resize-none"
                   style={{ borderColor: C.border, color: C.text, backgroundColor: C.bg }} />
+                {generateJdError && (
+                  <p className="text-xs mt-1" style={{ color: C.danger }}>{generateJdError}</p>
+                )}
               </div>
+              {jdDialogOpen && (
+                <JobDescriptionDialog
+                  value={roleForm.description}
+                  onChange={v => setRoleForm(f => ({ ...f, description: v }))}
+                  onClose={() => setJdDialogOpen(false)}
+                />
+              )}
             </div>
 
             <div className="flex gap-2 mt-5">
@@ -3586,16 +3729,44 @@ function ResumeSources() {
     } finally { setSaving(false); }
   }
 
+  // Sync runs async on the backend, so instead of guessing a fixed delay before
+  // refreshing (which can show a stale "0 added" if AI calls retry/take longer),
+  // poll until each source's lastSyncAt actually moves past its pre-sync value.
+  async function pollUntilSynced(ids, beforeMap, { maxAttempts = 20, intervalMs = 1000 } = {}) {
+    for (let i = 0; i < maxAttempts; i++) {
+      await new Promise(r => setTimeout(r, intervalMs));
+      let latest;
+      try {
+        latest = await apiFetch("/sourcing/resume-sources");
+      } catch {
+        continue;
+      }
+      const allDone = ids.every(id => {
+        const src = latest?.find(s => s.id === id);
+        return src && src.lastSyncAt !== beforeMap[id];
+      });
+      if (allDone) return;
+    }
+  }
+
   async function syncOne(id) {
+    const before = sources?.find(s => s.id === id)?.lastSyncAt;
     setSyncing(s => ({ ...s, [id]: true }));
     await apiFetch(`/sourcing/resume-sources/${id}/sync`, { method: "POST" });
-    setTimeout(() => { setSyncing(s => ({ ...s, [id]: false })); reloadSources(); }, 4000);
+    await pollUntilSynced([id], { [id]: before });
+    setSyncing(s => ({ ...s, [id]: false }));
+    reloadSources();
   }
 
   async function syncAll() {
+    const activeSources = (sources || []).filter(s => s.active);
+    const beforeMap = {};
+    activeSources.forEach(s => { beforeMap[s.id] = s.lastSyncAt; });
     await apiFetch("/sourcing/resume-sources/sync-all", { method: "POST" });
-    sources?.forEach(s => setSyncing(prev => ({ ...prev, [s.id]: true })));
-    setTimeout(() => { setSyncing({}); reloadSources(); }, 5000);
+    activeSources.forEach(s => setSyncing(prev => ({ ...prev, [s.id]: true })));
+    await pollUntilSynced(activeSources.map(s => s.id), beforeMap);
+    setSyncing({});
+    reloadSources();
   }
 
   async function toggleActive(id) {
@@ -5644,6 +5815,461 @@ function PublicReferralPage() {
 }
 
 // ============================================================
+// CV INBOX (SFTP drop-folder AI pre-screening dashboard)
+// ============================================================
+function CvInboxView() {
+  const [tab, setTab] = useState("considered");
+  const [processing, setProcessing] = useState(false);
+  const [processResult, setProcessResult] = useState(null);
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [checkedIds, setCheckedIds] = useState(() => new Set());
+  const [archiving, setArchiving] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
+  const { data: connInfo, reload: reloadConnInfo } = useApi("/cv-inbox/connection-info");
+  const considered = useApi("/cv-inbox/items?decision=CONSIDERED");
+  const excluded = useApi("/cv-inbox/items?decision=EXCLUDED");
+  const current = tab === "considered" ? considered : excluded;
+
+  function switchTab(id) {
+    setTab(id);
+    setCheckedIds(new Set());
+  }
+
+  function toggleOne(id) {
+    setCheckedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    const rows = current.data || [];
+    setCheckedIds(prev =>
+      prev.size === rows.length ? new Set() : new Set(rows.map(r => r.id))
+    );
+  }
+
+  async function handleArchiveSelected() {
+    if (checkedIds.size === 0) return;
+    setArchiving(true);
+    try {
+      await apiFetch("/cv-inbox/items/archive", {
+        method: "POST",
+        body: JSON.stringify({ ids: [...checkedIds] }),
+      });
+      setCheckedIds(new Set());
+      current.reload();
+    } finally {
+      setArchiving(false);
+    }
+  }
+
+  async function handleProcessNow() {
+    setProcessing(true);
+    setProcessResult(null);
+    try {
+      const result = await apiFetch("/cv-inbox/process-now", { method: "POST" });
+      setProcessResult(result);
+      setCheckedIds(new Set());
+      considered.reload();
+      excluded.reload();
+    } finally {
+      setProcessing(false);
+    }
+  }
+
+  function scoreColor(score) {
+    if (score == null) return C.muted;
+    if (score >= 70) return C.success;
+    if (score >= 40) return C.warning;
+    return C.danger;
+  }
+
+  return (
+    <div>
+      <TopBar title="CV Inbox" subtitle="AI pre-screens CVs dropped via SFTP before they reach your pipeline"
+        action={
+          <div className="flex gap-2">
+            <Btn variant="secondary" onClick={() => setSettingsOpen(true)}>
+              <Settings size={13} /> Settings
+            </Btn>
+            <Btn onClick={handleProcessNow} disabled={processing}>
+              {processing ? <Spinner size={13} /> : <RefreshCw size={13} />}
+              {processing ? "Processing…" : "Process now"}
+            </Btn>
+          </div>
+        }
+      />
+
+      {connInfo && (
+        <Card className="p-4 mb-5 flex items-center gap-3">
+          <Globe size={16} style={{ color: C.accent }} />
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wide" style={{ color: C.muted }}>SFTP Connection</p>
+            <p className="text-sm" style={{ color: C.text }}>
+              sftp://{connInfo.host}:{connInfo.port} &nbsp;·&nbsp; user: {connInfo.username}
+            </p>
+          </div>
+        </Card>
+      )}
+
+      {processResult && (
+        <div className="mb-5 p-3 rounded-xl text-sm" style={{ backgroundColor: C.surface, color: C.text }}>
+          Processed {processResult.processed} CV{processResult.processed === 1 ? "" : "s"} ({processResult.filesFound} found) —{" "}
+          {processResult.considered} considered, {processResult.excluded} excluded
+          {processResult.failed ? `, ${processResult.failed} failed` : ""}.
+        </div>
+      )}
+
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex gap-1 p-1 rounded-xl w-fit" style={{ backgroundColor: C.surface }}>
+          {[["considered", "Considered"], ["excluded", "Excluded"]].map(([id, label]) => (
+            <button key={id} onClick={() => switchTab(id)}
+              className="px-4 py-1.5 rounded-lg text-sm font-semibold transition-colors"
+              style={{ backgroundColor: tab === id ? C.accent : "transparent", color: tab === id ? "#fff" : C.muted }}>
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {checkedIds.size > 0 && (
+          <Btn variant="secondary" onClick={handleArchiveSelected} disabled={archiving}>
+            {archiving ? <Spinner size={13} /> : <X size={13} />}
+            {archiving ? "Archiving…" : `Archive ${checkedIds.size} selected`}
+          </Btn>
+        )}
+      </div>
+
+      {current.error && <ErrorBanner message={current.error} onRetry={current.reload} />}
+
+      {current.loading && <div className="space-y-3">{[1, 2, 3].map(i => <LoadingCard key={i} />)}</div>}
+
+      {!current.loading && !current.error && (
+        <Card className="overflow-hidden">
+          {(current.data || []).length === 0 ? (
+            <div className="p-12 text-center"><p style={{ color: C.muted }}>No {tab} CVs yet.</p></div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b" style={{ borderColor: C.border }}>
+                  <th className="px-4 py-3" style={{ width: "1%" }}>
+                    <input type="checkbox"
+                      checked={current.data.length > 0 && checkedIds.size === current.data.length}
+                      onChange={() => toggleAll()}
+                      onClick={e => e.stopPropagation()} />
+                  </th>
+                  <th className="text-left px-4 py-3 font-semibold" style={{ color: C.muted }}>File</th>
+                  <th className="text-left px-4 py-3 font-semibold" style={{ color: C.muted }}>Candidate</th>
+                  <th className="text-left px-4 py-3 font-semibold" style={{ color: C.muted }}>Best Match</th>
+                  <th className="text-left px-4 py-3 font-semibold" style={{ color: C.muted }}>Score</th>
+                  <th className="text-left px-4 py-3 font-semibold" style={{ color: C.muted }}>Processed</th>
+                </tr>
+              </thead>
+              <tbody>
+                {current.data.map(item => (
+                  <tr key={item.id} onClick={() => setSelectedItem(item)}
+                    className="border-b cursor-pointer hover:bg-slate-50 transition-colors" style={{ borderColor: C.border }}>
+                    <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
+                      <input type="checkbox" checked={checkedIds.has(item.id)} onChange={() => toggleOne(item.id)} />
+                    </td>
+                    <td className="px-4 py-3" style={{ color: C.text }}>
+                      {item.fileName}
+                      {item.status === "FAILED" && <span className="ml-2 text-xs" style={{ color: C.danger }}>(failed to parse)</span>}
+                    </td>
+                    <td className="px-4 py-3" style={{ color: C.text }}>{item.candidateName || "—"}</td>
+                    <td className="px-4 py-3" style={{ color: C.text }}>{item.bestRequisitionTitle || "—"}</td>
+                    <td className="px-4 py-3">
+                      <Badge color={scoreColor(item.bestMatchScore)}>{item.bestMatchScore != null ? item.bestMatchScore : "—"}</Badge>
+                    </td>
+                    <td className="px-4 py-3" style={{ color: C.muted }}>
+                      {item.processedAt ? new Date(item.processedAt).toLocaleString() : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </Card>
+      )}
+
+      {selectedItem && <CvInboxDetailModal item={selectedItem} onClose={() => setSelectedItem(null)} />}
+
+      {settingsOpen && (
+        <CvInboxSettingsDrawer
+          onClose={() => setSettingsOpen(false)}
+          onSaved={() => { setSettingsOpen(false); reloadConnInfo(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+function CvInboxDetailModal({ item, onClose }) {
+  function scoreColor(score) {
+    if (score == null) return C.muted;
+    if (score >= 70) return C.success;
+    if (score >= 40) return C.warning;
+    return C.danger;
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ backgroundColor: "rgba(15,23,42,0.5)", backdropFilter: "blur(4px)" }}>
+      <Card className="w-full max-w-2xl max-h-[88vh] overflow-y-auto">
+        <div className="px-6 py-5 border-b flex items-start justify-between sticky top-0 bg-white rounded-t-2xl z-10"
+          style={{ borderColor: C.border }}>
+          <div>
+            <h2 className="text-lg font-bold" style={{ color: C.text }}>{item.candidateName || item.fileName}</h2>
+            <p className="text-sm" style={{ color: C.muted }}>
+              {item.fileName}{item.candidateEmail ? ` · ${item.candidateEmail}` : ""}
+            </p>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 rounded-xl flex items-center justify-center hover:bg-slate-100">
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-4">
+          <Badge color={item.decision === "CONSIDERED" ? C.success : C.danger}>
+            {item.decision === "CONSIDERED" ? "Considered — placed in pipeline" : "Excluded"}
+          </Badge>
+
+          {item.status === "FAILED" && (
+            <div className="p-3 rounded-xl text-sm" style={{ backgroundColor: "#FEF2F2", color: C.danger }}>
+              Could not process this file: {item.errorMessage}
+            </div>
+          )}
+
+          {(item.roleMatches || []).length > 0 && (
+            <div className="space-y-3">
+              <p className="text-xs font-bold uppercase tracking-wide" style={{ color: C.muted }}>
+                Scored against {item.roleMatches.length} open role{item.roleMatches.length === 1 ? "" : "s"}
+              </p>
+              {item.roleMatches.map(rm => (
+                <div key={rm.requisitionId} className="p-4 rounded-xl border" style={{ borderColor: C.border }}>
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-sm font-semibold" style={{ color: C.text }}>{rm.requisitionTitle}</p>
+                    <Badge color={scoreColor(rm.matchScore)}>{rm.matchScore}</Badge>
+                  </div>
+                  {rm.pipelineStage && (
+                    <p className="text-xs mb-1" style={{ color: C.success }}>✓ Placed in pipeline at {rm.pipelineStage}</p>
+                  )}
+                  <p className="text-sm" style={{ color: C.muted }}>{rm.rationale}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function CvInboxSettingsDrawer({ onClose, onSaved }) {
+  const [loading, setLoading] = useState(true);
+  const [form, setForm] = useState({
+    mode: "EMBEDDED",
+    embeddedPort: 2222, embeddedUsername: "hr", embeddedPassword: "",
+    externalHost: "", externalPort: 22, externalUsername: "", externalPassword: "", externalRootPath: "",
+    proxyEnabled: false, proxyHost: "", proxyPort: 80,
+  });
+  const [embeddedPasswordSet, setEmbeddedPasswordSet] = useState(false);
+  const [externalPasswordSet, setExternalPasswordSet] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const s = await apiFetch("/cv-inbox/settings");
+        setForm(f => ({
+          ...f,
+          mode: s.mode || "EMBEDDED",
+          embeddedPort: s.embeddedPort ?? f.embeddedPort,
+          embeddedUsername: s.embeddedUsername ?? f.embeddedUsername,
+          externalHost: s.externalHost || "",
+          externalPort: s.externalPort ?? f.externalPort,
+          externalUsername: s.externalUsername || "",
+          externalRootPath: s.externalRootPath || "",
+          proxyEnabled: !!s.proxyEnabled,
+          proxyHost: s.proxyHost || "",
+          proxyPort: s.proxyPort ?? f.proxyPort,
+        }));
+        setEmbeddedPasswordSet(!!s.embeddedPasswordSet);
+        setExternalPasswordSet(!!s.externalPasswordSet);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  function set(field, value) {
+    setForm(f => ({ ...f, [field]: value }));
+    setTestResult(null);
+  }
+
+  async function handleTestConnection() {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const result = await apiFetch("/cv-inbox/settings/test-connection", {
+        method: "POST",
+        body: JSON.stringify(form),
+      });
+      setTestResult(result);
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      await apiFetch("/cv-inbox/settings", { method: "PUT", body: JSON.stringify(form) });
+      onSaved();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const inputStyle = "w-full px-3 py-2 rounded-xl border text-sm";
+  const inputColors = { borderColor: C.border, color: C.text, backgroundColor: C.bg };
+
+  return (
+    <div className="fixed inset-0 z-50">
+      <div className="absolute inset-0" style={{ backgroundColor: "rgba(15,23,42,0.4)" }} onClick={onClose} />
+      <div className="absolute inset-y-0 right-0 w-full max-w-md bg-white shadow-2xl overflow-y-auto">
+        <div className="px-6 py-5 border-b flex items-center justify-between sticky top-0 bg-white z-10"
+          style={{ borderColor: C.border }}>
+          <h2 className="text-lg font-bold" style={{ color: C.text }}>SFTP Settings</h2>
+          <button onClick={onClose} className="w-8 h-8 rounded-xl flex items-center justify-center hover:bg-slate-100">
+            <X size={16} />
+          </button>
+        </div>
+
+        {loading ? (
+          <div className="p-6"><LoadingCard /></div>
+        ) : (
+          <div className="p-6 space-y-5">
+            <div>
+              <label className="text-xs font-semibold block mb-1.5" style={{ color: C.muted }}>Source</label>
+              <div className="flex gap-1 p-1 rounded-xl w-fit" style={{ backgroundColor: C.surface }}>
+                {[["EMBEDDED", "Embedded Server"], ["EXTERNAL", "External SFTP"]].map(([id, label]) => (
+                  <button key={id} onClick={() => set("mode", id)}
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors"
+                    style={{ backgroundColor: form.mode === id ? C.accent : "transparent", color: form.mode === id ? "#fff" : C.muted }}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {form.mode === "EMBEDDED" ? (
+              <div className="space-y-3">
+                <p className="text-xs" style={{ color: C.muted }}>
+                  This app hosts its own SFTP server. HR connects into it with these credentials.
+                </p>
+                <div>
+                  <label className="text-xs font-semibold block mb-1" style={{ color: C.muted }}>Port</label>
+                  <input type="number" className={inputStyle} style={inputColors}
+                    value={form.embeddedPort} onChange={e => set("embeddedPort", Number(e.target.value))} />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold block mb-1" style={{ color: C.muted }}>Username</label>
+                  <input className={inputStyle} style={inputColors}
+                    value={form.embeddedUsername} onChange={e => set("embeddedUsername", e.target.value)} />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold block mb-1" style={{ color: C.muted }}>Password</label>
+                  <input type="password" className={inputStyle} style={inputColors}
+                    placeholder={embeddedPasswordSet ? "Leave blank to keep unchanged" : ""}
+                    value={form.embeddedPassword} onChange={e => set("embeddedPassword", e.target.value)} />
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-xs" style={{ color: C.muted }}>
+                  Connect out to an SFTP server HR already has. The embedded server is stopped while this mode is active.
+                </p>
+                <div>
+                  <label className="text-xs font-semibold block mb-1" style={{ color: C.muted }}>Host</label>
+                  <input className={inputStyle} style={inputColors}
+                    value={form.externalHost} onChange={e => set("externalHost", e.target.value)} />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold block mb-1" style={{ color: C.muted }}>Port</label>
+                  <input type="number" className={inputStyle} style={inputColors}
+                    value={form.externalPort} onChange={e => set("externalPort", Number(e.target.value))} />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold block mb-1" style={{ color: C.muted }}>Username</label>
+                  <input className={inputStyle} style={inputColors}
+                    value={form.externalUsername} onChange={e => set("externalUsername", e.target.value)} />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold block mb-1" style={{ color: C.muted }}>Password</label>
+                  <input type="password" className={inputStyle} style={inputColors}
+                    placeholder={externalPasswordSet ? "Leave blank to keep unchanged" : ""}
+                    value={form.externalPassword} onChange={e => set("externalPassword", e.target.value)} />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold block mb-1" style={{ color: C.muted }}>Remote Folder Path</label>
+                  <input className={inputStyle} style={inputColors} placeholder="/home/hr/cv-inbox"
+                    value={form.externalRootPath} onChange={e => set("externalRootPath", e.target.value)} />
+                </div>
+
+                <div className="pt-2 border-t" style={{ borderColor: C.border }}>
+                  <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer" style={{ color: C.text }}>
+                    <input type="checkbox" checked={form.proxyEnabled}
+                      onChange={e => set("proxyEnabled", e.target.checked)} />
+                    Use HTTP proxy
+                  </label>
+                  <div className="overflow-hidden transition-all" style={{ maxHeight: form.proxyEnabled ? 200 : 0 }}>
+                    <div className="space-y-3 pt-3">
+                      <div>
+                        <label className="text-xs font-semibold block mb-1" style={{ color: C.muted }}>Proxy Host</label>
+                        <input className={inputStyle} style={inputColors}
+                          value={form.proxyHost} onChange={e => set("proxyHost", e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="text-xs font-semibold block mb-1" style={{ color: C.muted }}>Proxy Port</label>
+                        <input type="number" className={inputStyle} style={inputColors}
+                          value={form.proxyPort} onChange={e => set("proxyPort", Number(e.target.value))} />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {testResult && (
+              <div className="p-3 rounded-xl text-sm" style={{
+                backgroundColor: testResult.success ? "#F0FDF4" : "#FEF2F2",
+                color: testResult.success ? C.success : C.danger,
+              }}>
+                {testResult.success ? "✓ " : "✗ "}{testResult.message}
+              </div>
+            )}
+
+            <div className="flex gap-2 pt-2">
+              <Btn variant="secondary" onClick={handleTestConnection} disabled={testing} className="flex-1 justify-center">
+                {testing ? <Spinner size={13} /> : null} {testing ? "Testing…" : "Test Connection"}
+              </Btn>
+              <Btn onClick={handleSave} disabled={saving} className="flex-1 justify-center">
+                {saving ? <Spinner size={13} /> : null} {saving ? "Saving…" : "Save"}
+              </Btn>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
 // APP SHELL
 // ============================================================
 export default function App() {
@@ -5689,6 +6315,7 @@ export default function App() {
         <div className="p-8"><ResumeSources /></div>
       </div>
     ),
+    cvInbox: <CvInboxView />,
   };
 
   return (
@@ -5707,7 +6334,7 @@ export default function App() {
           <Avatar name={displayUser.fullName} size={32} />
         </div>
         <main className="flex-1 overflow-y-auto" style={{ padding: active === "pipeline" ? "1.5rem" : "2rem" }}>
-          <div className={active === "pipeline" || active === "referrals" ? "" : "max-w-6xl mx-auto"}>
+          <div className={active === "pipeline" || active === "referrals" || active === "cvInbox" ? "" : "max-w-6xl mx-auto"}>
             {views[active]}
           </div>
         </main>

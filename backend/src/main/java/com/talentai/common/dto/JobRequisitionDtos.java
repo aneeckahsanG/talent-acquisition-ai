@@ -16,6 +16,25 @@ public class JobRequisitionDtos {
         private String text;
     }
 
+    /** Request to generate a job description from whatever fields are already filled in. */
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class GenerateJdRequest {
+        private String title;
+        private String department;
+        private String location;
+        private String experienceLevel;
+        private String requiredSkills;
+    }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class GenerateJdResponse {
+        private String description;
+    }
+
     @Data
     @NoArgsConstructor
     @AllArgsConstructor
