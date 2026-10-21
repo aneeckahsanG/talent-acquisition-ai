@@ -131,7 +131,7 @@ public class PublicJobController {
   .parse-succ { display: none; align-items: center; gap: 8px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; font-size: 0.82rem; color: #16a34a; font-weight: 500; }
   .jd-section { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px; margin-bottom: 14px; }
   .jd-section h4 { font-size: 0.8rem; font-weight: 700; text-transform: uppercase; color: #94a3b8; margin-bottom: 8px; }
-  .jd-section p { font-size: 0.875rem; color: #475569; line-height: 1.6; }
+  .jd-section p { font-size: 0.875rem; color: #475569; line-height: 1.6; white-space: pre-line; }
   .empty { text-align: center; padding: 60px 20px; color: #94a3b8; }
   .empty .i { font-size: 3rem; margin-bottom: 12px; }
 
