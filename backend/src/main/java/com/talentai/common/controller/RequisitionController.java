@@ -68,6 +68,11 @@ public class RequisitionController {
         return ResponseEntity.ok(requisitionService.bulkCreate(requests, authentication.getName()));
     }
 
+    @PostMapping("/generate-jd")
+    public ResponseEntity<GenerateJdResponse> generateJd(@RequestBody GenerateJdRequest body) {
+        return ResponseEntity.ok(requisitionService.generateJd(body));
+    }
+
     @PostMapping("/{id}/publish-to-jobboard")
     public ResponseEntity<Map<String, Object>> publishToJobBoard(@PathVariable Long id) {
         return jobRequisitionRepository.findById(id)

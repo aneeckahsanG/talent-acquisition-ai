@@ -5,7 +5,7 @@ import {
   LayoutGrid, Search, FileCheck, UserPlus, Calendar, Activity,
   ChevronRight, ChevronUp, ChevronDown, Sparkles, CheckCircle2, XCircle, AlertCircle, Clock,
   Briefcase, Mail, X, ArrowRight, Bell, LogOut, Loader2, UploadCloud,
-  RefreshCw, Plus, Globe, List, ArrowUp, ArrowDown, ArrowUpDown, TrendingUp, Pencil, Inbox, Settings,History, FileText, Trash2,
+  RefreshCw, Plus, Globe, List, ArrowUp, ArrowDown, ArrowUpDown, TrendingUp, Pencil, Inbox, Settings,History, FileText, Trash2, Maximize2,
 } from "lucide-react";
 
 // ============================================================
@@ -1571,6 +1571,37 @@ const STATUS_STYLE = {
   CLOSED:  { bg: "#F1F5F9", color: "#64748B", label: "Closed" },
 };
 
+/** Large editable viewer for a job description — the inline textarea in the Create/Edit Role
+ *  forms is too small for the longer, segmented JDs the AI now generates (About the Role /
+ *  Key Responsibilities / etc.), so this gives a proper full-size view with the same
+ *  whitespace-preserving rendering used on the role detail page, while staying editable. */
+function JobDescriptionDialog({ value, onChange, onClose }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ backgroundColor: "rgba(15,23,42,0.5)", backdropFilter: "blur(4px)" }}>
+      <Card className="w-full max-w-2xl max-h-[85vh] flex flex-col">
+        <div className="px-6 py-4 border-b flex items-center justify-between shrink-0" style={{ borderColor: C.border }}>
+          <h2 className="text-lg font-bold" style={{ color: C.text }}>Job Description</h2>
+          <button onClick={onClose} className="w-8 h-8 rounded-xl flex items-center justify-center hover:bg-slate-100">
+            <X size={16} style={{ color: C.muted }} />
+          </button>
+        </div>
+        <div className="p-6 overflow-y-auto flex-1">
+          <textarea
+            value={value}
+            onChange={e => onChange(e.target.value)}
+            placeholder="Responsibilities, team context, what success looks like…"
+            className="w-full h-full min-h-[50vh] px-4 py-3 rounded-xl border text-sm leading-relaxed resize-none"
+            style={{ borderColor: C.border, color: C.text, backgroundColor: C.bg }} />
+        </div>
+        <div className="px-6 py-4 border-t flex justify-end shrink-0" style={{ borderColor: C.border }}>
+          <Btn onClick={onClose}>Done</Btn>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 function RolesView({ setActive }) {
   const { data: roles, loading, error, reload } = useApi("/requisitions");
   const [filter, setFilter] = useState("ALL");
@@ -1581,6 +1612,9 @@ function RolesView({ setActive }) {
   const [jdText, setJdText]       = useState("");
   const [parsing, setParsing]     = useState(false);
   const [parseMode, setParseMode] = useState(false);  // toggle paste vs manual
+  const [generatingJd, setGeneratingJd] = useState(false);
+  const [generateJdError, setGenerateJdError] = useState(null);
+  const [jdDialogOpen, setJdDialogOpen] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(null);
   const [editModal, setEditModal] = useState(null);   // RequisitionResponse | null
   const [editForm, setEditForm]   = useState({});
@@ -1646,6 +1680,30 @@ function RolesView({ setActive }) {
       setParseMode(false);
     } finally {
       setParsing(false);
+    }
+  }
+
+  async function handleGenerateJd() {
+    if (!roleForm.title.trim()) return;
+    setGeneratingJd(true);
+    setGenerateJdError(null);
+    try {
+      const result = await apiFetch("/requisitions/generate-jd", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: roleForm.title,
+          department: roleForm.department,
+          location: roleForm.location,
+          experienceLevel: roleForm.experienceLevel,
+          requiredSkills: roleForm.requiredSkills,
+        }),
+      });
+      setRoleForm(f => ({ ...f, description: result.description || "" }));
+    } catch (e) {
+      setGenerateJdError(e.message || "Could not generate a description.");
+    } finally {
+      setGeneratingJd(false);
     }
   }
 
@@ -1756,7 +1814,7 @@ function RolesView({ setActive }) {
             {detail.description && (
               <Card className="p-6">
                 <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: C.muted }}>Description</p>
-                <p className="text-sm leading-relaxed" style={{ color: C.text }}>{detail.description}</p>
+                <p className="text-sm leading-relaxed" style={{ color: C.text, whiteSpace: "pre-line" }}>{detail.description}</p>
               </Card>
             )}
             {sk.length > 0 && (
@@ -2246,12 +2304,41 @@ function RolesView({ setActive }) {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold mb-1.5" style={{ color: C.muted }}>Job Description <span style={{ color: C.border }}>(optional)</span></label>
-                  <textarea rows={3} placeholder="Responsibilities, team context, what success looks like…" value={roleForm.description}
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-xs font-semibold" style={{ color: C.muted }}>Job Description <span style={{ color: C.border }}>(optional)</span></label>
+                    <div className="flex items-center gap-3">
+                      <button type="button" onClick={handleGenerateJd}
+                        disabled={generatingJd || !roleForm.title.trim()}
+                        className="flex items-center gap-1 text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
+                        style={{ color: C.accent }}
+                        title={!roleForm.title.trim() ? "Enter a job title first" : "Generate with AI"}>
+                        {generatingJd ? <Spinner size={12} /> : <Sparkles size={12} />}
+                        {generatingJd ? "Generating…" : "Generate with AI"}
+                      </button>
+                      {roleForm.description && (
+                        <button type="button" onClick={() => setJdDialogOpen(true)}
+                          className="flex items-center gap-1 text-xs font-semibold" style={{ color: C.muted }}
+                          title="Open full view">
+                          <Maximize2 size={12} /> Expand
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <textarea rows={6} placeholder="Responsibilities, team context, what success looks like…" value={roleForm.description}
                     onChange={e => setRoleForm(f => ({ ...f, description: e.target.value }))}
                     className="w-full px-3 py-2 rounded-xl border text-sm resize-none"
                     style={{ borderColor: C.border, color: C.text, backgroundColor: C.bg }} />
+                  {generateJdError && (
+                    <p className="text-xs mt-1" style={{ color: C.danger }}>{generateJdError}</p>
+                  )}
                 </div>
+                {jdDialogOpen && (
+                  <JobDescriptionDialog
+                    value={roleForm.description}
+                    onChange={v => setRoleForm(f => ({ ...f, description: v }))}
+                    onClose={() => setJdDialogOpen(false)}
+                  />
+                )}
                 <div className="flex gap-2 pt-1">
                   <Btn variant="primary" onClick={handleCreateRole} disabled={savingRole || !roleForm.title.trim()}>
                     {savingRole ? <><Spinner size={13} /> Creating…</> : "Create Role"}
@@ -3024,6 +3111,33 @@ function PipelineView() {
   const [historyModal, setHistoryModal] = useState(null);  // { candidateId, candidateName }
   const [historyData, setHistoryData] = useState(null);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [generatingJd, setGeneratingJd] = useState(false);
+  const [generateJdError, setGenerateJdError] = useState(null);
+  const [jdDialogOpen, setJdDialogOpen] = useState(false);
+
+  async function handleGenerateJd() {
+    if (!roleForm.title.trim()) return;
+    setGeneratingJd(true);
+    setGenerateJdError(null);
+    try {
+      const result = await apiFetch("/requisitions/generate-jd", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: roleForm.title,
+          department: roleForm.department,
+          location: roleForm.location,
+          experienceLevel: roleForm.experienceLevel,
+          requiredSkills: roleForm.requiredSkills,
+        }),
+      });
+      setRoleForm(f => ({ ...f, description: result.description || "" }));
+    } catch (e) {
+      setGenerateJdError(e.message || "Could not generate a description.");
+    } finally {
+      setGeneratingJd(false);
+    }
+  }
 
   async function handleCreateRole() {
     if (!roleForm.title.trim()) return;
@@ -3892,15 +4006,44 @@ function PipelineView() {
 
               {/* Description */}
               <div>
-                <label className="block text-xs font-semibold mb-1.5" style={{ color: C.muted }}>
-                  Job Description <span style={{ color: C.border }}>(optional)</span>
-                </label>
-                <textarea rows={3} placeholder="Responsibilities, team context, what success looks like…"
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-semibold" style={{ color: C.muted }}>
+                    Job Description <span style={{ color: C.border }}>(optional)</span>
+                  </label>
+                  <div className="flex items-center gap-3">
+                    <button type="button" onClick={handleGenerateJd}
+                      disabled={generatingJd || !roleForm.title.trim()}
+                      className="flex items-center gap-1 text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
+                      style={{ color: C.accent }}
+                      title={!roleForm.title.trim() ? "Enter a job title first" : "Generate with AI"}>
+                      {generatingJd ? <Spinner size={12} /> : <Sparkles size={12} />}
+                      {generatingJd ? "Generating…" : "Generate with AI"}
+                    </button>
+                    {roleForm.description && (
+                      <button type="button" onClick={() => setJdDialogOpen(true)}
+                        className="flex items-center gap-1 text-xs font-semibold" style={{ color: C.muted }}
+                        title="Open full view">
+                        <Maximize2 size={12} /> Expand
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <textarea rows={6} placeholder="Responsibilities, team context, what success looks like…"
                   value={roleForm.description}
                   onChange={e => setRoleForm(f => ({ ...f, description: e.target.value }))}
                   className="w-full px-3 py-2 rounded-xl border text-sm resize-none"
                   style={{ borderColor: C.border, color: C.text, backgroundColor: C.bg }} />
+                {generateJdError && (
+                  <p className="text-xs mt-1" style={{ color: C.danger }}>{generateJdError}</p>
+                )}
               </div>
+              {jdDialogOpen && (
+                <JobDescriptionDialog
+                  value={roleForm.description}
+                  onChange={v => setRoleForm(f => ({ ...f, description: v }))}
+                  onClose={() => setJdDialogOpen(false)}
+                />
+              )}
             </div>
 
             <div className="flex gap-2 mt-5">
