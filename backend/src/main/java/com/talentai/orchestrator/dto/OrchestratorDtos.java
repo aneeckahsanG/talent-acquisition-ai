@@ -153,7 +153,7 @@ public class OrchestratorDtos {
     @AllArgsConstructor
     public static class ScheduleInterviewRequest {
         private String interviewType; // SCREENING, TECHNICAL, FINAL
-        private String confirmedSlot; // ISO-8601 datetime string
+        private String confirmedSlot; // ISO-8601 datetime string (legacy — kept for reschedule)
         private String notes;
     }
 

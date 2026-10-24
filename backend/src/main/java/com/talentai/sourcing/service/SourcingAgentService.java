@@ -61,6 +61,9 @@ public class SourcingAgentService {
     private static final String AGENT_NAME = "SOURCING";
     private static final BigDecimal HIGH_FIT_THRESHOLD = new BigDecimal("70");
 
+    @org.springframework.beans.factory.annotation.Value("${app.demo-mode:false}")
+    private boolean demoMode;
+
     private final ChatClient chatClient;
     private final PromptLoader promptLoader;
     private final PdfTextExtractor pdfTextExtractor;
@@ -657,8 +660,10 @@ public class SourcingAgentService {
         String email = request.getEmail() != null ? request.getEmail().trim().toLowerCase() : null;
         if (email == null || email.isBlank()) throw new IllegalArgumentException("Email is required.");
 
-        // Find or create candidate
-        Candidate candidate = candidateRepository.findFirstByEmailOrderByIdAsc(email).orElseGet(() ->
+        // Find or create candidate — in demo mode skip email lookup so candidates
+        // with shared placeholder emails are treated as separate people
+        Candidate candidate = (demoMode ? java.util.Optional.<Candidate>empty()
+                : candidateRepository.findFirstByEmailOrderByIdAsc(email)).orElseGet(() ->
                 candidateRepository.save(Candidate.builder()
                         .fullName(request.getFullName())
                         .email(email)

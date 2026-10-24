@@ -3,6 +3,7 @@ package com.talentai.orchestrator.service;
 import com.talentai.admin.entity.InterviewSchedule;
 import com.talentai.admin.entity.Offer;
 import com.talentai.admin.entity.OfferNegotiationHistory;
+import com.talentai.admin.service.OfferResponseService;
 import org.springframework.ai.chat.client.ChatClient;
 import com.talentai.admin.repository.InterviewScheduleRepository;
 import com.talentai.admin.repository.OfferNegotiationHistoryRepository;
@@ -65,11 +66,16 @@ public class OrchestratorService {
     private final SourcingMatchRepository sourcingMatchRepository;
     private final ReferralRepository referralRepository;
     private final InterviewScheduleRepository interviewScheduleRepository;
+    private final com.talentai.admin.service.InterviewBookingService interviewBookingService;
     private final OfferRepository offerRepository;
     private final OfferNegotiationHistoryRepository negotiationHistoryRepository;
     private final AgentActivityLogRepository activityLogRepository;
     private final ChatClient chatClient;
     private final com.talentai.common.service.EmailService emailService;
+    private final OfferResponseService offerResponseService;
+
+    @org.springframework.beans.factory.annotation.Value("${app.base-url:http://localhost:5173}")
+    private String appBaseUrl;
 
     private static final List<String> INTERVIEW_OR_LATER = List.of(
             "INTERVIEW_SCHEDULED", "OFFER", "HIRED", "REJECTED"
@@ -170,7 +176,20 @@ public class OrchestratorService {
      * @param actor who initiated this change — "HUMAN" (recruiter, via the
      *              pipeline board) or "ORCHESTRATOR" (the agentic orchestrator).
      */
+    private void assertInterviewRoundsComplete(Long requisitionId, Long candidateId) {
+        JobRequisition req = jobRequisitionRepository.findById(requisitionId).orElse(null);
+        if (req == null) return;
+        int required = req.getRequiredInterviewRounds() != null ? req.getRequiredInterviewRounds() : 2;
+        long completed = interviewScheduleRepository
+                .findByCandidateIdAndRequisitionIdOrderByCreatedAtAsc(candidateId, requisitionId)
+                .stream().filter(i -> "COMPLETED".equals(i.getStatus())).count();
+        if (completed < required) {
+            throw new IllegalStateException("Cannot advance to OFFER: " + completed + " of " + required + " required interview rounds completed.");
+        }
+    }
+
     public PipelineCandidateResponse moveStage(Long requisitionId, Long candidateId, String newStage, String actor) {
+        if ("OFFER".equals(newStage)) assertInterviewRoundsComplete(requisitionId, candidateId);
         PipelineStage ps = pipelineStageRepository
                 .findByCandidateIdAndRequisitionId(candidateId, requisitionId)
                 .orElseGet(() -> {
@@ -202,17 +221,6 @@ public class OrchestratorService {
                     });
         }
 
-        // Enforce required interview rounds before advancing to OFFER
-        if ("OFFER".equals(newStage) && req != null) {
-            int required = req.getRequiredInterviewRounds() != null ? req.getRequiredInterviewRounds() : 2;
-            long completed = interviewScheduleRepository
-                    .findByCandidateIdAndRequisitionIdOrderByCreatedAtAsc(candidateId, requisitionId)
-                    .stream().filter(i -> "COMPLETED".equals(i.getStatus())).count();
-            if (completed < required) {
-                throw new IllegalStateException("Cannot advance to OFFER: " + completed + " of " + required + " required interview rounds completed.");
-            }
-        }
-
         // Notify candidate on rejection. SHORTLISTED is an internal pipeline
         // signal only — the candidate-facing "good news" moment is the
         // personalized outreach email, which is drafted separately and always
@@ -242,7 +250,7 @@ public class OrchestratorService {
     }
 
     private OfferResponse toOfferResponse(Offer o) {
-        var history = negotiationHistoryRepository.findByOfferIdOrderByRoundNumberAsc(o.getId())
+        var history = negotiationHistoryRepository.findByOfferIdOrderByCreatedAtAscIdAsc(o.getId())
                 .stream().map(h -> NegotiationHistoryEntry.builder()
                         .roundNumber(h.getRoundNumber())
                         .salaryAmount(h.getSalaryAmount())
@@ -272,7 +280,7 @@ public class OrchestratorService {
                 .currency(offer.getCurrency())
                 .startDate(req.getStartDate() != null ? LocalDate.parse(req.getStartDate()) : offer.getStartDate())
                 .notes(req.getNotes())
-                .changedBy(req.getChangedBy() != null ? req.getChangedBy() : "RECRUITER")
+                .changedBy("RECRUITER")
                 .build());
 
         // Update the offer with new terms
@@ -282,6 +290,23 @@ public class OrchestratorService {
         if (req.getCurrency() != null) offer.setCurrency(req.getCurrency());
         offer.setStatus("NEGOTIATING");
         offerRepository.save(offer);
+
+        // The candidate can only respond by email, so send the revised terms with fresh response links
+        Candidate candidate = candidateRepository.findById(offer.getCandidateId()).orElse(null);
+        JobRequisition requisition = jobRequisitionRepository.findById(offer.getRequisitionId()).orElse(null);
+        if (candidate != null && requisition != null) {
+            String salary = offer.getSalaryAmount() != null
+                    ? offer.getCurrency() + " " + String.format("%,.0f", offer.getSalaryAmount()) : "as discussed";
+            String start = offer.getStartDate() != null ? offer.getStartDate().toString() : "to be confirmed";
+            String letter = "Dear " + candidate.getFullName().trim().split("\\s+")[0] + ",\n\n"
+                    + "Thank you for your feedback. We have revised our offer for the " + requisition.getTitle() + " position:\n\n"
+                    + "Salary: " + salary + "\nStart date: " + start + "\n"
+                    + (offer.getNotes() != null && !offer.getNotes().isBlank() ? "Notes: " + offer.getNotes() + "\n" : "")
+                    + "\nPlease respond using one of the options below.\n\n"
+                    + "Best regards,\nHuman Resources\nTalentAcquisition AI";
+            sendOfferEmail(offerId, letter);
+            offer = offerRepository.findById(offerId).orElse(offer);
+        }
 
         return toOfferResponse(offer);
     }
@@ -356,6 +381,7 @@ public class OrchestratorService {
     }
 
     public OfferResponse createOffer(Long requisitionId, Long candidateId, CreateOfferRequest req) {
+        assertInterviewRoundsComplete(requisitionId, candidateId);
         // Move pipeline stage to OFFER
         PipelineStage ps = pipelineStageRepository
                 .findByCandidateIdAndRequisitionId(candidateId, requisitionId)
@@ -411,14 +437,57 @@ public class OrchestratorService {
                 + "Please review the details and revert with your acceptance.\n\n"
                 + "Best regards,\nHuman Resources\nTalentAcquisition AI";
 
-        emailService.sendHtml(candidate.getEmail(), "Job Offer – " + requisition.getTitle(),
-                emailService.wrapInTemplate(body, "TA"));
+        // Generate a single-use response token and embed action links in the email
+        String token = offerResponseService.generateToken(offerId);
+        String apiBase = appBaseUrl.endsWith("/") ? appBaseUrl.substring(0, appBaseUrl.length() - 1) : appBaseUrl;
+        // Accept / Reject hit the backend directly (one-click, no form needed).
+        // Negotiate opens the frontend page which shows a counter-offer form.
+        String acceptUrl    = apiBase + "/api/public/offer-respond?token=" + token + "&action=accept";
+        String rejectUrl    = apiBase + "/api/public/offer-respond?token=" + token + "&action=reject";
+        String negotiateUrl = apiBase + "/offer-respond?token=" + token + "&action=negotiate";
+
+        String actionButtons = """
+                <div style="margin:32px 0;text-align:center;">
+                  <p style="font-size:14px;color:#475569;margin-bottom:16px;font-weight:600;">
+                    Please respond to this offer by clicking one of the buttons below:
+                  </p>
+                  <table cellpadding="0" cellspacing="0" style="margin:0 auto;">
+                    <tr>
+                      <td style="padding:0 8px;">
+                        <a href="%s" style="display:inline-block;padding:12px 24px;background:#22C55E;color:#fff;text-decoration:none;border-radius:8px;font-weight:bold;font-size:14px;">
+                          ✅ Accept Offer
+                        </a>
+                      </td>
+                      <td style="padding:0 8px;">
+                        <a href="%s" style="display:inline-block;padding:12px 24px;background:#6366F1;color:#fff;text-decoration:none;border-radius:8px;font-weight:bold;font-size:14px;">
+                          💬 Negotiate
+                        </a>
+                      </td>
+                      <td style="padding:0 8px;">
+                        <a href="%s" style="display:inline-block;padding:12px 24px;background:#EF4444;color:#fff;text-decoration:none;border-radius:8px;font-weight:bold;font-size:14px;">
+                          ❌ Decline
+                        </a>
+                      </td>
+                    </tr>
+                  </table>
+                  <p style="font-size:11px;color:#94A3B8;margin-top:16px;">
+                    These links are personal to you and expire in 30 days. Each link can only be used once.
+                  </p>
+                </div>
+                """.formatted(acceptUrl, negotiateUrl, rejectUrl);
+
+        String htmlBody = emailService.wrapInTemplateWithExtra(body, "TA", actionButtons);
+
+        emailService.sendHtml(candidate.getEmail(), "Job Offer – " + requisition.getTitle(), htmlBody);
 
         offer.setStatus("SENT");
         offerRepository.save(offer);
     }
 
     public OfferResponse updateOfferStatus(Long offerId, String newStatus) {
+        if ("ACCEPTED".equals(newStatus) || "DECLINED".equals(newStatus) || "NEGOTIATING".equals(newStatus)) {
+            throw new IllegalArgumentException("Offer responses can only be given by the candidate through the link in the offer email.");
+        }
         Offer offer = offerRepository.findById(offerId)
                 .orElseThrow(() -> new IllegalArgumentException("Offer not found: " + offerId));
         offer.setStatus(newStatus);
@@ -465,52 +534,38 @@ public class OrchestratorService {
         JobRequisition requisition = jobRequisitionRepository.findById(requisitionId)
                 .orElseThrow(() -> new IllegalArgumentException("Requisition not found: " + requisitionId));
 
-        LocalDateTime slot = req.getConfirmedSlot() != null
-                ? LocalDateTime.parse(req.getConfirmedSlot())
-                : null;
-
         String interviewType = req.getInterviewType() != null ? req.getInterviewType() : "TECHNICAL";
-
-        // Generate invitation email via Claude
-        String slotDisplay = slot != null ? slot.toString().replace("T", " at ") : "TBD";
-        String invitationEmail = null;
-        try {
-            String prompt = """
-                    You are an HR coordinator at Arvato Systems Malaysia Sdn. Bhd. Write a professional interview invitation email to a candidate.
-                    Candidate name: %s
-                    Candidate email: %s
-                    Role: %s
-                    Interview type: %s
-                    Scheduled date/time: %s
-                    Write only the email body (no subject line). Start with "Dear %s," and end with a sign-off from "Human Resources, Arvato Systems Malaysia Sdn. Bhd."
-                    Keep it concise and professional.
-                    """.formatted(candidate.getFullName(), candidate.getEmail(), requisition.getTitle(),
-                    interviewType, slotDisplay, candidate.getFullName().split(" ")[0]);
-            invitationEmail = chatClient.prompt()
-                        .system("You are an HR coordinator writing professional interview invitation emails.")
-                        .user(prompt)
-                        .call()
-                        .content();
-        } catch (Exception e) {
-            invitationEmail = "Dear " + candidate.getFullName() + ",\n\nWe are pleased to invite you for a " + interviewType + " interview for the " + requisition.getTitle() + " position on " + slotDisplay + ".\n\nPlease confirm your availability.\n\nBest regards,\nHuman Resources\nArvato Systems Malaysia Sdn. Bhd.";
-        }
-
         InterviewSchedule interview = InterviewSchedule.builder()
                 .candidateId(candidateId)
                 .requisitionId(requisitionId)
                 .interviewType(interviewType)
-                .confirmedSlot(slot)
-                .status(slot != null ? "CONFIRMED" : "PROPOSED")
+                .status("PROPOSED")
                 .notes(req.getNotes())
-                .invitationEmail(invitationEmail)
                 .build();
         interview = interviewScheduleRepository.save(interview);
 
-        // Send invitation email immediately after scheduling
+        final Long interviewId = interview.getId();
+        String firstName = candidate.getFullName().trim().split("\\s+")[0];
+        String bookUrl = (appBaseUrl.endsWith("/") ? appBaseUrl.substring(0, appBaseUrl.length() - 1) : appBaseUrl)
+                + "/interview-book?interviewId=" + interviewId;
+
+        String bodyText = "Dear " + firstName + ",\n\nThank you for your interest in the " + requisition.getTitle()
+                + " position. We would like to invite you for a " + interviewType.replace("_", " ")
+                + " interview.\n\nPlease choose a time that suits you from our available calendar:";
+        String extraHtml = "<div style='margin:16px 0;'><a href='" + bookUrl + "' "
+                + "style='display:inline-block;padding:12px 24px;background:#6366F1;color:#fff;border-radius:8px;text-decoration:none;font-size:14px;font-weight:600;'>"
+                + "Choose Your Interview Time</a></div>"
+                + "<p style='margin-top:24px;'>Best regards,<br/>Human Resources<br/>Arvato Systems Malaysia Sdn. Bhd.</p>";
+
+        interview.setInvitationEmail(bodyText + "\n\n" + bookUrl);
+        interviewScheduleRepository.save(interview);
+
         try {
-            sendInvitationEmail(interview.getId());
+            emailService.sendHtml(candidate.getEmail(),
+                    "Interview Invitation – Choose Your Time – " + requisition.getTitle(),
+                    emailService.wrapInTemplateWithExtra(bodyText, "TA", extraHtml));
         } catch (Exception e) {
-            log.warn("Could not send interview invitation email for interview {}: {}", interview.getId(), e.getMessage());
+            log.warn("Could not send booking-link email for interview {}: {}", interviewId, e.getMessage());
         }
 
         // Move pipeline stage
@@ -546,6 +601,9 @@ public class OrchestratorService {
 
         LocalDateTime slot = LocalDateTime.parse(newSlot);
         String slotDisplay = slot.toString().replace("T", " at ");
+
+        // Keep the shared calendar authoritative: rejects overlaps, replaces the old booking
+        interviewBookingService.forceBook(interviewId, interview.getInterviewType(), slot);
 
         String invitationEmail;
         try {

@@ -48,6 +48,8 @@ public class SecurityConfig {
 						.requestMatchers("/api/auth/**").permitAll()
 						.requestMatchers("/api/admin/**").permitAll()
 						.requestMatchers("/api/public/**").permitAll()
+						.requestMatchers("/api/public/offer-respond/**").permitAll()
+						.requestMatchers("/api/public/interview/**").permitAll()
 						.requestMatchers("/api/public/parse-resume").permitAll()
 						.requestMatchers("/api/inbound/**").permitAll()
 						.requestMatchers("/careers", "/careers/").permitAll()

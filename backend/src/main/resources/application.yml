@@ -57,6 +57,9 @@ server:
 
 
 app:
+  base-url: ${APP_BASE_URL:http://localhost:5173}
+  demo-mode: true   # skips email uniqueness check on candidate lookup
+  hr-notification-email: ${HR_NOTIFICATION_EMAIL:ahsanhabib19902021@gmail.com}
   jwt:
     secret: ${JWT_SECRET:change-this-to-a-long-random-secret-in-production-min-256-bits}
     expirationMs: 86400000

@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import OfferRespondPage from "./OfferRespondPage.jsx";
+import InterviewBookPage from "./InterviewBookPage.jsx";
 import {
   LayoutGrid, Search, FileCheck, UserPlus, Calendar, Activity,
   ChevronRight, ChevronUp, ChevronDown, Sparkles, CheckCircle2, XCircle, AlertCircle, Clock,
@@ -424,6 +426,251 @@ function LoginScreen({ onLogin }) {
 }
 
 // ============================================================
+// CALENDAR — shared interview calendar (availability + bookings)
+// ============================================================
+const ymdLocal = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const addDaysStr = (s, n) => { const d = new Date(s + "T00:00"); d.setDate(d.getDate() + n); return ymdLocal(d); };
+const mondayOf = d => { const x = new Date(d); x.setHours(0, 0, 0, 0); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return ymdLocal(x); };
+const clockTime = d => new Date(d).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+
+function CalendarWeekGrid({ data, weekStart, onSelect, selectedId }) {
+  const PX = 56;
+  const days = Array.from({ length: 7 }, (_, i) => { const d = new Date(weekStart + "T00:00"); d.setDate(d.getDate() + i); return d; });
+  const windows = data?.windows || [];
+  const bookings = data?.bookings || [];
+  const mins = d => { const t = new Date(d); return t.getHours() * 60 + t.getMinutes(); };
+  let startH = 8, endH = 18;
+  [...windows, ...bookings].forEach(i => { startH = Math.min(startH, Math.floor(mins(i.start) / 60)); endH = Math.max(endH, Math.ceil(mins(i.end) / 60)); });
+  const hours = Array.from({ length: endH - startH }, (_, i) => startH + i);
+  const top = d => (mins(d) - startH * 60) / 60 * PX;
+  const todayKey = ymdLocal(new Date());
+  const height = hours.length * PX;
+
+  return (
+    <Card className="p-3 overflow-x-auto">
+      <div style={{ minWidth: 760 }}>
+        <div className="flex" style={{ paddingLeft: 44 }}>
+          {days.map(d => (
+            <div key={ymdLocal(d)} className="flex-1 text-center text-[11px] font-bold py-1.5"
+              style={{ color: ymdLocal(d) === todayKey ? C.accent : C.text }}>
+              {d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })}
+            </div>
+          ))}
+        </div>
+        <div className="flex">
+          <div className="relative shrink-0" style={{ width: 44, height }}>
+            {hours.map((h, i) => (
+              <div key={h} className="absolute text-[10px]" style={{ top: i * PX - 6, right: 6, color: C.muted }}>{String(h).padStart(2, "0")}:00</div>
+            ))}
+          </div>
+          {days.map(d => {
+            const key = ymdLocal(d);
+            return (
+              <div key={key} className="flex-1 relative"
+                style={{
+                  height, borderLeft: `1px solid ${C.border}`,
+                  backgroundImage: `repeating-linear-gradient(to bottom, transparent 0, transparent ${PX - 1}px, ${C.border} ${PX - 1}px, ${C.border} ${PX}px)`,
+                  backgroundColor: key === todayKey ? `${C.accent}08` : "transparent",
+                }}>
+                {windows.filter(w => w.start.slice(0, 10) === key).map(w => (
+                  <div key={`w${w.id}`} className="absolute left-0 right-0" title={`Open ${clockTime(w.start)}–${clockTime(w.end)}`}
+                    style={{ top: top(w.start), height: top(w.end) - top(w.start), backgroundColor: `${C.success}1f` }} />
+                ))}
+                {bookings.filter(b => b.start.slice(0, 10) === key).map(b => (
+                  <button key={`b${b.id}`} onClick={() => onSelect(b)}
+                    title={`${b.candidateName} · ${clockTime(b.start)}–${clockTime(b.end)}`}
+                    className="absolute left-1 right-1 rounded-lg text-left px-1.5 py-1 overflow-hidden text-white"
+                    style={{
+                      top: top(b.start) + 1, height: Math.max(top(b.end) - top(b.start) - 2, 20),
+                      backgroundColor: C.accent, outline: selectedId === b.id ? `2px solid ${C.text}` : "none",
+                    }}>
+                    <div className="text-[10px] font-bold leading-tight">{clockTime(b.start)} {b.candidateName}</div>
+                    <div className="text-[9px] leading-tight opacity-90">{ROUND_LABELS[b.interviewType] || b.interviewType} · {b.roleTitle}</div>
+                  </button>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+        <div className="flex items-center gap-4 mt-3 text-[10px]" style={{ color: C.muted, paddingLeft: 44 }}>
+          <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded" style={{ backgroundColor: `${C.success}40` }} /> Open for booking</span>
+          <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded" style={{ backgroundColor: C.accent }} /> Booked interview</span>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function CalendarView() {
+  const today = ymdLocal(new Date());
+  const [view, setView] = useState("week");           // week | list
+  const [weekStart, setWeekStart] = useState(mondayOf(new Date()));
+  const [range, setRange] = useState({ from: today, to: addDaysStr(today, 13) });
+  const [data, setData] = useState(null);
+  const [durations, setDurations] = useState({});
+  const [selected, setSelected] = useState(null);
+  const [form, setForm] = useState({ fromDate: addDaysStr(today, 1), toDate: addDaysStr(today, 5), weekdaysOnly: true, startTime: "10:00", endTime: "17:00" });
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+
+  useEffect(() => { if (view === "week") setRange({ from: weekStart, to: addDaysStr(weekStart, 6) }); }, [view, weekStart]);
+
+  const load = useCallback(async () => {
+    try { setData(await apiFetch(`/calendar/slots?from=${range.from}&to=${range.to}`)); }
+    catch (e) { setMsg({ err: true, text: e.message }); }
+  }, [range]);
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => { apiFetch("/calendar/durations").then(setDurations).catch(() => {}); }, []);
+
+  async function generate() {
+    setBusy(true); setMsg(null);
+    try {
+      const r = await apiFetch("/calendar/windows/generate", { method: "POST", body: JSON.stringify(form) });
+      setMsg({ text: `${r.created} day${r.created === 1 ? "" : "s"} published.` });
+      if (view === "week") setWeekStart(mondayOf(new Date(form.fromDate + "T00:00")));
+      else if (form.toDate > range.to) setRange(rg => ({ ...rg, to: form.toDate }));
+      else load();
+    } catch (e) { setMsg({ err: true, text: e.message }); }
+    finally { setBusy(false); }
+  }
+  async function act(path, method) { try { await apiFetch(path, { method }); setSelected(null); load(); } catch (e) { setMsg({ err: true, text: e.message }); } }
+  function rescheduleBooking(id) {
+    if (window.confirm("Free this time and email the candidate to choose a new one?")) act(`/calendar/bookings/${id}/release`, "POST");
+  }
+
+  const days = {};
+  (data?.windows || []).forEach(w => { (days[w.start.slice(0, 10)] ??= { windows: [], bookings: [] }).windows.push(w); });
+  (data?.bookings || []).forEach(b => { (days[b.start.slice(0, 10)] ??= { windows: [], bookings: [] }).bookings.push(b); });
+  const inputCls = "w-full px-3 py-2 rounded-xl border text-sm";
+  const inputSty = { borderColor: C.border, color: C.text, backgroundColor: C.bg };
+  const lbl = t => <label className="block text-xs font-semibold mb-1.5" style={{ color: C.muted }}>{t}</label>;
+  const dayKeys = Object.keys(days).sort();
+  const tabBtn = (id, label) => (
+    <button key={id} onClick={() => { setView(id); setSelected(null); }}
+      className="px-3 py-1.5 rounded-lg text-xs font-semibold border"
+      style={{ borderColor: view === id ? C.accent : C.border, backgroundColor: view === id ? `${C.accent}12` : "transparent", color: view === id ? C.accent : C.muted }}>
+      {label}
+    </button>
+  );
+  const weekLabel = `${new Date(weekStart + "T00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" })} – ${new Date(addDaysStr(weekStart, 6) + "T00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}`;
+
+  return (
+    <div>
+      <TopBar title="Interview Calendar" subtitle="Publish when you are free — candidates book a time that fits their interview length, and bookings never overlap" />
+      <div className="grid gap-6" style={{ gridTemplateColumns: "280px 1fr" }}>
+        <div className="space-y-4 self-start">
+          <Card className="p-5 space-y-3">
+            <p className="text-xs font-bold uppercase tracking-wide" style={{ color: C.muted }}>Publish availability</p>
+            <div className="grid grid-cols-2 gap-2">
+              <div>{lbl("From")}<input type="date" className={inputCls} style={inputSty} value={form.fromDate} onChange={e => setForm(f => ({ ...f, fromDate: e.target.value }))} /></div>
+              <div>{lbl("To")}<input type="date" className={inputCls} style={inputSty} value={form.toDate} onChange={e => setForm(f => ({ ...f, toDate: e.target.value }))} /></div>
+              <div>{lbl("Day starts")}<input type="time" className={inputCls} style={inputSty} value={form.startTime} onChange={e => setForm(f => ({ ...f, startTime: e.target.value }))} /></div>
+              <div>{lbl("Day ends")}<input type="time" className={inputCls} style={inputSty} value={form.endTime} onChange={e => setForm(f => ({ ...f, endTime: e.target.value }))} /></div>
+            </div>
+            <label className="flex items-center gap-2 text-xs" style={{ color: C.text }}>
+              <input type="checkbox" checked={form.weekdaysOnly} onChange={e => setForm(f => ({ ...f, weekdaysOnly: e.target.checked }))} /> Weekdays only
+            </label>
+            <Btn variant="primary" onClick={generate} disabled={busy}>{busy ? <><Spinner size={13} /> Publishing…</> : <><Plus size={13} /> Publish availability</>}</Btn>
+            {msg && <p className="text-xs" style={{ color: msg.err ? C.danger : C.success }}>{msg.text}</p>}
+          </Card>
+          <Card className="p-5 space-y-2">
+            <p className="text-xs font-bold uppercase tracking-wide" style={{ color: C.muted }}>Interview lengths</p>
+            {Object.entries(durations).map(([t, m]) => (
+              <div key={t} className="flex items-center justify-between text-xs">
+                <span style={{ color: C.text }}>{ROUND_LABELS[t] || t}</span>
+                <span className="font-bold" style={{ color: C.accent }}>{m} min</span>
+              </div>
+            ))}
+          </Card>
+        </div>
+
+        <div className="space-y-4 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            {tabBtn("week", "Week")}
+            {tabBtn("list", "List")}
+            {view === "week" ? (
+              <>
+                <button onClick={() => setWeekStart(addDaysStr(weekStart, -7))} className="px-2 py-1.5 rounded-lg border text-xs" style={{ borderColor: C.border, color: C.text }}>‹</button>
+                <button onClick={() => setWeekStart(mondayOf(new Date()))} className="px-3 py-1.5 rounded-lg border text-xs font-semibold" style={{ borderColor: C.border, color: C.text }}>Today</button>
+                <button onClick={() => setWeekStart(addDaysStr(weekStart, 7))} className="px-2 py-1.5 rounded-lg border text-xs" style={{ borderColor: C.border, color: C.text }}>›</button>
+                <span className="text-xs font-semibold" style={{ color: C.text }}>{weekLabel}</span>
+              </>
+            ) : (
+              <>
+                <input type="date" className="px-3 py-1.5 rounded-xl border text-xs" style={inputSty} value={range.from} onChange={e => setRange(r => ({ ...r, from: e.target.value }))} />
+                <span className="text-xs" style={{ color: C.muted }}>to</span>
+                <input type="date" className="px-3 py-1.5 rounded-xl border text-xs" style={inputSty} value={range.to} onChange={e => setRange(r => ({ ...r, to: e.target.value }))} />
+              </>
+            )}
+            <span className="text-xs ml-auto" style={{ color: C.muted }}>{data ? `${data.bookings.length} booked` : ""}</span>
+          </div>
+
+          {data === null && <div className="py-10 flex justify-center"><Spinner size={20} /></div>}
+
+          {data && view === "week" && (
+            <>
+              <CalendarWeekGrid data={data} weekStart={weekStart} onSelect={setSelected} selectedId={selected?.id} />
+              {selected && (
+                <Card className="p-4 flex items-center justify-between gap-4 flex-wrap">
+                  <div className="text-xs space-y-0.5">
+                    <p className="text-sm font-bold" style={{ color: C.text }}>{selected.candidateName}</p>
+                    <p style={{ color: C.muted }}>{ROUND_LABELS[selected.interviewType] || selected.interviewType} · {selected.roleTitle}</p>
+                    <p style={{ color: C.accent }} className="font-semibold">
+                      {new Date(selected.start).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })}, {clockTime(selected.start)}–{clockTime(selected.end)}
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Btn variant="secondary" onClick={() => rescheduleBooking(selected.id)}>Reschedule by email</Btn>
+                    <Btn variant="secondary" onClick={() => setSelected(null)}>Close</Btn>
+                  </div>
+                </Card>
+              )}
+            </>
+          )}
+
+          {data && view === "list" && dayKeys.length === 0 && (
+            <Card className="p-8 text-center text-sm" style={{ color: C.muted }}>Nothing in this range yet. Publish availability on the left.</Card>
+          )}
+          {data && view === "list" && dayKeys.map(day => (
+            <Card key={day} className="p-4 space-y-3">
+              <div className="flex items-center gap-2 flex-wrap">
+                <p className="text-xs font-bold" style={{ color: C.text }}>
+                  {new Date(day + "T00:00").toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })}
+                </p>
+                {days[day].windows.map(w => (
+                  <span key={w.id} className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold"
+                    style={{ border: `1px solid ${C.success}66`, color: C.success }}>
+                    Open {clockTime(w.start)}–{clockTime(w.end)}
+                    <button onClick={() => act(`/calendar/windows/${w.id}`, "DELETE")} title="Remove availability"><X size={11} /></button>
+                  </span>
+                ))}
+              </div>
+              {days[day].bookings.length === 0 ? (
+                <p className="text-xs" style={{ color: C.muted }}>No interviews booked.</p>
+              ) : (
+                <div className="space-y-2">
+                  {days[day].bookings.map(b => (
+                    <div key={b.id} className="flex items-center justify-between gap-3 px-3 py-2 rounded-xl text-xs"
+                      style={{ backgroundColor: `${C.accent}12`, border: `1px solid ${C.accent}44` }}>
+                      <div>
+                        <span className="font-bold" style={{ color: C.accent }}>{clockTime(b.start)}–{clockTime(b.end)}</span>
+                        <span className="ml-2 font-semibold" style={{ color: C.text }}>{b.candidateName}</span>
+                        <span className="ml-2" style={{ color: C.muted }}>{(ROUND_LABELS[b.interviewType] || b.interviewType)} · {b.roleTitle}</span>
+                      </div>
+                      <button onClick={() => rescheduleBooking(b.id)} className="underline shrink-0" style={{ color: C.danger }}>Reschedule</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
 // SIDEBAR
 // ============================================================
 function Sidebar({ active, setActive, user, onLogout }) {
@@ -432,6 +679,7 @@ function Sidebar({ active, setActive, user, onLogout }) {
     { id: "roles",        label: "Open Roles",         icon: Briefcase  },
     { id: "pipeline",     label: "Pipeline",           icon: Activity   },
     { id: "screening",    label: "Screening",          icon: FileCheck  },
+    { id: "calendar",     label: "Calendar",           icon: Calendar   },
     { id: "referrals",    label: "Referral",           icon: UserPlus   },
     { id: "integrations", label: "Integrations",       icon: Globe      },
   ];
@@ -781,6 +1029,8 @@ function RolesView({ setActive }) {
   const [bulkParsing, setBulkParsing] = useState(false);
   const [bulkParsed, setBulkParsed]   = useState(null);  // CreateRequisitionRequest[] | null
   const [bulkSaving, setBulkSaving]   = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [publishedIds, setPublishedIds] = useState(new Set());
 
   const filtered = (roles || []).filter(r => filter === "ALL" || r.status === filter);
 
@@ -867,6 +1117,23 @@ function RolesView({ setActive }) {
       if (detail?.id === id) setDetail(d => ({ ...d, status }));
     } finally {
       setUpdatingStatus(null);
+    }
+  }
+
+  async function handlePublishToJobBoard(id) {
+    setPublishing(true);
+    try {
+      const res = await apiFetch(`/requisitions/${id}/publish-to-jobboard`, { method: "POST" });
+      if (res.status === "already_published") {
+        alert("This role is already published to the job board.");
+      } else {
+        setPublishedIds(prev => new Set([...prev, id]));
+        alert(`Role published to the mock job board! (Job Board ID: ${res.mockJobRoleId})`);
+      }
+    } catch (e) {
+      alert("Failed to publish role: " + (e.message || "Unknown error"));
+    } finally {
+      setPublishing(false);
     }
   }
 
@@ -959,6 +1226,13 @@ function RolesView({ setActive }) {
                 className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white"
                 style={{ backgroundColor: C.accent }}>
                 <Activity size={14} /> View Pipeline
+              </button>
+              <button
+                disabled={publishing || publishedIds.has(detail.id)}
+                onClick={() => handlePublishToJobBoard(detail.id)}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white"
+                style={{ backgroundColor: publishedIds.has(detail.id) ? C.success : "#7c3aed", opacity: publishing ? 0.5 : 1 }}>
+                {publishing ? "Publishing…" : publishedIds.has(detail.id) ? "✓ Published to Job Board" : "Publish to Job Board"}
               </button>
               {detail.status !== "OPEN" && (
                 <button disabled={!!updatingStatus} onClick={() => handleStatusChange(detail.id, "OPEN")}
@@ -2124,8 +2398,9 @@ function PipelineView() {
   const [emailSaveError, setEmailSaveError] = useState(null);
   const [sendingInvite, setSendingInvite] = useState(false);
   const [inviteSent, setInviteSent] = useState(false);
+  const [reschedulingId, setReschedulingId] = useState(null);
   const [scheduleModal, setScheduleModal] = useState(null);
-  const [scheduleForm, setScheduleForm] = useState({ interviewType: "PHONE_SCREEN", confirmedSlot: "", notes: "" });
+  const [scheduleForm, setScheduleForm] = useState({ interviewType: "PHONE_SCREEN", notes: "" });
   const [scheduling, setScheduling] = useState(false);
   const [rescheduleModal, setRescheduleModal] = useState(null); // { interviewId, roundNumber, interviewType }
   const [rescheduleSlot, setRescheduleSlot] = useState("");
@@ -2141,6 +2416,8 @@ function PipelineView() {
   const [negotiateForm, setNegotiateForm] = useState({}); // offerId -> { salaryAmount, startDate, notes, changedBy }
   const [savingTerms, setSavingTerms] = useState(null);
   const [letterModal, setLetterModal] = useState(null); // null | { offerId, candidateName, candidateEmail, letterText }
+  const [letterEditing, setLetterEditing] = useState(false);
+  const [letterEditText, setLetterEditText] = useState("");
   const [generatingLetter, setGeneratingLetter] = useState(null); // offerId being generated
   const [sendingOfferEmail, setSendingOfferEmail] = useState(false);
   const [offerEmailSent, setOfferEmailSent] = useState(false);
@@ -2213,6 +2490,22 @@ function PipelineView() {
       reload();
     } finally {
       setCompletingRoundId(null);
+    }
+  }
+
+  async function handleEmailReschedule(interviewId, hasBooking) {
+    const ask = hasBooking
+      ? "Free this time and email the candidate to choose a new one?"
+      : "Resend the booking link to the candidate?";
+    if (!window.confirm(ask)) return;
+    setReschedulingId(interviewId);
+    try {
+      await apiFetch(`/calendar/interviews/${interviewId}/reschedule`, { method: "POST" });
+      reload();
+    } catch (e) {
+      window.alert(e.message);
+    } finally {
+      setReschedulingId(null);
     }
   }
 
@@ -2330,7 +2623,7 @@ function PipelineView() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(scheduleForm),
       });
-      setScheduleForm({ interviewType: "PHONE_SCREEN", confirmedSlot: "", notes: "" });
+      setScheduleForm({ interviewType: "PHONE_SCREEN", notes: "" });
       // Stay in modal to show the invitation email that was sent
       setScheduleModal(prev => ({ ...prev, confirmed: true, invitationEmail: result.invitationEmail, candidateEmail: result.candidateEmail }));
       reload();
@@ -2532,11 +2825,11 @@ function PipelineView() {
                             {c.offer?.history?.length > 0 && (
                               <div className="space-y-1">
                                 <p className="text-[9px] font-semibold uppercase tracking-wide" style={{ color: C.muted }}>Negotiation History</p>
-                                {c.offer.history.map(h => (
-                                  <div key={h.roundNumber} className="flex gap-1.5 items-start">
+                                {c.offer.history.map((h, i) => (
+                                  <div key={i} className="flex gap-1.5 items-start">
                                     <div className="w-3.5 h-3.5 rounded-full flex items-center justify-center shrink-0 mt-0.5 text-[7px] font-bold text-white"
                                       style={{ backgroundColor: h.changedBy === "CANDIDATE" ? C.accent : C.warning }}>
-                                      {h.roundNumber}
+                                      {i + 1}
                                     </div>
                                     <div className="flex-1 min-w-0">
                                       <p className="text-[9px] font-semibold" style={{ color: C.text }}>
@@ -2589,25 +2882,20 @@ function PipelineView() {
                                     </button>
                                   )}
                                   {offer.status === "SENT" && (
-                                    <div className="grid grid-cols-3 gap-1">
-                                      {[["ACCEPTED","Accept",C.success],["NEGOTIATING","Negotiate",C.warning],["DECLINED","Decline",C.danger]].map(([s,l,col]) => (
-                                        <button key={s} disabled={isUpdating} onClick={() => handleOfferStatus(offer.id, s)}
-                                          className="text-[9px] font-semibold py-1 rounded-lg text-white"
-                                          style={{ backgroundColor: col, opacity: isUpdating ? 0.5 : 1 }}>
-                                          {l}
-                                        </button>
-                                      ))}
-                                    </div>
+                                    <p className="text-[10px] leading-snug px-2 py-1.5 rounded-lg"
+                                      style={{ color: C.muted, backgroundColor: `${C.accent}08`, border: `1px solid ${C.accent}22` }}>
+                                      Awaiting the candidate's response. They accept, negotiate or decline using the buttons in the offer email.
+                                    </p>
                                   )}
                                   {/* Negotiation history — always visible when history exists */}
                                   {offer.history?.length > 0 && (
                                     <div className="space-y-1 pt-1" style={{ borderTop: `1px solid ${C.border}` }}>
                                       <p className="text-[9px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>Negotiation History</p>
-                                      {offer.history.map(h => (
-                                        <div key={h.roundNumber} className="flex gap-1.5 items-start">
+                                      {offer.history.map((h, i) => (
+                                        <div key={i} className="flex gap-1.5 items-start">
                                           <div className="w-3.5 h-3.5 rounded-full flex items-center justify-center shrink-0 mt-0.5 text-[7px] font-bold text-white"
                                             style={{ backgroundColor: h.changedBy === "CANDIDATE" ? C.accent : C.warning }}>
-                                            {h.roundNumber}
+                                            {i + 1}
                                           </div>
                                           <div className="flex-1 min-w-0">
                                             <p className="text-[9px] font-semibold" style={{ color: C.text }}>
@@ -2634,7 +2922,7 @@ function PipelineView() {
 
                                         {/* Update terms form */}
                                         <div className="space-y-1.5 p-2 rounded-lg" style={{ backgroundColor: `${C.warning}08`, border: `1px solid ${C.warning}22` }}>
-                                          <p className="text-[9px] font-semibold" style={{ color: C.muted }}>Update Terms</p>
+                                          <p className="text-[9px] font-semibold" style={{ color: C.muted }}>Revise offer — the candidate is emailed the new terms to respond to</p>
                                           <div className="flex gap-1">
                                             <input type="number" placeholder="New salary"
                                               value={nf.salaryAmount || ""}
@@ -2657,34 +2945,13 @@ function PipelineView() {
                                             onChange={e => setNf({ notes: e.target.value })}
                                             className="w-full text-[9px] px-1.5 py-1 rounded-md border"
                                             style={{ borderColor: C.border, color: C.text }} />
-                                          <div className="flex gap-1">
-                                            {["RECRUITER","CANDIDATE"].map(who => (
-                                              <button key={who} onClick={() => setNf({ changedBy: who })}
-                                                className="flex-1 text-[9px] py-0.5 rounded-md border font-semibold"
-                                                style={{
-                                                  borderColor: (nf.changedBy || "RECRUITER") === who ? C.accent : C.border,
-                                                  color: (nf.changedBy || "RECRUITER") === who ? C.accent : C.muted,
-                                                  backgroundColor: (nf.changedBy || "RECRUITER") === who ? `${C.accent}10` : "transparent"
-                                                }}>{who === "RECRUITER" ? "By Us" : "By Candidate"}</button>
-                                            ))}
-                                          </div>
                                           <button disabled={savingTerms === offer.id} onClick={() => handleUpdateTerms(offer.id)}
                                             className="w-full text-[9px] font-semibold py-1 rounded-md text-white"
                                             style={{ backgroundColor: C.warning, opacity: savingTerms === offer.id ? 0.5 : 1 }}>
-                                            {savingTerms === offer.id ? "Saving…" : "Save Counter Offer"}
+                                            {savingTerms === offer.id ? "Sending…" : "Send Revised Offer"}
                                           </button>
                                         </div>
 
-                                        {/* Resolve buttons */}
-                                        <div className="grid grid-cols-2 gap-1 pt-1">
-                                          {[["ACCEPTED","✓ Accept",C.success],["DECLINED","✗ Decline",C.danger]].map(([s,l,col]) => (
-                                            <button key={s} disabled={isUpdating} onClick={() => handleOfferStatus(offer.id, s)}
-                                              className="text-[9px] font-semibold py-1.5 rounded-lg text-white"
-                                              style={{ backgroundColor: col, opacity: isUpdating ? 0.5 : 1 }}>
-                                              {l}
-                                            </button>
-                                          ))}
-                                        </div>
                                       </div>
                                     );
                                   })()}
@@ -2731,22 +2998,32 @@ function PipelineView() {
                                           )}
                                         </div>
                                         <span className="text-[9px] font-bold uppercase" style={{ color: ROUND_COLORS[r.status] }}>
-                                          {r.status === "COMPLETED" ? "✓ Done" : r.status === "CANCELLED" ? "✗" : r.status.toLowerCase()}
+                                          {r.status === "COMPLETED" ? "✓ Done" : r.status === "CANCELLED" ? "✗" : r.status === "PROPOSED" ? "awaiting booking" : r.status.toLowerCase()}
                                         </span>
                                         {(r.status === "CONFIRMED" || r.status === "PROPOSED") && (
                                           <div className="flex gap-1 flex-shrink-0">
+                                            {r.status === "CONFIRMED" && (
+                                              <button
+                                                disabled={completingRoundId === r.id}
+                                                onClick={() => handleCompleteRound(r.id)}
+                                                className="text-[9px] font-semibold px-1.5 py-0.5 rounded-md text-white"
+                                                style={{ backgroundColor: C.success, opacity: completingRoundId === r.id ? 0.5 : 1 }}>
+                                                {completingRoundId === r.id ? "…" : "Done"}
+                                              </button>
+                                            )}
                                             <button
-                                              disabled={completingRoundId === r.id}
-                                              onClick={() => handleCompleteRound(r.id)}
-                                              className="text-[9px] font-semibold px-1.5 py-0.5 rounded-md text-white"
-                                              style={{ backgroundColor: C.success, opacity: completingRoundId === r.id ? 0.5 : 1 }}>
-                                              {completingRoundId === r.id ? "…" : "Done"}
+                                              disabled={reschedulingId === r.id}
+                                              onClick={() => handleEmailReschedule(r.id, r.status === "CONFIRMED")}
+                                              className="text-[9px] font-semibold px-1.5 py-0.5 rounded-md"
+                                              style={{ color: C.warning, border: `1px solid ${C.warning}55`, background: `${C.warning}10`, opacity: reschedulingId === r.id ? 0.5 : 1 }}>
+                                              {reschedulingId === r.id ? "…" : r.status === "CONFIRMED" ? "Reschedule" : "Resend link"}
                                             </button>
                                             <button
                                               onClick={() => { setRescheduleModal({ interviewId: r.id, roundNumber: r.roundNumber, interviewType: r.interviewType }); setRescheduleSlot(""); }}
-                                              className="text-[9px] font-semibold px-1.5 py-0.5 rounded-md"
-                                              style={{ color: C.warning, border: `1px solid ${C.warning}55`, background: `${C.warning}10` }}>
-                                              Reschedule
+                                              title="Set a time yourself without asking the candidate"
+                                              className="text-[9px] underline px-0.5"
+                                              style={{ color: C.muted }}>
+                                              Set manually
                                             </button>
                                           </div>
                                         )}
@@ -2795,7 +3072,7 @@ function PipelineView() {
                                 {(!activeRound || rounds.length === 0) && !allCompleted && (
                                   <button
                                     onClick={() => {
-                                      setScheduleForm(f => ({ ...f, interviewType: nextType, confirmedSlot: "", notes: "" }));
+                                      setScheduleForm(f => ({ ...f, interviewType: nextType, notes: "" }));
                                       setScheduleModal({ candidateId: c.candidateId, candidateName: c.candidateName, requisitionId: c.requisitionId, nextType });
                                     }}
                                     className="w-full text-[10px] font-semibold py-1 rounded-lg text-white"
@@ -2808,7 +3085,7 @@ function PipelineView() {
                                     {nextType && (
                                       <button
                                         onClick={() => {
-                                          setScheduleForm(f => ({ ...f, interviewType: nextType, confirmedSlot: "", notes: "" }));
+                                          setScheduleForm(f => ({ ...f, interviewType: nextType, notes: "" }));
                                           setScheduleModal({ candidateId: c.candidateId, candidateName: c.candidateName, requisitionId: c.requisitionId, nextType });
                                         }}
                                         className="w-full text-[10px] font-semibold py-1 rounded-lg"
@@ -3135,10 +3412,26 @@ function PipelineView() {
                   Generated for <strong>{letterModal.candidateName}</strong>
                 </p>
               </div>
-              <button onClick={() => setLetterModal(null)}
-                className="w-8 h-8 rounded-xl flex items-center justify-center hover:bg-slate-100">
-                <X size={16} style={{ color: C.muted }} />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    if (letterEditing) {
+                      setLetterModal(m => ({ ...m, letterText: letterEditText }));
+                      setLetterEditing(false);
+                    } else {
+                      setLetterEditText(letterModal.letterText);
+                      setLetterEditing(true);
+                    }
+                  }}
+                  className="px-3 py-1.5 rounded-xl border text-xs font-semibold transition-colors"
+                  style={{ borderColor: letterEditing ? C.accent : C.border, color: letterEditing ? C.accent : C.muted }}>
+                  {letterEditing ? "Save Edits" : "Edit"}
+                </button>
+                <button onClick={() => { setLetterModal(null); setLetterEditing(false); }}
+                  className="w-8 h-8 rounded-xl flex items-center justify-center hover:bg-slate-100">
+                  <X size={16} style={{ color: C.muted }} />
+                </button>
+              </div>
             </div>
 
             {/* Candidate email */}
@@ -3161,15 +3454,25 @@ function PipelineView() {
 
             {/* Letter body */}
             <div className="flex-1 overflow-y-auto rounded-xl border p-4 mb-4"
-              style={{ borderColor: C.border, backgroundColor: "#FAFAFA" }}>
-              <pre className="text-sm whitespace-pre-wrap font-sans leading-relaxed"
-                style={{ color: C.text }}>{letterModal.letterText}</pre>
+              style={{ borderColor: letterEditing ? C.accent : C.border, backgroundColor: "#FAFAFA" }}>
+              {letterEditing ? (
+                <textarea
+                  className="w-full h-full min-h-[300px] text-sm font-sans leading-relaxed resize-none outline-none bg-transparent"
+                  style={{ color: C.text }}
+                  value={letterEditText}
+                  onChange={e => setLetterEditText(e.target.value)}
+                />
+              ) : (
+                <pre className="text-sm whitespace-pre-wrap font-sans leading-relaxed"
+                  style={{ color: C.text }}>{letterModal.letterText}</pre>
+              )}
             </div>
 
             {/* Actions */}
             <div className="flex gap-2 shrink-0">
               <Btn variant="primary" onClick={() => {
-                navigator.clipboard.writeText(letterModal.letterText);
+                const text = letterEditing ? letterEditText : letterModal.letterText;
+                navigator.clipboard.writeText(text);
                 setCopied("letter");
                 setTimeout(() => setCopied(false), 2000);
               }}>
@@ -3177,7 +3480,8 @@ function PipelineView() {
               </Btn>
               <button
                 onClick={() => {
-                  const blob = new Blob([letterModal.letterText], { type: "text/plain" });
+                  const text = letterEditing ? letterEditText : letterModal.letterText;
+                  const blob = new Blob([text], { type: "text/plain" });
                   const url = URL.createObjectURL(blob);
                   const a = document.createElement("a");
                   a.href = url;
@@ -3193,11 +3497,12 @@ function PipelineView() {
               <Btn variant="primary"
                 disabled={sendingOfferEmail || offerEmailSent}
                 onClick={async () => {
+                  const text = letterEditing ? letterEditText : letterModal.letterText;
                   setSendingOfferEmail(true);
                   try {
                     await apiFetch(`/orchestrator/offers/${letterModal.offerId}/send-email`, {
                       method: "POST",
-                      body: JSON.stringify({ letterText: letterModal.letterText }),
+                      body: JSON.stringify({ letterText: text }),
                     });
                     setOfferEmailSent(true);
                     reload();
@@ -3209,7 +3514,7 @@ function PipelineView() {
                 style={{ backgroundColor: offerEmailSent ? C.success : C.accent }}>
                 {offerEmailSent ? <><CheckCircle2 size={14} /> Sent!</> : sendingOfferEmail ? <><Spinner size={14} /> Sending…</> : <><Mail size={14} /> Send to Candidate</>}
               </Btn>
-              <Btn variant="secondary" onClick={() => setLetterModal(null)}>Cancel</Btn>
+              <Btn variant="secondary" onClick={() => { setLetterModal(null); setLetterEditing(false); }}>Cancel</Btn>
             </div>
           </Card>
         </div>
@@ -3384,7 +3689,7 @@ function PipelineView() {
                 <div className="flex items-center gap-2 px-3 py-2 rounded-xl mb-3 shrink-0"
                   style={{ background: `${C.success}10`, border: `1px solid ${C.success}33` }}>
                   <span style={{ color: C.success }}>✓</span>
-                  <span className="text-xs font-semibold" style={{ color: C.success }}>Interview confirmed &amp; invitation sent</span>
+                  <span className="text-xs font-semibold" style={{ color: C.success }}>Booking link sent — awaiting candidate to choose a time</span>
                 </div>
                 <div className="flex items-center gap-2 px-3 py-2 rounded-xl mb-3 shrink-0"
                   style={{ background: `${C.accent}08`, border: `1px solid ${C.accent}22` }}>
@@ -3425,17 +3730,10 @@ function PipelineView() {
                     </div>
                   </div>
 
-                  {/* Date & time */}
-                  <div>
-                    <label className="block text-xs font-semibold mb-1.5" style={{ color: C.muted }}>Date & Time</label>
-                    <input
-                      type="datetime-local"
-                      value={scheduleForm.confirmedSlot}
-                      onChange={e => setScheduleForm(f => ({ ...f, confirmedSlot: e.target.value }))}
-                      className="w-full px-3 py-2 rounded-xl border text-sm"
-                      style={{ borderColor: C.border, color: C.text, backgroundColor: C.bg }}
-                    />
-                  </div>
+                  <p className="text-xs leading-relaxed" style={{ color: C.muted }}>
+                    The candidate will receive a link to choose a time from the shared <strong>Calendar</strong>.
+                    Make sure you have published availability there first.
+                  </p>
 
                   {/* Notes */}
                   <div>
@@ -3452,8 +3750,8 @@ function PipelineView() {
                 </div>
 
                 <div className="flex gap-2 mt-5">
-                  <Btn variant="primary" onClick={handleScheduleInterview} disabled={!scheduleForm.confirmedSlot || scheduling}>
-                    {scheduling ? <><Spinner size={13} /> Scheduling…</> : <><Calendar size={13} /> Confirm & Send Invite</>}
+                  <Btn variant="primary" onClick={handleScheduleInterview} disabled={scheduling}>
+                    {scheduling ? <><Spinner size={13} /> Sending…</> : <><Calendar size={13} /> Send Booking Link</>}
                   </Btn>
                   <Btn variant="secondary" onClick={() => setScheduleModal(null)}>Cancel</Btn>
                 </div>
@@ -3497,29 +3795,52 @@ function PipelineView() {
                   <div className="space-y-4">
                     {historyData.events.map((ev, idx) => {
                       const isStage = ev.type === "STAGE";
-                      const dotColor = isStage ? C.accent : C.success;
-                      const stageColor = isStage ? ({ REJECTED: C.danger, HIRED: C.success }[ev.stage] || C.accent) : C.success;
+                      const isInterview = ev.type === "INTERVIEW";
+                      const isNotification = ev.type === "NOTIFICATION";
+
+                      const dotColor = isStage
+                        ? ({ REJECTED: C.danger, HIRED: C.success }[ev.stage] || C.accent)
+                        : isInterview ? "#f59e0b"
+                        : C.success;
+
+                      const ivStatusColor = { COMPLETED: C.success, CANCELLED: C.danger, CONFIRMED: "#3b82f6", PROPOSED: C.muted }[ev.interviewStatus] || C.muted;
+
                       return (
                         <div key={idx} className="flex gap-4 pl-2">
                           {/* Dot */}
                           <div className="w-5 h-5 rounded-full border-2 border-white flex items-center justify-center flex-shrink-0 mt-0.5 z-10"
-                            style={{ backgroundColor: stageColor }}>
-                            {isStage
-                              ? <Activity size={9} color="#fff" />
-                              : <Mail size={9} color="#fff" />}
+                            style={{ backgroundColor: dotColor }}>
+                            {isStage && <Activity size={9} color="#fff" />}
+                            {isInterview && <Calendar size={9} color="#fff" />}
+                            {isNotification && <Mail size={9} color="#fff" />}
                           </div>
                           {/* Content */}
                           <div className="flex-1 pb-1">
                             <div className="flex items-start justify-between gap-2">
                               <div>
-                                {isStage ? (
+                                {isStage && (
                                   <>
-                                    <p className="text-xs font-bold" style={{ color: stageColor }}>
-                                      {STAGE_LABELS[ev.stage] || ev.stage}
-                                    </p>
+                                    <p className="text-xs font-bold" style={{ color: dotColor }}>{STAGE_LABELS[ev.stage] || ev.stage}</p>
                                     <p className="text-[10px]" style={{ color: C.muted }}>{ev.requisitionTitle}</p>
                                   </>
-                                ) : (
+                                )}
+                                {isInterview && (
+                                  <>
+                                    <p className="text-xs font-bold" style={{ color: "#f59e0b" }}>
+                                      {ev.interviewType} Interview
+                                      <span className="ml-1.5 px-1.5 py-0.5 rounded text-[9px] font-bold" style={{ backgroundColor: ivStatusColor + "20", color: ivStatusColor }}>
+                                        {ev.interviewStatus}
+                                      </span>
+                                    </p>
+                                    <p className="text-[10px]" style={{ color: C.muted }}>{ev.requisitionTitle}</p>
+                                    {ev.confirmedSlot && (
+                                      <p className="text-[10px]" style={{ color: C.muted }}>
+                                        Scheduled: {new Date(ev.confirmedSlot).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                                      </p>
+                                    )}
+                                  </>
+                                )}
+                                {isNotification && (
                                   <>
                                     <p className="text-xs font-bold" style={{ color: C.success }}>Notification sent</p>
                                     <p className="text-[10px]" style={{ color: C.muted }}>via {ev.channel}</p>
@@ -3531,15 +3852,17 @@ function PipelineView() {
                               </p>
                             </div>
                             {isStage && ev.agent && (
-                              <p className="text-[10px] font-semibold mt-0.5"
-                                style={{ color: AGENT_META[ev.agent]?.color || C.muted }}>
+                              <p className="text-[10px] font-semibold mt-0.5" style={{ color: AGENT_META[ev.agent]?.color || C.muted }}>
                                 {AGENT_META[ev.agent]?.label || ev.agent}
                               </p>
+                            )}
+                            {isInterview && ev.notes && (
+                              <p className="text-[11px] mt-1 leading-relaxed" style={{ color: C.text }}>{ev.notes}</p>
                             )}
                             {isStage && ev.notes && (
                               <p className="text-[11px] mt-1 leading-relaxed" style={{ color: C.text }}>{ev.notes}</p>
                             )}
-                            {!isStage && ev.message && (
+                            {isNotification && ev.message && (
                               <p className="text-[11px] mt-1 leading-relaxed line-clamp-3" style={{ color: C.text }}>{ev.message}</p>
                             )}
                           </div>
@@ -5648,6 +5971,8 @@ function PublicReferralPage() {
 // ============================================================
 export default function App() {
   if (window.location.pathname === "/refer") return <PublicReferralPage />;
+  if (window.location.pathname === "/offer-respond") return <OfferRespondPage />;
+  if (window.location.pathname === "/interview-book") return <InterviewBookPage />;
 
   const [user, setUser] = useState(() => {
     const token = sessionStorage.getItem("jwt");
@@ -5681,6 +6006,7 @@ export default function App() {
     roles:        <RolesView setActive={setActive} />,
     pipeline:     <PipelineView />,
     screening:    <ScreeningView />,
+    calendar:     <CalendarView />,
     referrals:    <ReferralsView currentUser={displayUser} />,
     scheduling:   null,
     integrations: (

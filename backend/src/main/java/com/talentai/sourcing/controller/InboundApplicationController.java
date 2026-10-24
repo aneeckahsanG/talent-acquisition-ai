@@ -2,6 +2,7 @@ package com.talentai.sourcing.controller;
 
 import com.talentai.common.repository.CandidateRepository;
 import com.talentai.common.repository.JobRequisitionRepository;
+import com.talentai.common.service.EmailService;
 import com.talentai.orchestrator.agent.RecruitingOrchestratorService;
 import com.talentai.screening.service.ScreeningAgentService;
 import com.talentai.sourcing.dto.SourcingDtos.DirectApplyRequest;
@@ -35,6 +36,7 @@ public class InboundApplicationController {
     private final CandidateRepository candidateRepository;
     private final JobRequisitionRepository jobRequisitionRepository;
     private final RecruitingOrchestratorService orchestratorService;
+    private final EmailService emailService;
 
     /**
      * Receives an application from an external job board webhook.
@@ -81,6 +83,12 @@ public class InboundApplicationController {
             Long matchId = result.getMatchId();
 
             log.info("Inbound application accepted: '{}' → matchId {}", fullName, matchId);
+
+            // Notify HR inbox of the new CV
+            String roleName = jobRequisitionRepository.findById(requisitionId)
+                    .map(r -> r.getTitle()).orElse("Requisition #" + requisitionId);
+            emailService.notifyHrOfApplication(fullName, str(payload, "email", null),
+                    roleName, str(payload, "resumeText", null), source);
 
             // Hand the application to the agentic orchestrator — Claude decides the steps
             // (screen, check pipeline, shortlist/reject, draft outreach) with human approval gates.

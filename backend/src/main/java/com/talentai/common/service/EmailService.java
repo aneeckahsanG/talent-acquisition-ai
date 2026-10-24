@@ -25,9 +25,33 @@ public class EmailService {
     @Value("${spring.mail.username}")
     private String fromAddress;
 
+    @Value("${app.hr-notification-email:ahsanhabib19902021@gmail.com}")
+    private String hrNotificationEmail;
+
     @Async
     public void sendHtml(String to, String subject, String htmlBody) {
         trySend(to, subject, htmlBody);
+    }
+
+    /** Sends an internal notification to the HR inbox, with an optional extra HTML block (e.g. a button). */
+    @Async
+    public void notifyHr(String subject, String bodyText, String extraHtml) {
+        trySend(hrNotificationEmail, subject, wrapInTemplateWithExtra(bodyText, "TA", extraHtml));
+    }
+
+    /** Forwards a new CV/application notification to the HR inbox. */
+    @Async
+    public void notifyHrOfApplication(String candidateName, String candidateEmail,
+                                       String roleName, String resumeText, String source) {
+        String snippet = (resumeText != null && resumeText.length() > 800)
+                ? resumeText.substring(0, 800) + "…" : (resumeText != null ? resumeText : "(no resume provided)");
+        String body = "New application received via " + source + ".\n\n"
+                + "Candidate: " + candidateName + "\n"
+                + "Email: " + (candidateEmail != null ? candidateEmail : "N/A") + "\n"
+                + "Role: " + roleName + "\n\n"
+                + "Resume / CV:\n" + snippet;
+        String subject = "New CV Received – " + candidateName + " for " + roleName;
+        trySend(hrNotificationEmail, subject, wrapInTemplate(body, "TA"));
     }
 
     @Async
@@ -132,6 +156,53 @@ public class EmailService {
     }
 
     private record SendResult(boolean success, String errorMessage) {}
+
+    /** Wraps plain text in the HTML template and injects an extra HTML block after the body. */
+    public String wrapInTemplateWithExtra(String bodyText, String logoInitials, String extraHtml) {
+        String escaped = bodyText
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\n", "<br/>");
+        return """
+                <!DOCTYPE html>
+                <html>
+                <head><meta charset="UTF-8"/></head>
+                <body style="margin:0;padding:0;background:#F1F5F9;font-family:Arial,sans-serif;">
+                  <table width="100%%" cellpadding="0" cellspacing="0" style="padding:40px 0;">
+                    <tr><td align="center">
+                      <table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+                        <tr>
+                          <td style="background:linear-gradient(135deg,#6366F1,#8B5CF6);padding:28px 36px;">
+                            <table><tr>
+                              <td style="width:44px;height:44px;background:rgba(255,255,255,0.2);border-radius:10px;text-align:center;vertical-align:middle;">
+                                <span style="color:#fff;font-size:18px;font-weight:bold;">%s</span>
+                              </td>
+                              <td style="padding-left:12px;">
+                                <div style="color:#fff;font-size:18px;font-weight:bold;">TalentAcquisition AI</div>
+                                <div style="color:rgba(255,255,255,0.75);font-size:12px;">Agentic Talent Sourcing Platform</div>
+                              </td>
+                            </tr></table>
+                          </td>
+                        </tr>
+                        <tr>
+                          <td style="padding:36px;color:#334155;font-size:15px;line-height:1.7;">
+                            %s
+                            %s
+                          </td>
+                        </tr>
+                        <tr>
+                          <td style="padding:20px 36px;background:#F8FAFC;border-top:1px solid #E2E8F0;font-size:12px;color:#94A3B8;text-align:center;">
+                            This email was sent by TalentAcquisition AI on behalf of the recruiting team.
+                          </td>
+                        </tr>
+                      </table>
+                    </td></tr>
+                  </table>
+                </body>
+                </html>
+                """.formatted(logoInitials, escaped, extraHtml != null ? extraHtml : "");
+    }
 
     /** Wraps plain text invitation email in a clean HTML template. */
     public String wrapInTemplate(String bodyText, String logoInitials) {

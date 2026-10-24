@@ -146,16 +146,6 @@ public class ScreeningAgentService {
         JobRequisition requisition = jobRequisitionRepository.findById(requisitionId)
                 .orElseThrow(() -> new IllegalArgumentException("Job requisition not found: " + requisitionId));
 
-        // Block duplicate screening for same candidate + requisition
-        if (candidateEmail != null && !candidateEmail.isBlank()) {
-            var existingCandidate = candidateRepository.findByEmail(candidateEmail).orElse(null);
-            if (existingCandidate != null &&
-                    screeningResultRepository.findByCandidateIdAndRequisitionId(existingCandidate.getId(), requisitionId).isPresent()) {
-                throw new IllegalArgumentException(
-                        "This candidate has already been screened for this role. Duplicate upload is not allowed.");
-            }
-        }
-
         String resumeText = pdfTextExtractor.extractText(resumeFile);
         if (resumeText == null || resumeText.isBlank()) {
             throw new IllegalArgumentException("Could not extract any text from the uploaded resume file.");
@@ -163,6 +153,12 @@ public class ScreeningAgentService {
 
         Candidate candidate = findOrCreateCandidate(
                 candidateName, candidateEmail, resumeText, resumeFile.getOriginalFilename(), "UPLOAD");
+
+        // Block duplicate screening after we have the resolved candidate ID
+        if (screeningResultRepository.findByCandidateIdAndRequisitionId(candidate.getId(), requisitionId).isPresent()) {
+            throw new IllegalArgumentException(
+                    "This candidate has already been screened for this role. Duplicate upload is not allowed.");
+        }
 
         ScreeningResult result = runScreening(candidate, requisition);
         return toResponse(result, candidate, requisition);
