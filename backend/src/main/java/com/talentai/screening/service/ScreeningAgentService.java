@@ -328,8 +328,12 @@ public class ScreeningAgentService {
 
         stage.setStage(decision.equals("ADVANCE") ? "SHORTLISTED" : "REJECTED");
         stage.setUpdatedByAgent("HUMAN");
-        stage.setNotes("Human reviewer decision: " + decision
-                + (request.getNotes() != null ? " - " + request.getNotes() : ""));
+        String reviewerNotes = request.getNotes();
+        stage.setEnteredAt(java.time.LocalDateTime.now());
+        // A rejection stores the recruiter's reason as-is so it reads cleanly on the rejected card
+        stage.setNotes(decision.equals("REJECT") && reviewerNotes != null && !reviewerNotes.isBlank()
+                ? reviewerNotes.trim()
+                : "Human reviewer decision: " + decision + (reviewerNotes != null ? " - " + reviewerNotes : ""));
         pipelineStageRepository.save(stage);
 
         activityLogRepository.save(AgentActivityLog.builder()
@@ -449,10 +453,12 @@ public class ScreeningAgentService {
     }
 
     private ScreeningResultResponse toResponse(ScreeningResult result, Candidate candidate, JobRequisition requisition) {
-        String pipelineStage = pipelineStageRepository
+        var stageEntity = pipelineStageRepository
                 .findByCandidateIdAndRequisitionId(result.getCandidateId(), result.getRequisitionId())
-                .map(com.talentai.common.entity.PipelineStage::getStage)
                 .orElse(null);
+        String pipelineStage = stageEntity != null ? stageEntity.getStage() : null;
+        String rejectionReason = stageEntity != null && "REJECTED".equals(stageEntity.getStage())
+                ? stageEntity.getNotes() : null;
 
         boolean rejectionEmailSent = notificationLogRepository
                 .existsByCandidateIdAndRequisitionIdAndNotificationTypeAndStatus(
@@ -481,6 +487,7 @@ public class ScreeningAgentService {
                 .reviewerDecision(result.getReviewerDecision())
                 .reviewerNotes(result.getReviewerNotes())
                 .pipelineStage(pipelineStage)
+                .rejectionReason(rejectionReason)
                 .createdAt(result.getCreatedAt() != null ? result.getCreatedAt() : LocalDateTime.now())
                 .rejectionEmailSent(rejectionEmailSent)
                 .outreachSent(outreachSent)

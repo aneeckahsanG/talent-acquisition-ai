@@ -28,7 +28,24 @@ public class OrchestratorController {
             @PathVariable Long requisitionId,
             @PathVariable Long candidateId,
             @RequestBody Map<String, String> body) {
-        return ResponseEntity.ok(orchestratorService.moveStage(requisitionId, candidateId, body.get("stage")));
+        return ResponseEntity.ok(orchestratorService.moveStage(
+                requisitionId, candidateId, body.get("stage"), "HUMAN", body.get("reason")));
+    }
+
+    /** The criteria each interview type is scored on, with display labels. */
+    @GetMapping("/scorecard-criteria")
+    public ResponseEntity<Map<String, Object>> scorecardCriteria() {
+        return ResponseEntity.ok(orchestratorService.scorecardCriteria());
+    }
+
+    /** Submit the interviewer's scorecard for a booked interview; this also completes the round. */
+    @PostMapping("/interviews/{interviewId}/scorecard")
+    public ResponseEntity<InterviewRoundResponse> submitScorecard(
+            @PathVariable Long interviewId,
+            @RequestBody ScorecardRequest body,
+            java.security.Principal principal) {
+        return ResponseEntity.ok(orchestratorService.submitScorecard(
+                interviewId, body, principal != null ? principal.getName() : null));
     }
 
     /** Schedule an interview and advance the candidate to INTERVIEW_SCHEDULED stage. */
@@ -78,12 +95,6 @@ public class OrchestratorController {
             @PathVariable Long offerId,
             @RequestBody Map<String, String> body) {
         return ResponseEntity.ok(orchestratorService.updateOfferStatus(offerId, body.get("status")));
-    }
-
-    /** Mark an interview round as completed. */
-    @PatchMapping("/interviews/{interviewId}/complete")
-    public ResponseEntity<InterviewRoundResponse> completeRound(@PathVariable Long interviewId) {
-        return ResponseEntity.ok(orchestratorService.completeInterviewRound(interviewId));
     }
 
     /** Simulate a candidate replying to their interview invitation. */

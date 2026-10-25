@@ -51,6 +51,7 @@ public class ScreeningDtos {
         private String reviewerDecision;
         private String reviewerNotes;
         private String pipelineStage;
+        private String rejectionReason;
         private LocalDateTime createdAt;
         private Boolean rejectionEmailSent;
         private Boolean outreachSent;

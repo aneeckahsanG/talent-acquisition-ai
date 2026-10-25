@@ -125,44 +125,127 @@ function NegotiateForm({ token, offerInfo, onDone }) {
   );
 }
 
+// ── Offer summary shown above the confirm step ───────────────
+function OfferSummary({ info }) {
+  const rows = [
+    ["Position", info?.jobTitle],
+    ["Monthly salary", info?.salaryAmount !== "" && info?.salaryAmount != null ? `${info.currency} ${Number(info.salaryAmount).toLocaleString()}` : null],
+    ["Start date", info?.startDate],
+    ["Offer valid until", info?.expiryDate],
+  ].filter(([, v]) => v);
+  return (
+    <div style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 10, padding: "14px 16px", marginBottom: 20 }}>
+      {rows.map(([k, v]) => (
+        <div key={k} style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 13, padding: "3px 0" }}>
+          <span style={{ color: "#64748B" }}>{k}</span>
+          <span style={{ color: "#1E293B", fontWeight: 600, textAlign: "right" }}>{v}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Accept: typed full name + explicit confirmation ──────────
+function AcceptForm({ token, offerInfo, onDone }) {
+  const [name, setName] = useState("");
+  const [agree, setAgree] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState(null);
+  const ready = name.trim().length >= 2 && agree;
+
+  async function submit(e) {
+    e.preventDefault();
+    setLoading(true);
+    setErr(null);
+    try {
+      const res = await apiFetch("/public/offer-respond/accept", { method: "POST", body: JSON.stringify({ token, fullName: name }) });
+      if (res?.success) onDone(res.message);
+      else setErr(res?.error ?? "Something went wrong.");
+    } catch (ex) {
+      setErr(ex.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <form onSubmit={submit}>
+      <h2 style={{ margin: "0 0 6px", fontSize: 20, color: "#1E293B" }}>Accept your offer</h2>
+      <p style={{ margin: "0 0 18px", color: "#64748B", fontSize: 14 }}>Please check the details below, then confirm.</p>
+      <OfferSummary info={offerInfo} />
+      <label style={{ fontSize: 12, fontWeight: 700, color: "#64748B", marginBottom: 4, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+        Type your full name
+      </label>
+      <input value={name} onChange={e => setName(e.target.value)} placeholder={offerInfo?.candidateName || "Full name"}
+        style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1.5px solid #E2E8F0", fontSize: 14, color: "#1E293B", boxSizing: "border-box", outline: "none" }} />
+      <label style={{ display: "flex", gap: 10, alignItems: "flex-start", margin: "16px 0 20px", fontSize: 13, color: "#475569", lineHeight: 1.5, cursor: "pointer" }}>
+        <input type="checkbox" checked={agree} onChange={e => setAgree(e.target.checked)} style={{ marginTop: 3 }} />
+        <span>I have read the offer letter and I accept this offer of employment. Typing my name above is my electronic acceptance.</span>
+      </label>
+      {err && <p style={{ color: "#EF4444", fontSize: 13, margin: "0 0 14px" }}>{err}</p>}
+      <Btn disabled={!ready || loading} color="#22C55E">{loading ? "Submitting…" : "Confirm acceptance"}</Btn>
+    </form>
+  );
+}
+
+// ── Decline: explicit confirmation ───────────────────────────
+function DeclineConfirm({ token, offerInfo, onDone }) {
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState(null);
+
+  async function submit() {
+    setLoading(true);
+    setErr(null);
+    try {
+      const res = await apiFetch("/public/offer-respond/reject", { method: "POST", body: JSON.stringify({ token }) });
+      if (res?.success) onDone(res.message);
+      else setErr(res?.error ?? "Something went wrong.");
+    } catch (ex) {
+      setErr(ex.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div>
+      <h2 style={{ margin: "0 0 6px", fontSize: 20, color: "#1E293B" }}>Decline this offer?</h2>
+      <p style={{ margin: "0 0 18px", color: "#64748B", fontSize: 14 }}>This will let the recruiting team know you are not taking the position. It cannot be undone from this page.</p>
+      <OfferSummary info={offerInfo} />
+      {err && <p style={{ color: "#EF4444", fontSize: 13, margin: "0 0 14px" }}>{err}</p>}
+      <Btn disabled={loading} onClick={submit} color="#EF4444">{loading ? "Submitting…" : "Yes, decline the offer"}</Btn>
+    </div>
+  );
+}
+
+// Turns an error thrown by apiFetch (possibly a JSON body) into plain text
+function plainError(ex) {
+  try { const j = JSON.parse(ex.message); return j.error || j.message || ex.message; } catch { return ex.message; }
+}
+
 // ── Main page ────────────────────────────────────────────────
 export default function OfferRespondPage() {
   const params = new URLSearchParams(window.location.search);
   const token = params.get("token");
   const action = params.get("action"); // accept | reject | negotiate
 
-  const [status, setStatus] = useState("loading"); // loading | success | error | negotiate-form
+  const [status, setStatus] = useState("loading"); // loading | success | error | accept-form | reject-form | negotiate-form
   const [message, setMessage] = useState("");
   const [offerInfo, setOfferInfo] = useState(null);
 
   useEffect(() => {
     if (!token) { setStatus("error"); setMessage("No token found in this link."); return; }
-
-    if (action === "negotiate") {
-      // Load offer info for the form, then show form
-      apiFetch("/public/offer-respond/info?token=" + token)
-        .then(info => {
-          if (info?.error) { setStatus("error"); setMessage(info.error); }
-          else { setOfferInfo(info); setStatus("negotiate-form"); }
-        })
-        .catch(ex => { setStatus("error"); setMessage(ex.message); });
-    } else if (action === "accept" || action === "reject") {
-      apiFetch("/public/offer-respond?token=" + token + "&action=" + action)
-        .then(res => {
-          if (res?.success) { setStatus("success"); setMessage(res.message); }
-          else { setStatus("error"); setMessage(res?.error ?? "Something went wrong."); }
-        })
-        .catch(ex => { setStatus("error"); setMessage(ex.message); });
-    } else {
-      setStatus("error");
-      setMessage("Unknown action in this link.");
-    }
+    if (!["accept", "reject", "negotiate"].includes(action)) { setStatus("error"); setMessage("Unknown action in this link."); return; }
+    // Opening the link never changes anything: it only loads the offer so the candidate can confirm.
+    apiFetch("/public/offer-respond/info?token=" + encodeURIComponent(token))
+      .then(info => {
+        if (info?.error) { setStatus("error"); setMessage(info.error); }
+        else { setOfferInfo(info); setStatus(action + "-form"); }
+      })
+      .catch(ex => { setStatus("error"); setMessage(plainError(ex)); });
   }, []);
 
-  const iconFor = {
-    success: { emoji: action === "accept" ? "🎉" : "👋", bg: action === "accept" ? "#F0FDF4" : "#FFF7ED", border: action === "accept" ? "#BBF7D0" : "#FED7AA", text: action === "accept" ? "#16A34A" : "#EA580C" },
-    error: { emoji: "⚠️", bg: "#FFF1F2", border: "#FECDD3", text: "#DC2626" },
-  };
+  const done = msg => { setStatus("success"); setMessage(msg); };
 
   return (
     <div style={{ minHeight: "100vh", background: "#F1F5F9", display: "flex", alignItems: "center", justifyContent: "center", padding: "40px 16px", boxSizing: "border-box" }}>
@@ -172,22 +255,21 @@ export default function OfferRespondPage() {
         {status === "loading" && (
           <div style={{ textAlign: "center", color: "#64748B", padding: "24px 0" }}>
             <div style={{ fontSize: 32, marginBottom: 12 }}>⏳</div>
-            <p style={{ margin: 0 }}>Processing your response…</p>
+            <p style={{ margin: 0 }}>Loading your offer…</p>
           </div>
         )}
 
-        {status === "success" && (() => {
-          const i = iconFor.success;
-          return (
-            <div style={{ textAlign: "center" }}>
-              <div style={{ width: 64, height: 64, borderRadius: "50%", background: i.bg, border: `2px solid ${i.border}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, margin: "0 auto 20px" }}>{i.emoji}</div>
-              <h2 style={{ margin: "0 0 12px", fontSize: 20, color: "#1E293B" }}>
-                {action === "accept" ? "Offer Accepted!" : "Response Recorded"}
-              </h2>
-              <p style={{ margin: 0, color: "#475569", fontSize: 15, lineHeight: 1.6 }}>{message}</p>
+        {status === "success" && (
+          <div style={{ textAlign: "center" }}>
+            <div style={{ width: 64, height: 64, borderRadius: "50%", background: action === "accept" ? "#F0FDF4" : "#FFF7ED", border: `2px solid ${action === "accept" ? "#BBF7D0" : "#FED7AA"}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, margin: "0 auto 20px" }}>
+              {action === "accept" ? "🎉" : "👋"}
             </div>
-          );
-        })()}
+            <h2 style={{ margin: "0 0 12px", fontSize: 20, color: "#1E293B" }}>
+              {action === "accept" ? "Offer Accepted!" : "Response Recorded"}
+            </h2>
+            <p style={{ margin: 0, color: "#475569", fontSize: 15, lineHeight: 1.6 }}>{message}</p>
+          </div>
+        )}
 
         {status === "error" && (
           <div style={{ textAlign: "center" }}>
@@ -198,11 +280,14 @@ export default function OfferRespondPage() {
           </div>
         )}
 
+        {status === "accept-form" && <AcceptForm token={token} offerInfo={offerInfo} onDone={done} />}
+        {status === "reject-form" && <DeclineConfirm token={token} offerInfo={offerInfo} onDone={done} />}
+
         {status === "negotiate-form" && (
           <div>
             <h2 style={{ margin: "0 0 6px", fontSize: 20, color: "#1E293B" }}>Submit Counter-Offer</h2>
             <p style={{ margin: "0 0 24px", color: "#64748B", fontSize: 14 }}>Let us know your preferred terms and we'll get back to you shortly.</p>
-            <NegotiateForm token={token} offerInfo={offerInfo} onDone={msg => { setStatus("success"); setMessage(msg); }} />
+            <NegotiateForm token={token} offerInfo={offerInfo} onDone={done} />
           </div>
         )}
 

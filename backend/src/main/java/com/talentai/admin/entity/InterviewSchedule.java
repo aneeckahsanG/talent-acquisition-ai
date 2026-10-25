@@ -26,6 +26,9 @@ public class InterviewSchedule {
     @Column(name = "requisition_id", nullable = false)
     private Long requisitionId;
 
+    @Column(name = "interviewer_id")
+    private Long interviewerId;
+
     @Column(name = "interview_type", nullable = false)
     @Builder.Default
     private String interviewType = "SCREENING"; // SCREENING, TECHNICAL, FINAL

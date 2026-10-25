@@ -8,7 +8,7 @@ async function call(path, opts = {}) {
     ...opts,
   });
   const data = await res.json().catch(() => null);
-  if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+  if (!res.ok) throw new Error(data?.message || data?.error || `HTTP ${res.status}`);
   return data;
 }
 
@@ -88,7 +88,7 @@ export default function InterviewBookPage() {
           <>
             <h2 style={{ margin: "0 0 6px", color: "#1E293B", fontSize: 20 }}>Choose your interview time</h2>
             <p style={{ margin: "0 0 20px", color: "#64748B", fontSize: 14, lineHeight: 1.5 }}>
-              Hi {info.candidateName.split(" ")[0]}, please pick a time for your {typeLabel} interview for <strong>{info.roleTitle}</strong> ({info.durationMinutes} minutes).
+              Hi {info.candidateName.split(" ")[0]}, please pick a time for your {typeLabel} interview for <strong>{info.roleTitle}</strong> ({info.durationMinutes} minutes){info.interviewerName ? <>, with {info.interviewerName}</> : null}.
             </p>
             {error && <p style={{ color: "#DC2626", fontSize: 13, margin: "0 0 14px" }}>{error}</p>}
             {days.length === 0 ? (

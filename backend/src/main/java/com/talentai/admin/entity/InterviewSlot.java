@@ -21,7 +21,7 @@ public class InterviewSlot {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "start_time", nullable = false, unique = true)
+    @Column(name = "start_time", nullable = false)
     private LocalDateTime startTime;
 
     @Column(name = "end_time", nullable = false)
@@ -29,4 +29,7 @@ public class InterviewSlot {
 
     @Column(name = "interview_id")
     private Long interviewId;
+
+    @Column(name = "interviewer_id")
+    private Long interviewerId;
 }

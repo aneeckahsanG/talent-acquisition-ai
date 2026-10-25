@@ -11,6 +11,7 @@ import com.talentai.common.repository.CandidateRepository;
 import com.talentai.common.repository.JobRequisitionRepository;
 import com.talentai.common.repository.PipelineStageRepository;
 import com.talentai.common.service.EmailService;
+import com.talentai.sourcing.repository.SourcingMatchRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -33,6 +34,7 @@ public class OfferResponseService {
     private final OfferRepository offerRepository;
     private final OfferNegotiationHistoryRepository negotiationHistoryRepository;
     private final PipelineStageRepository pipelineStageRepository;
+    private final SourcingMatchRepository sourcingMatchRepository;
     private final CandidateRepository candidateRepository;
     private final JobRequisitionRepository jobRequisitionRepository;
     private final EmailService emailService;
@@ -70,8 +72,13 @@ public class OfferResponseService {
 
     /** Mark the token used and set the offer status. Returns the updated offer. */
     @Transactional
-    public Offer accept(String token) {
+    public Offer accept(String token, String signedName) {
+        String name = signedName == null ? "" : signedName.trim().replaceAll("\\s+", " ");
+        if (name.length() < 2) {
+            throw new IllegalArgumentException("Please type your full name to accept the offer.");
+        }
         var lookup = validate(token);
+        lookup.tokenEntity().setSignedName(name);
         markUsed(lookup.tokenEntity(), "ACCEPT");
         Offer offer = lookup.offer();
         offer.setStatus("ACCEPTED");
@@ -86,7 +93,8 @@ public class OfferResponseService {
                 });
         log.info("Offer {} accepted by candidate via email link", offer.getId());
         notifyHr(offer, "Offer Accepted", "has ACCEPTED the offer",
-                "They have been moved to Hired. You can start onboarding.", false);
+                "Electronic acceptance: they typed \"" + name + "\" and confirmed.\n"
+                        + "They have been moved to Hired. You can start onboarding.", false);
         return offer;
     }
 
@@ -102,7 +110,15 @@ public class OfferResponseService {
                 .ifPresent(ps -> {
                     ps.setStage("REJECTED");
                     ps.setUpdatedByAgent("CANDIDATE");
+                    ps.setEnteredAt(LocalDateTime.now());
+                    ps.setNotes("Candidate declined the offer");
                     pipelineStageRepository.save(ps);
+                });
+        // Keep the sourcing/applicants view in step with the pipeline stage
+        sourcingMatchRepository.findByCandidateIdAndRequisitionId(offer.getCandidateId(), offer.getRequisitionId())
+                .ifPresent(m -> {
+                    m.setStatus("REJECTED");
+                    sourcingMatchRepository.save(m);
                 });
         log.info("Offer {} declined by candidate via email link", offer.getId());
         notifyHr(offer, "Offer Declined", "has DECLINED the offer",

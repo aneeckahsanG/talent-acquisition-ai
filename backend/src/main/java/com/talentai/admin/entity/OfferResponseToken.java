@@ -32,6 +32,9 @@ public class OfferResponseToken {
     @Column(name = "used_action", length = 20)
     private String usedAction;
 
+    @Column(name = "signed_name")
+    private String signedName;
+
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 

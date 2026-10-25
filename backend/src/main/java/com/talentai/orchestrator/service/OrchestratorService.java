@@ -61,6 +61,8 @@ public class OrchestratorService {
 
     private final PipelineStageRepository pipelineStageRepository;
     private final CandidateRepository candidateRepository;
+    private final com.talentai.common.repository.AppUserRepository appUserRepository;
+    private final com.talentai.admin.repository.InterviewScorecardRepository scorecardRepository;
     private final JobRequisitionRepository jobRequisitionRepository;
     private final ScreeningResultRepository screeningResultRepository;
     private final SourcingMatchRepository sourcingMatchRepository;
@@ -117,6 +119,9 @@ public class OrchestratorService {
                                 .status(iv.getStatus())
                                 .notes(iv.getNotes())
                                 .roundNumber(i + 1)
+                                .scorecard(scorecardRepository.findByInterviewId(iv.getId()).map(this::toScorecardSummary).orElse(null))
+                                .interviewerName(iv.getInterviewerId() == null ? null
+                                        : appUserRepository.findById(iv.getInterviewerId()).map(u -> u.getFullName()).orElse(null))
                                 .invitationEmail(iv.getInvitationEmail())
                                 .candidateReply(iv.getCandidateReply())
                                 .candidateRepliedAt(iv.getCandidateRepliedAt())
@@ -189,6 +194,11 @@ public class OrchestratorService {
     }
 
     public PipelineCandidateResponse moveStage(Long requisitionId, Long candidateId, String newStage, String actor) {
+        return moveStage(requisitionId, candidateId, newStage, actor, null);
+    }
+
+    /** @param reason recruiter-entered reason; stored as the stage note when rejecting / marking no-show. */
+    public PipelineCandidateResponse moveStage(Long requisitionId, Long candidateId, String newStage, String actor, String reason) {
         if ("OFFER".equals(newStage)) assertInterviewRoundsComplete(requisitionId, candidateId);
         PipelineStage ps = pipelineStageRepository
                 .findByCandidateIdAndRequisitionId(candidateId, requisitionId)
@@ -201,6 +211,10 @@ public class OrchestratorService {
         ps.setStage(newStage);
         ps.setUpdatedByAgent(actor);
         ps.setEnteredAt(java.time.LocalDateTime.now());
+        if ("REJECTED".equals(newStage) || "NO_SHOW".equals(newStage)) {
+            // Replace any note left over from an earlier stage so it isn't mistaken for the reason
+            ps.setNotes(reason != null && !reason.isBlank() ? reason.trim() : null);
+        }
         pipelineStageRepository.save(ps);
 
         Candidate candidate = candidateRepository.findById(candidateId).orElse(null);
@@ -311,67 +325,47 @@ public class OrchestratorService {
         return toOfferResponse(offer);
     }
 
+    /**
+     * Builds the offer letter from the fixed template (resources/templates/offer-letter.txt),
+     * so the wording is identical for every candidate. The recruiter can still edit before sending.
+     */
     public OfferLetterResponse generateOfferLetter(Long offerId) {
         Offer offer = offerRepository.findById(offerId)
                 .orElseThrow(() -> new IllegalArgumentException("Offer not found: " + offerId));
-
         Candidate candidate = candidateRepository.findById(offer.getCandidateId())
                 .orElseThrow(() -> new IllegalArgumentException("Candidate not found"));
-
         JobRequisition requisition = jobRequisitionRepository.findById(offer.getRequisitionId())
                 .orElseThrow(() -> new IllegalArgumentException("Requisition not found"));
 
+        java.time.format.DateTimeFormatter dateFmt =
+                java.time.format.DateTimeFormatter.ofPattern("d MMMM yyyy", java.util.Locale.ENGLISH);
         String salary = offer.getSalaryAmount() != null
-                ? offer.getCurrency() + " " + offer.getSalaryAmount().toPlainString() + " per month"
+                ? offer.getCurrency() + " " + String.format("%,.2f", offer.getSalaryAmount()) + " per month"
                 : "as discussed";
+        String notesBlock = offer.getNotes() != null && !offer.getNotes().isBlank()
+                ? "Additional terms: " + offer.getNotes().trim() + "\n" : "";
 
-        String startDate = offer.getStartDate() != null ? offer.getStartDate().toString() : "to be confirmed";
-        String expiryDate = offer.getExpiryDate() != null ? offer.getExpiryDate().toString() : "within 7 days";
+        Map<String, String> values = new java.util.LinkedHashMap<>();
+        values.put("date", LocalDate.now().format(dateFmt));
+        values.put("candidateName", candidate.getFullName());
+        values.put("firstName", candidate.getFullName().trim().split("\\s+")[0]);
+        values.put("jobTitle", requisition.getTitle());
+        values.put("department", requisition.getDepartment() != null ? requisition.getDepartment() : "relevant");
+        values.put("location", requisition.getLocation() != null ? requisition.getLocation() : "Kuala Lumpur, Malaysia");
+        values.put("salary", salary);
+        values.put("startDate", offer.getStartDate() != null ? offer.getStartDate().format(dateFmt) : "to be confirmed");
+        values.put("expiryDate", offer.getExpiryDate() != null ? offer.getExpiryDate().format(dateFmt) : "7 days from the date of this letter");
+        values.put("notesBlock", notesBlock);
 
-        String system = """
-                You are an HR professional writing formal employment offer letters on behalf of Arvato Systems Malaysia Sdn. Bhd.
-                Write a professional, warm, and complete offer letter. Use proper business letter formatting with clear sections.
-                Do NOT use markdown — plain text only with line breaks.
-                Sign off as "Human Resources Department, Arvato Systems Malaysia Sdn. Bhd.".
-                """;
-
-        String prompt = String.format("""
-                Generate an employment offer letter on behalf of Arvato Systems Malaysia Sdn. Bhd. with the following details:
-
-                Company Details:
-                  Arvato Systems Malaysia Sdn. Bhd.
-                  Suite 26-10, Level 26, GTower
-                  199 Jalan Tun Razak
-                  50400 Kuala Lumpur, Malaysia
-
-                Candidate Details:
-                - Candidate Name: %s
-                - Job Title: %s
-                - Department: %s
-                - Work Location: %s
-                - Monthly Salary: %s
-                - Start Date: %s
-                - Offer Expiry: %s
-                - Additional Notes: %s
-
-                Include: company letterhead block (name + address), date, candidate address block, greeting,
-                congratulations paragraph, role and department details, compensation, start date,
-                offer expiry deadline, a brief note about next steps (signing and returning the letter),
-                and a warm professional closing.
-                """,
-                candidate.getFullName(),
-                requisition.getTitle(),
-                requisition.getDepartment() != null ? requisition.getDepartment() : "N/A",
-                requisition.getLocation() != null ? requisition.getLocation() : "N/A",
-                salary, startDate, expiryDate,
-                offer.getNotes() != null ? offer.getNotes() : "None"
-        );
-
-        String letter = chatClient.prompt()
-                .system(system)
-                .user(prompt)
-                .call()
-                .content();
+        String letter;
+        try (var in = new org.springframework.core.io.ClassPathResource("templates/offer-letter.txt").getInputStream()) {
+            letter = org.springframework.util.StreamUtils.copyToString(in, java.nio.charset.StandardCharsets.UTF_8);
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException("Offer letter template could not be loaded", e);
+        }
+        for (var e : values.entrySet()) {
+            letter = letter.replace("{{" + e.getKey() + "}}", e.getValue());
+        }
 
         return OfferLetterResponse.builder()
                 .candidateName(candidate.getFullName())
@@ -440,10 +434,10 @@ public class OrchestratorService {
         // Generate a single-use response token and embed action links in the email
         String token = offerResponseService.generateToken(offerId);
         String apiBase = appBaseUrl.endsWith("/") ? appBaseUrl.substring(0, appBaseUrl.length() - 1) : appBaseUrl;
-        // Accept / Reject hit the backend directly (one-click, no form needed).
-        // Negotiate opens the frontend page which shows a counter-offer form.
-        String acceptUrl    = apiBase + "/api/public/offer-respond?token=" + token + "&action=accept";
-        String rejectUrl    = apiBase + "/api/public/offer-respond?token=" + token + "&action=reject";
+        // All three open the confirmation page; nothing changes until the candidate confirms there
+        // (email security scanners open links automatically, so a click alone must not act).
+        String acceptUrl    = apiBase + "/offer-respond?token=" + token + "&action=accept";
+        String rejectUrl    = apiBase + "/offer-respond?token=" + token + "&action=reject";
         String negotiateUrl = apiBase + "/offer-respond?token=" + token + "&action=negotiate";
 
         String actionButtons = """
@@ -507,6 +501,66 @@ public class OrchestratorService {
         return toOfferResponse(offer);
     }
 
+    private static final java.util.Set<String> VERDICTS = java.util.Set.of("STRONG_YES", "YES", "NO", "STRONG_NO");
+
+    /** Records the interviewer's scorecard and completes the round in one step. */
+    public InterviewRoundResponse submitScorecard(Long interviewId, ScorecardRequest req, String username) {
+        InterviewSchedule iv = interviewScheduleRepository.findById(interviewId)
+                .orElseThrow(() -> new IllegalArgumentException("Interview not found: " + interviewId));
+        if (!"CONFIRMED".equals(iv.getStatus())) {
+            throw new IllegalStateException("A scorecard can only be submitted for a booked interview that has not been completed.");
+        }
+        if (scorecardRepository.findByInterviewId(interviewId).isPresent()) {
+            throw new IllegalStateException("A scorecard has already been submitted for this interview.");
+        }
+        // Rate exactly the criteria that apply to this interview type
+        java.util.Map<String, Integer> ratings = new java.util.LinkedHashMap<>();
+        for (String criterion : ScorecardCriteria.forType(iv.getInterviewType())) {
+            Integer rating = req.getRatings() == null ? null : req.getRatings().get(criterion);
+            if (rating == null || rating < 1 || rating > 5) throw new IllegalArgumentException("Every rating must be between 1 and 5.");
+            ratings.put(criterion, rating);
+        }
+        if (req.getVerdict() == null || !VERDICTS.contains(req.getVerdict())) {
+            throw new IllegalArgumentException("Please choose an overall verdict.");
+        }
+        Long submittedBy = username == null ? null : appUserRepository.findByUsername(username)
+                .map(u -> u.getId()).orElse(null);
+        scorecardRepository.save(com.talentai.admin.entity.InterviewScorecard.builder()
+                .interviewId(interviewId)
+                .ratings(ratings)
+                .noticePeriod("PHONE_SCREEN".equals(iv.getInterviewType()) ? blankToNull(req.getNoticePeriod()) : null)
+                .expectedSalary("PHONE_SCREEN".equals(iv.getInterviewType()) ? blankToNull(req.getExpectedSalary()) : null)
+                .verdict(req.getVerdict())
+                .notes(req.getNotes() != null && !req.getNotes().isBlank() ? req.getNotes().trim() : null)
+                .submittedBy(submittedBy)
+                .build());
+        return completeInterviewRound(interviewId);
+    }
+
+    private static String blankToNull(String s) {
+        return s == null || s.isBlank() ? null : s.trim();
+    }
+
+    /** What each interview type is scored on, plus display labels, for the scorecard form. */
+    public java.util.Map<String, Object> scorecardCriteria() {
+        return java.util.Map.of("types", ScorecardCriteria.BY_TYPE, "labels", ScorecardCriteria.LABELS);
+    }
+
+    private ScorecardSummary toScorecardSummary(com.talentai.admin.entity.InterviewScorecard sc) {
+        // present ratings in the standard criterion order
+        java.util.Map<String, Integer> ordered = new java.util.LinkedHashMap<>();
+        ScorecardCriteria.LABELS.keySet().forEach(k -> { if (sc.getRatings().containsKey(k)) ordered.put(k, sc.getRatings().get(k)); });
+        return ScorecardSummary.builder()
+                .ratings(ordered)
+                .averageRating(sc.averageRating())
+                .verdict(sc.getVerdict()).notes(sc.getNotes())
+                .noticePeriod(sc.getNoticePeriod()).expectedSalary(sc.getExpectedSalary())
+                .submittedByName(sc.getSubmittedBy() == null ? null
+                        : appUserRepository.findById(sc.getSubmittedBy()).map(u -> u.getFullName()).orElse(null))
+                .submittedAt(sc.getSubmittedAt())
+                .build();
+    }
+
     public InterviewRoundResponse completeInterviewRound(Long interviewId) {
         InterviewSchedule iv = interviewScheduleRepository.findById(interviewId)
                 .orElseThrow(() -> new IllegalArgumentException("Interview not found: " + interviewId));
@@ -535,10 +589,15 @@ public class OrchestratorService {
                 .orElseThrow(() -> new IllegalArgumentException("Requisition not found: " + requisitionId));
 
         String interviewType = req.getInterviewType() != null ? req.getInterviewType() : "TECHNICAL";
+        Long interviewerId = req.getInterviewerId();
+        if (interviewerId != null && !appUserRepository.existsById(interviewerId)) {
+            throw new IllegalArgumentException("Interviewer not found: " + interviewerId);
+        }
         InterviewSchedule interview = InterviewSchedule.builder()
                 .candidateId(candidateId)
                 .requisitionId(requisitionId)
                 .interviewType(interviewType)
+                .interviewerId(interviewerId)
                 .status("PROPOSED")
                 .notes(req.getNotes())
                 .build();
@@ -550,7 +609,7 @@ public class OrchestratorService {
                 + "/interview-book?interviewId=" + interviewId;
 
         String bodyText = "Dear " + firstName + ",\n\nThank you for your interest in the " + requisition.getTitle()
-                + " position. We would like to invite you for a " + interviewType.replace("_", " ")
+                + " position. We would like to invite you for a " + interviewType.replace("_", " ").toLowerCase()
                 + " interview.\n\nPlease choose a time that suits you from our available calendar:";
         String extraHtml = "<div style='margin:16px 0;'><a href='" + bookUrl + "' "
                 + "style='display:inline-block;padding:12px 24px;background:#6366F1;color:#fff;border-radius:8px;text-decoration:none;font-size:14px;font-weight:600;'>"
@@ -603,7 +662,7 @@ public class OrchestratorService {
         String slotDisplay = slot.toString().replace("T", " at ");
 
         // Keep the shared calendar authoritative: rejects overlaps, replaces the old booking
-        interviewBookingService.forceBook(interviewId, interview.getInterviewType(), slot);
+        interviewBookingService.forceBook(interviewId, interview.getInterviewType(), interview.getInterviewerId(), slot);
 
         String invitationEmail;
         try {

@@ -5,6 +5,7 @@ import com.talentai.common.entity.AppUser;
 import com.talentai.common.repository.AppUserRepository;
 import com.talentai.screening.dto.ScreeningDtos.*;
 import com.talentai.screening.service.ScreeningAgentService;
+import com.talentai.screening.service.ScreeningProgressTracker;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -22,6 +23,7 @@ public class ScreeningController {
 
     private final ScreeningAgentService screeningAgentService;
     private final AppUserRepository appUserRepository;
+    private final ScreeningProgressTracker progressTracker;
 
     /** Screen a candidate by providing resume text directly (e.g., pasted text). */
     @PostMapping("/evaluate")
@@ -56,6 +58,12 @@ public class ScreeningController {
         }
         return ResponseEntity.ok(
                 screeningAgentService.screenCandidateFromFileAllOpenRoles(candidateName, candidateEmail, resume));
+    }
+
+    /** Applications currently being matched and screened (no result row exists yet). */
+    @GetMapping("/in-progress")
+    public List<ScreeningProgressTracker.Entry> inProgress() {
+        return progressTracker.list();
     }
 
     /** Get a single screening result by ID. */

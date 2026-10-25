@@ -35,6 +35,7 @@ public class CalendarController {
     private final JobRequisitionRepository requisitionRepository;
     private final InterviewBookingService bookingService;
     private final EmailService emailService;
+    private final com.talentai.common.repository.AppUserRepository appUserRepository;
 
     @Value("${app.base-url:http://localhost:5173}")
     private String appBaseUrl;
@@ -51,6 +52,14 @@ public class CalendarController {
     @GetMapping("/durations")
     public Map<String, Integer> durations() {
         return InterviewBookingService.DURATIONS;
+    }
+
+    /** People who can be assigned to run an interview. */
+    @GetMapping("/interviewers")
+    public List<Map<String, Object>> interviewers() {
+        return appUserRepository.findAll().stream()
+                .map(u -> Map.<String, Object>of("id", u.getId(), "fullName", u.getFullName(), "role", String.valueOf(u.getRole())))
+                .toList();
     }
 
     @GetMapping("/slots")
@@ -73,6 +82,11 @@ public class CalendarController {
             if (iv != null) {
                 m.put("interviewId", iv.getId());
                 m.put("interviewType", iv.getInterviewType());
+                m.put("status", iv.getStatus());
+                if (iv.getInterviewerId() != null) {
+                    m.put("interviewerName", appUserRepository.findById(iv.getInterviewerId())
+                            .map(u -> u.getFullName()).orElse(null));
+                }
                 m.put("candidateName", candidateRepository.findById(iv.getCandidateId())
                         .map(c -> c.getFullName()).orElse("Unknown"));
                 m.put("roleTitle", requisitionRepository.findById(iv.getRequisitionId())
@@ -127,6 +141,9 @@ public class CalendarController {
             bookingRepository.delete(b);
             return ResponseEntity.noContent().build();
         }
+        if ("COMPLETED".equals(iv.getStatus()) || "CANCELLED".equals(iv.getStatus())) {
+            return ResponseEntity.status(409).body(Map.of("message", "This interview is already " + iv.getStatus().toLowerCase() + "."));
+        }
         rescheduleAndEmail(iv);
         return ResponseEntity.noContent().build();
     }
@@ -155,6 +172,19 @@ public class CalendarController {
         interviewRepository.save(iv);
 
         var candidate = candidateRepository.findById(iv.getCandidateId()).orElse(null);
+
+        // Free the interviewer's diary too
+        if (oldStart != null && iv.getInterviewerId() != null) {
+            appUserRepository.findById(iv.getInterviewerId()).ifPresent(u -> {
+                if (u.getEmail() == null || u.getEmail().isBlank()) return;
+                String who = candidate != null ? candidate.getFullName() : "the candidate";
+                String when = oldStart.format(java.time.format.DateTimeFormatter.ofPattern("EEEE, d MMMM yyyy 'at' HH:mm", Locale.ENGLISH));
+                String body = "Hi " + u.getFullName().trim().split("\\s+")[0] + ",\n\n"
+                        + "The interview with " + who + " on " + when + " has been cancelled and is being rescheduled. "
+                        + "You'll get a new email once the candidate picks another time.";
+                emailService.sendHtml(u.getEmail(), "Interview cancelled – " + who, emailService.wrapInTemplate(body, "TA"));
+            });
+        }
         if (candidate == null || candidate.getEmail() == null || candidate.getEmail().isBlank()) return;
 
         String role = requisitionRepository.findById(iv.getRequisitionId()).map(r -> r.getTitle()).orElse("the role");

@@ -75,6 +75,7 @@ public class SourcingAgentService {
     private final AgentActivityLogRepository activityLogRepository;
     private final ScreeningAgentService screeningAgentService;
     private final com.talentai.common.service.EmailService emailService;
+    private final com.talentai.screening.service.ScreeningProgressTracker progressTracker;
 
     private record ParsedNameEmail(String name, String email) {}
 
@@ -651,6 +652,16 @@ public class SourcingAgentService {
      */
     @Transactional
     public DirectApplyResponse directApply(Long requisitionId, DirectApplyRequest request) {
+        String roleTitle = jobRequisitionRepository.findById(requisitionId).map(r -> r.getTitle()).orElse("Unknown role");
+        String progressKey = progressTracker.start(request.getFullName(), requisitionId, roleTitle);
+        try {
+            return doDirectApply(requisitionId, request);
+        } finally {
+            progressTracker.finish(progressKey);
+        }
+    }
+
+    private DirectApplyResponse doDirectApply(Long requisitionId, DirectApplyRequest request) {
         JobRequisition requisition = jobRequisitionRepository.findById(requisitionId)
                 .orElseThrow(() -> new IllegalArgumentException("Role not found or no longer open."));
         if (!"OPEN".equals(requisition.getStatus())) {

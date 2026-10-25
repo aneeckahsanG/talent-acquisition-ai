@@ -1,0 +1,29 @@
+Arvato Systems Malaysia Sdn. Bhd.
+Suite 26-10, Level 26, GTower
+199 Jalan Tun Razak
+50400 Kuala Lumpur, Malaysia
+
+{{date}}
+
+{{candidateName}}
+
+Dear {{firstName}},
+
+RE: OFFER OF EMPLOYMENT - {{jobTitle}}
+
+Congratulations! We are delighted to offer you the position of {{jobTitle}} in the {{department}} department of Arvato Systems Malaysia Sdn. Bhd.
+
+Position: {{jobTitle}}
+Department: {{department}}
+Work location: {{location}}
+Monthly salary: {{salary}}
+Start date: {{startDate}}
+{{notesBlock}}
+This offer is valid until {{expiryDate}}. Please respond using the Accept, Negotiate or Decline buttons below this letter before that date. If you accept, the full terms of your employment will be set out in your employment contract.
+
+We look forward to welcoming you to the team.
+
+Best regards,
+
+Human Resources Department
+Arvato Systems Malaysia Sdn. Bhd.

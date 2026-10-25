@@ -82,6 +82,8 @@ public class OrchestratorDtos {
         private String status; // PROPOSED, CONFIRMED, COMPLETED, CANCELLED
         private String notes;
         private int roundNumber;
+        private ScorecardSummary scorecard;
+        private String interviewerName;
         private String invitationEmail;
         private String candidateReply;
         private LocalDateTime candidateRepliedAt;
@@ -151,8 +153,35 @@ public class OrchestratorDtos {
     @Data
     @NoArgsConstructor
     @AllArgsConstructor
+    public static class ScorecardRequest {
+        private java.util.Map<String, Integer> ratings; // criterion -> 1-5; must match the interview type's criteria
+        private String verdict;         // STRONG_YES, YES, NO, STRONG_NO
+        private String notes;
+        private String noticePeriod;    // phone screen only
+        private String expectedSalary;  // phone screen only
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class ScorecardSummary {
+        private java.util.Map<String, Integer> ratings;
+        private double averageRating;
+        private String verdict;
+        private String notes;
+        private String noticePeriod;
+        private String expectedSalary;
+        private String submittedByName;
+        private LocalDateTime submittedAt;
+    }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
     public static class ScheduleInterviewRequest {
         private String interviewType; // SCREENING, TECHNICAL, FINAL
+        private Long interviewerId;   // app user who will run the interview
         private String confirmedSlot; // ISO-8601 datetime string (legacy — kept for reschedule)
         private String notes;
     }

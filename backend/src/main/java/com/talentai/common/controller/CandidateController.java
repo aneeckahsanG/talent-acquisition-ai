@@ -37,6 +37,7 @@ public class CandidateController {
     private final CandidateStatusUpdateRepository candidateStatusUpdateRepository;
     private final JobRequisitionRepository jobRequisitionRepository;
     private final InterviewScheduleRepository interviewScheduleRepository;
+    private final com.talentai.admin.repository.InterviewScorecardRepository scorecardRepository;
     private final ScreeningResultRepository screeningResultRepository;
 
     @GetMapping
@@ -158,6 +159,7 @@ public class CandidateController {
             String reqTitle = reqTitles.getOrDefault(iv.getRequisitionId(),
                     jobRequisitionRepository.findById(iv.getRequisitionId())
                             .map(r -> r.getTitle()).orElse("Unknown Role"));
+            var sc = scorecardRepository.findByInterviewId(iv.getId()).orElse(null);
             String label = iv.getInterviewType() + " interview — " + iv.getStatus();
             if (iv.getConfirmedSlot() != null) {
                 label += " on " + iv.getConfirmedSlot().toLocalDate();
@@ -171,6 +173,9 @@ public class CandidateController {
                     .interviewStatus(iv.getStatus())
                     .confirmedSlot(iv.getConfirmedSlot())
                     .notes(iv.getNotes())
+                    .verdict(sc != null ? sc.getVerdict() : null)
+                    .averageRating(sc != null ? sc.averageRating() : null)
+                    .feedbackNotes(sc != null ? sc.getNotes() : null)
                     .build());
         });
 
@@ -221,6 +226,9 @@ public class CandidateController {
         private String interviewType;
         private String interviewStatus;
         private LocalDateTime confirmedSlot;
+        private String verdict;
+        private Double averageRating;
+        private String feedbackNotes;
     }
 
     @Data

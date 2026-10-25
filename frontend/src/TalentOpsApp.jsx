@@ -169,7 +169,7 @@ const STAGE_ACTIONS = {
 };
 
 const OFFER_STATUS_META = {
-  PENDING:     { color: "#F59E0B", label: "Pending" },
+  PENDING:     { color: "#F59E0B", label: "Draft" },
   SENT:        { color: "#6366F1", label: "Sent" },
   ACCEPTED:    { color: "#10B981", label: "Accepted" },
   DECLINED:    { color: "#EF4444", label: "Declined" },
@@ -179,6 +179,126 @@ const OFFER_STATUS_META = {
 const INTERVIEW_ROUND_TYPES = ["PHONE_SCREEN", "TECHNICAL", "FINAL"];
 const ROUND_LABELS = { PHONE_SCREEN: "Phone Screen", TECHNICAL: "Technical", FINAL: "Final Round" };
 const ROUND_COLORS = { COMPLETED: "#10B981", CONFIRMED: "#6366F1", PROPOSED: "#F59E0B", CANCELLED: "#94A3B8" };
+
+const REJECT_REASONS = ["Not enough relevant experience", "Skills do not match the role", "Did not pass the technical interview",
+  "Communication / culture fit", "Salary expectations too high", "Position filled / role on hold", "Other"];
+const joinRejectReason = form => form.preset + (form.note.trim() ? ` — ${form.note.trim()}` : "");
+
+const VERDICT_LABELS = { STRONG_YES: "Strong yes", YES: "Yes", NO: "No", STRONG_NO: "Strong no" };
+const verdictColor = v => (v === "STRONG_YES" || v === "YES" ? C.success : C.danger);
+
+function ScorecardModal({ title, criteria, isPhone, form, setForm, onSubmit, onCancel, submitting, error }) {
+  const complete = criteria.length > 0 && criteria.every(([k]) => form.ratings[k] > 0) && form.verdict;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ backgroundColor: "rgba(15,23,42,0.5)", backdropFilter: "blur(4px)" }}>
+      <Card className="w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
+        <h2 className="font-bold text-base" style={{ color: C.text }}>{title}</h2>
+        <p className="text-xs mt-1 mb-4" style={{ color: C.muted }}>
+          Record how the interview went. Submitting this marks the round as completed.
+        </p>
+        <div className="space-y-3">
+          {criteria.map(([key, label]) => (
+            <div key={key} className="flex items-center justify-between gap-3">
+              <span className="text-xs font-semibold" style={{ color: C.text }}>{label}</span>
+              <div className="flex gap-1 shrink-0">
+                {[1, 2, 3, 4, 5].map(n => (
+                  <button key={n} type="button" onClick={() => setForm(f => ({ ...f, ratings: { ...f.ratings, [key]: n } }))}
+                    className="w-7 h-7 rounded-lg text-xs font-bold border shrink-0"
+                    style={{
+                      borderColor: form.ratings[key] === n ? C.accent : C.border,
+                      backgroundColor: form.ratings[key] === n ? C.accent : "transparent",
+                      color: form.ratings[key] === n ? "#fff" : C.muted,
+                    }}>{n}</button>
+                ))}
+              </div>
+            </div>
+          ))}
+          <p className="text-[10px]" style={{ color: C.muted }}>1 = poor, 5 = excellent</p>
+          {isPhone && (
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-xs font-semibold mb-1.5" style={{ color: C.muted }}>Notice period</label>
+                <input value={form.noticePeriod} onChange={e => setForm(f => ({ ...f, noticePeriod: e.target.value }))}
+                  placeholder="e.g. 1 month"
+                  className="w-full px-3 py-2 rounded-xl border text-sm"
+                  style={{ borderColor: C.border, color: C.text, backgroundColor: C.bg }} />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold mb-1.5" style={{ color: C.muted }}>Expected salary</label>
+                <input value={form.expectedSalary} onChange={e => setForm(f => ({ ...f, expectedSalary: e.target.value }))}
+                  placeholder="e.g. MYR 9,000"
+                  className="w-full px-3 py-2 rounded-xl border text-sm"
+                  style={{ borderColor: C.border, color: C.text, backgroundColor: C.bg }} />
+              </div>
+            </div>
+          )}
+          <div>
+            <label className="block text-xs font-semibold mb-1.5" style={{ color: C.muted }}>Overall verdict</label>
+            <div className="grid grid-cols-4 gap-1.5">
+              {Object.entries(VERDICT_LABELS).map(([v, label]) => (
+                <button key={v} type="button" onClick={() => setForm(f => ({ ...f, verdict: v }))}
+                  className="py-1.5 rounded-lg text-[11px] font-semibold border"
+                  style={{
+                    borderColor: form.verdict === v ? verdictColor(v) : C.border,
+                    backgroundColor: form.verdict === v ? verdictColor(v) : "transparent",
+                    color: form.verdict === v ? "#fff" : C.muted,
+                  }}>{label}</button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold mb-1.5" style={{ color: C.muted }}>Notes <span style={{ color: C.border }}>(optional)</span></label>
+            <textarea rows={3} value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+              placeholder="Strengths, concerns, what you asked, anything the next interviewer should know"
+              className="w-full px-3 py-2 rounded-xl border text-sm resize-none"
+              style={{ borderColor: C.border, color: C.text, backgroundColor: C.bg }} />
+          </div>
+        </div>
+        {error && <p className="text-xs mt-3" style={{ color: C.danger }}>{error}</p>}
+        <div className="flex gap-2 mt-5">
+          <Btn variant="primary" onClick={onSubmit} disabled={!complete || submitting}>{submitting ? "Saving…" : "Submit & complete round"}</Btn>
+          <Btn variant="secondary" onClick={onCancel}>Cancel</Btn>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function RejectReasonModal({ candidateName, form, setForm, onConfirm, onCancel }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ backgroundColor: "rgba(15,23,42,0.5)", backdropFilter: "blur(4px)" }}>
+      <Card className="w-full max-w-sm p-6">
+        <h2 className="font-bold text-base" style={{ color: C.text }}>Reject {candidateName}?</h2>
+        <p className="text-xs mt-1 mb-4" style={{ color: C.muted }}>
+          Record why, for your team's reference. The candidate does not see this.
+        </p>
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs font-semibold mb-1.5" style={{ color: C.muted }}>Reason</label>
+            <Select value={form.preset} onChange={e => setForm(f => ({ ...f, preset: e.target.value }))}>
+              <option value="">Select a reason…</option>
+              {REJECT_REASONS.map(r => <option key={r} value={r}>{r}</option>)}
+            </Select>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold mb-1.5" style={{ color: C.muted }}>Note <span style={{ color: C.border }}>(optional)</span></label>
+            <textarea rows={2} value={form.note}
+              onChange={e => setForm(f => ({ ...f, note: e.target.value }))}
+              placeholder="e.g. Strong coding, but no production ML experience"
+              className="w-full px-3 py-2 rounded-xl border text-sm resize-none"
+              style={{ borderColor: C.border, color: C.text, backgroundColor: C.bg }} />
+          </div>
+        </div>
+        <div className="flex gap-2 mt-5">
+          <Btn variant="primary" onClick={onConfirm} disabled={!form.preset}>Reject candidate</Btn>
+          <Btn variant="secondary" onClick={onCancel}>Cancel</Btn>
+        </div>
+      </Card>
+    </div>
+  );
+}
 
 function timeAgo(iso) {
   const diff = Date.now() - new Date(iso).getTime();
@@ -434,7 +554,7 @@ const mondayOf = d => { const x = new Date(d); x.setHours(0, 0, 0, 0); x.setDate
 const clockTime = d => new Date(d).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 
 function CalendarWeekGrid({ data, weekStart, onSelect, selectedId }) {
-  const PX = 56;
+  const PX = 76;
   const days = Array.from({ length: 7 }, (_, i) => { const d = new Date(weekStart + "T00:00"); d.setDate(d.getDate() + i); return d; });
   const windows = data?.windows || [];
   const bookings = data?.bookings || [];
@@ -482,10 +602,10 @@ function CalendarWeekGrid({ data, weekStart, onSelect, selectedId }) {
                     className="absolute left-1 right-1 rounded-lg text-left px-1.5 py-1 overflow-hidden text-white"
                     style={{
                       top: top(b.start) + 1, height: Math.max(top(b.end) - top(b.start) - 2, 20),
-                      backgroundColor: C.accent, outline: selectedId === b.id ? `2px solid ${C.text}` : "none",
+                      backgroundColor: b.status === "COMPLETED" ? C.success : C.accent, outline: selectedId === b.id ? `2px solid ${C.text}` : "none",
                     }}>
-                    <div className="text-[10px] font-bold leading-tight">{clockTime(b.start)} {b.candidateName}</div>
-                    <div className="text-[9px] leading-tight opacity-90">{ROUND_LABELS[b.interviewType] || b.interviewType} · {b.roleTitle}</div>
+                    <div className="text-[10px] font-bold leading-tight truncate">{b.status === "COMPLETED" ? "✓ " : ""}{clockTime(b.start)} {b.candidateName}</div>
+                    <div className="text-[9px] leading-tight opacity-90 truncate">{ROUND_LABELS[b.interviewType] || b.interviewType} · {b.roleTitle}</div>
                   </button>
                 ))}
               </div>
@@ -495,6 +615,7 @@ function CalendarWeekGrid({ data, weekStart, onSelect, selectedId }) {
         <div className="flex items-center gap-4 mt-3 text-[10px]" style={{ color: C.muted, paddingLeft: 44 }}>
           <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded" style={{ backgroundColor: `${C.success}40` }} /> Open for booking</span>
           <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded" style={{ backgroundColor: C.accent }} /> Booked interview</span>
+          <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded" style={{ backgroundColor: C.success }} /> Completed</span>
         </div>
       </div>
     </Card>
@@ -615,12 +736,18 @@ function CalendarView() {
                   <div className="text-xs space-y-0.5">
                     <p className="text-sm font-bold" style={{ color: C.text }}>{selected.candidateName}</p>
                     <p style={{ color: C.muted }}>{ROUND_LABELS[selected.interviewType] || selected.interviewType} · {selected.roleTitle}</p>
+                    {selected.interviewerName && <p style={{ color: C.muted }}>Interviewer: <span className="font-semibold" style={{ color: C.text }}>{selected.interviewerName}</span></p>}
+                    <p className="font-semibold" style={{ color: selected.status === "COMPLETED" ? C.success : C.accent }}>
+                      {selected.status === "COMPLETED" ? "✓ Interview completed" : "Confirmed"}
+                    </p>
                     <p style={{ color: C.accent }} className="font-semibold">
                       {new Date(selected.start).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })}, {clockTime(selected.start)}–{clockTime(selected.end)}
                     </p>
                   </div>
                   <div className="flex gap-2">
-                    <Btn variant="secondary" onClick={() => rescheduleBooking(selected.id)}>Reschedule by email</Btn>
+                    {selected.status !== "COMPLETED" && (
+                      <Btn variant="secondary" onClick={() => rescheduleBooking(selected.id)}>Reschedule by email</Btn>
+                    )}
                     <Btn variant="secondary" onClick={() => setSelected(null)}>Close</Btn>
                   </div>
                 </Card>
@@ -655,9 +782,11 @@ function CalendarView() {
                       <div>
                         <span className="font-bold" style={{ color: C.accent }}>{clockTime(b.start)}–{clockTime(b.end)}</span>
                         <span className="ml-2 font-semibold" style={{ color: C.text }}>{b.candidateName}</span>
-                        <span className="ml-2" style={{ color: C.muted }}>{(ROUND_LABELS[b.interviewType] || b.interviewType)} · {b.roleTitle}</span>
+                        <span className="ml-2" style={{ color: C.muted }}>{(ROUND_LABELS[b.interviewType] || b.interviewType)} · {b.roleTitle}{b.interviewerName ? ` · with ${b.interviewerName}` : ""}</span>
                       </div>
-                      <button onClick={() => rescheduleBooking(b.id)} className="underline shrink-0" style={{ color: C.danger }}>Reschedule</button>
+                      {b.status === "COMPLETED"
+                        ? <span className="shrink-0 font-semibold" style={{ color: C.success }}>✓ Completed</span>
+                        : <button onClick={() => rescheduleBooking(b.id)} className="underline shrink-0" style={{ color: C.danger }}>Reschedule</button>}
                     </div>
                   ))}
                 </div>
@@ -2224,7 +2353,7 @@ function FailedNotificationsBanner() {
 // they need more room than a table row can give them.
 function PipelineListView({
   board, isAllRoles, stageFilter, setStageFilter, sortBy, setSortBy, sortDir, setSortDir,
-  movingId, handleMove, setScheduleModal, setScheduleForm, setOfferModal, onDraftOutreach, onViewHistory,
+  movingId, handleMove, setScheduleModal, setScheduleForm, setOfferModal, onDraftOutreach, onViewHistory, onReject,
 }) {
   const allCandidates = Object.values(board.stages || {}).flat();
   const filtered = stageFilter === "ALL" ? allCandidates : allCandidates.filter(c => c.stage === stageFilter);
@@ -2341,7 +2470,7 @@ function PipelineListView({
                           )}
                           {c.stage !== "REJECTED" && c.stage !== "HIRED" && c.stage !== "NO_SHOW" && (
                             <button disabled={isMoving}
-                              onClick={() => handleMove(c.candidateId, "REJECTED", c.requisitionId)}
+                              onClick={() => onReject(c)}
                               className="text-xs font-semibold px-2.5 py-1 rounded-lg"
                               style={{ color: C.danger, border: `1px solid ${C.danger}33`, opacity: isMoving ? 0.5 : 1 }}>
                               Reject
@@ -2383,6 +2512,38 @@ function PipelineView() {
   const [reqId, setReqId] = useState("ALL"); // "ALL" or a numeric requisition id
   const [viewMode, setViewMode] = useState("board"); // "board" | "list"
   const [stageFilter, setStageFilter] = useState("ALL");
+  const { data: interviewers } = useApi("/calendar/interviewers");
+  const [showClosed, setShowClosed] = useState(false); // show Rejected / No-Show columns on the board
+  const [rejectModal, setRejectModal] = useState(null);  // { candidateId, requisitionId, candidateName }
+  const [rejectForm, setRejectForm] = useState({ preset: "", note: "" });
+  const { data: scorecardCriteria } = useApi("/orchestrator/scorecard-criteria");
+  const emptyScorecard = { ratings: {}, verdict: "", notes: "", noticePeriod: "", expectedSalary: "" };
+  const [scorecardModal, setScorecardModal] = useState(null); // { interviewId, title }
+  const [scorecardForm, setScorecardForm] = useState(emptyScorecard);
+  const [scorecardSaving, setScorecardSaving] = useState(false);
+  const [scorecardError, setScorecardError] = useState(null);
+  const openScorecard = (c, r) => {
+    setScorecardForm(emptyScorecard); setScorecardError(null);
+    setScorecardModal({ interviewId: r.id, interviewType: r.interviewType, title: `${ROUND_LABELS[r.interviewType] || r.interviewType} — ${c.candidateName}` });
+  };
+  async function submitScorecard() {
+    setScorecardSaving(true); setScorecardError(null);
+    try {
+      await apiFetch(`/orchestrator/interviews/${scorecardModal.interviewId}/scorecard`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(scorecardForm),
+      });
+      setScorecardModal(null);
+      reload();
+    } catch (e) { setScorecardError(e.message); }
+    finally { setScorecardSaving(false); }
+  }
+  const requestReject = c => { setRejectForm({ preset: "", note: "" }); setRejectModal({ candidateId: c.candidateId, requisitionId: c.requisitionId, candidateName: c.candidateName }); };
+  async function confirmReject() {
+    const reason = joinRejectReason(rejectForm);
+    const m = rejectModal;
+    setRejectModal(null);
+    await handleMove(m.candidateId, "REJECTED", m.requisitionId, reason);
+  }
   const [sortBy, setSortBy] = useState("enteredAt"); // "name" | "score" | "stage" | "enteredAt"
   const [sortDir, setSortDir] = useState("desc");
   const [movingId, setMovingId] = useState(null);
@@ -2400,7 +2561,7 @@ function PipelineView() {
   const [inviteSent, setInviteSent] = useState(false);
   const [reschedulingId, setReschedulingId] = useState(null);
   const [scheduleModal, setScheduleModal] = useState(null);
-  const [scheduleForm, setScheduleForm] = useState({ interviewType: "PHONE_SCREEN", notes: "" });
+  const [scheduleForm, setScheduleForm] = useState({ interviewType: "PHONE_SCREEN", interviewerId: "", notes: "" });
   const [scheduling, setScheduling] = useState(false);
   const [rescheduleModal, setRescheduleModal] = useState(null); // { interviewId, roundNumber, interviewType }
   const [rescheduleSlot, setRescheduleSlot] = useState("");
@@ -2469,27 +2630,17 @@ function PipelineView() {
   const error = isAllRoles ? allBoardsApi.error : singleBoardApi.error;
   const reload = isAllRoles ? allBoardsApi.reload : singleBoardApi.reload;
 
-  async function handleMove(candidateId, nextStage, candidateReqId) {
+  async function handleMove(candidateId, nextStage, candidateReqId, reason) {
     setMovingId(candidateId);
     try {
       await apiFetch(`/orchestrator/pipeline/${candidateReqId ?? reqId}/candidates/${candidateId}/stage`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ stage: nextStage }),
+        body: JSON.stringify({ stage: nextStage, ...(reason ? { reason } : {}) }),
       });
       reload();
     } finally {
       setMovingId(null);
-    }
-  }
-
-  async function handleCompleteRound(interviewId) {
-    setCompletingRoundId(interviewId);
-    try {
-      await apiFetch(`/orchestrator/interviews/${interviewId}/complete`, { method: "PATCH" });
-      reload();
-    } finally {
-      setCompletingRoundId(null);
     }
   }
 
@@ -2557,7 +2708,7 @@ function PipelineView() {
   async function handleCreateOffer() {
     setSubmittingOffer(true);
     try {
-      await apiFetch(`/orchestrator/pipeline/${offerModal.requisitionId ?? reqId}/candidates/${offerModal.candidateId}/offer`, {
+      const created = await apiFetch(`/orchestrator/pipeline/${offerModal.requisitionId ?? reqId}/candidates/${offerModal.candidateId}/offer`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...offerForm, salaryAmount: offerForm.salaryAmount ? Number(offerForm.salaryAmount) : null }),
@@ -2565,6 +2716,8 @@ function PipelineView() {
       setOfferModal(null);
       setOfferForm({ salaryAmount: "", currency: "MYR", startDate: "", expiryDate: "", notes: "" });
       reload();
+      // Go straight to reviewing the letter; nothing is sent until "Send to Candidate" is pressed there
+      if (created?.id) await handleGenerateLetter(created.id);
     } finally {
       setSubmittingOffer(false);
     }
@@ -2621,9 +2774,9 @@ function PipelineView() {
       const result = await apiFetch(`/orchestrator/pipeline/${scheduleModal.requisitionId ?? reqId}/candidates/${scheduleModal.candidateId}/schedule-interview`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(scheduleForm),
+        body: JSON.stringify({ ...scheduleForm, interviewerId: scheduleForm.interviewerId ? Number(scheduleForm.interviewerId) : null }),
       });
-      setScheduleForm({ interviewType: "PHONE_SCREEN", notes: "" });
+      setScheduleForm({ interviewType: "PHONE_SCREEN", interviewerId: "", notes: "" });
       // Stay in modal to show the invitation email that was sent
       setScheduleModal(prev => ({ ...prev, confirmed: true, invitationEmail: result.invitationEmail, candidateEmail: result.candidateEmail }));
       reload();
@@ -2643,7 +2796,8 @@ function PipelineView() {
     } catch { setOutreach(null); }
   }
 
-  const visibleStages = PIPELINE_STAGES.filter(s => s !== "REJECTED" && s !== "NO_SHOW");
+  const visibleStages = PIPELINE_STAGES.filter(s => showClosed || (s !== "REJECTED" && s !== "NO_SHOW"));
+  const closedCount = ["REJECTED", "NO_SHOW"].reduce((n, st) => n + ((board?.stages?.[st]) || []).length, 0);
 
   return (
     <div>
@@ -2656,6 +2810,17 @@ function PipelineView() {
                 <option value="ALL">All Roles</option>
                 {reqs.map(r => <option key={r.id} value={r.id}>{r.title}</option>)}
               </Select>
+            )}
+            {viewMode === "board" && (
+              <button onClick={() => setShowClosed(v => !v)}
+                className="px-3 py-2 rounded-xl text-xs font-semibold border"
+                style={{
+                  borderColor: showClosed ? C.danger : C.border,
+                  color: showClosed ? C.danger : C.muted,
+                  backgroundColor: showClosed ? `${C.danger}10` : "transparent",
+                }}>
+                {showClosed ? "Hide" : "Show"} rejected ({closedCount})
+              </button>
             )}
             <div className="flex p-1 rounded-xl" style={{ background: C.surface, border: `1px solid ${C.border}` }}>
               <button onClick={() => setViewMode("board")}
@@ -2698,7 +2863,7 @@ function PipelineView() {
           movingId={movingId} handleMove={handleMove}
           setScheduleModal={setScheduleModal} setScheduleForm={setScheduleForm}
           setOfferModal={setOfferModal} onDraftOutreach={handleDraftOutreach}
-          onViewHistory={openHistory} />
+          onViewHistory={openHistory} onReject={requestReject} />
       )}
 
       {board && viewMode === "board" && (
@@ -2750,8 +2915,19 @@ function PipelineView() {
                             {AGENT_META[c.updatedByAgent]?.label || c.updatedByAgent}
                           </p>
                         )}
-                        {/* Interview history summary — shown on OFFER cards */}
-                        {stage === "OFFER" && c.interviewRounds?.length > 0 && (
+                        {/* Why/when a candidate was rejected or did not show */}
+                        {(stage === "REJECTED" || stage === "NO_SHOW") && (
+                          <div className="mt-2 p-2 rounded-lg space-y-0.5" style={{ background: `${C.danger}08`, border: `1px solid ${C.danger}33` }}>
+                            <p className="text-[9px] font-bold uppercase tracking-wide" style={{ color: C.danger }}>
+                              {stage === "NO_SHOW" ? "No-Show" : "Rejected"}
+                              {c.enteredAt && <span className="font-normal normal-case" style={{ color: C.muted }}> · {new Date(c.enteredAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</span>}
+                            </p>
+                            {c.notes && <p className="text-[10px] leading-snug" style={{ color: C.text }}>{c.notes}</p>}
+                          </div>
+                        )}
+
+                        {/* Interview history summary — shown on OFFER and closed (rejected / no-show) cards */}
+                        {(stage === "OFFER" || stage === "REJECTED" || stage === "NO_SHOW") && c.interviewRounds?.length > 0 && (
                           <div className="mt-2 p-2 rounded-lg space-y-1" style={{ background: `${C.accent}08`, border: `1px solid ${C.border}` }}>
                             <p className="text-[9px] font-bold uppercase tracking-wide mb-1" style={{ color: C.muted }}>Interview History</p>
                             {c.interviewRounds.map(r => (
@@ -2878,7 +3054,7 @@ function PipelineView() {
                                       onClick={() => handleGenerateLetter(offer.id)}
                                       className="w-full text-[10px] font-semibold py-1 rounded-lg text-white flex items-center justify-center gap-1"
                                       style={{ backgroundColor: C.accent, opacity: generatingLetter === offer.id ? 0.5 : 1 }}>
-                                      {generatingLetter === offer.id ? <><Spinner size={10} /> Generating…</> : <><Sparkles size={10} /> Generate & Send</>}
+                                      {generatingLetter === offer.id ? <><Spinner size={10} /> Generating…</> : <><Sparkles size={10} /> Review & send</>}
                                     </button>
                                   )}
                                   {offer.status === "SENT" && (
@@ -2984,28 +3160,41 @@ function PipelineView() {
                                     <div key={r.id} className="rounded-lg overflow-hidden"
                                       style={{ border: `1px solid ${ROUND_COLORS[r.status]}33` }}>
                                       {/* Round header row */}
-                                      <div className="flex items-center gap-2 p-2"
+                                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 p-2"
                                         style={{ background: `${ROUND_COLORS[r.status]}15` }}>
                                         <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: ROUND_COLORS[r.status] }} />
-                                        <div className="flex-1 min-w-0">
+                                        <div className="flex-1 min-w-[110px]">
                                           <p className="text-[10px] font-semibold" style={{ color: C.text }}>
                                             R{r.roundNumber} · {ROUND_LABELS[r.interviewType] || r.interviewType}
                                           </p>
+                                          {r.interviewerName && <p className="text-[9px]" style={{ color: C.muted }}>with {r.interviewerName}</p>}
+                                          {r.scorecard && (
+                                            <p className="text-[9px] font-semibold" title={r.scorecard.notes || ""} style={{ color: verdictColor(r.scorecard.verdict) }}>
+                                              {VERDICT_LABELS[r.scorecard.verdict]} · {r.scorecard.averageRating}/5
+                                            </p>
+                                          )}
+                                          {r.scorecard && (r.scorecard.noticePeriod || r.scorecard.expectedSalary) && (
+                                            <p className="text-[9px]" style={{ color: C.muted }}>
+                                              {r.scorecard.noticePeriod && <>Notice: {r.scorecard.noticePeriod}</>}
+                                              {r.scorecard.noticePeriod && r.scorecard.expectedSalary && " · "}
+                                              {r.scorecard.expectedSalary && <>Expects: {r.scorecard.expectedSalary}</>}
+                                            </p>
+                                          )}
                                           {r.confirmedSlot && (
                                             <p className="text-[9px]" style={{ color: C.muted }}>
                                               {new Date(r.confirmedSlot).toLocaleDateString("en-GB", { day:"numeric", month:"short", hour:"2-digit", minute:"2-digit" })}
                                             </p>
                                           )}
                                         </div>
-                                        <span className="text-[9px] font-bold uppercase" style={{ color: ROUND_COLORS[r.status] }}>
+                                        <span className="text-[9px] font-bold uppercase text-right" style={{ color: ROUND_COLORS[r.status] }}>
                                           {r.status === "COMPLETED" ? "✓ Done" : r.status === "CANCELLED" ? "✗" : r.status === "PROPOSED" ? "awaiting booking" : r.status.toLowerCase()}
                                         </span>
                                         {(r.status === "CONFIRMED" || r.status === "PROPOSED") && (
-                                          <div className="flex gap-1 flex-shrink-0">
+                                          <div className="flex gap-1.5 items-center flex-wrap w-full pl-3.5">
                                             {r.status === "CONFIRMED" && (
                                               <button
                                                 disabled={completingRoundId === r.id}
-                                                onClick={() => handleCompleteRound(r.id)}
+                                                onClick={() => openScorecard(c, r)}
                                                 className="text-[9px] font-semibold px-1.5 py-0.5 rounded-md text-white"
                                                 style={{ backgroundColor: C.success, opacity: completingRoundId === r.id ? 0.5 : 1 }}>
                                                 {completingRoundId === r.id ? "…" : "Done"}
@@ -3102,7 +3291,7 @@ function PipelineView() {
                                   </>
                                 )}
                                 <button disabled={isMoving}
-                                  onClick={() => handleMove(c.candidateId, "REJECTED", c.requisitionId)}
+                                  onClick={() => requestReject(c)}
                                   className="w-full text-[10px] font-semibold py-1 rounded-lg transition-opacity"
                                   style={{ color: C.danger, border: `1px solid ${C.danger}33`, opacity: isMoving ? 0.5 : 1 }}>
                                   Reject
@@ -3136,7 +3325,7 @@ function PipelineView() {
                             )}
                             {stage !== "REJECTED" && stage !== "HIRED" && (
                               <button disabled={isMoving}
-                                onClick={() => handleMove(c.candidateId, "REJECTED", c.requisitionId)}
+                                onClick={() => requestReject(c)}
                                 className="w-full text-[10px] font-semibold py-1 rounded-lg transition-opacity"
                                 style={{ color: C.danger, border: `1px solid ${C.danger}33`, opacity: isMoving ? 0.5 : 1 }}>
                                 Reject
@@ -3587,10 +3776,13 @@ function PipelineView() {
 
             <div className="flex gap-2 mt-5">
               <Btn variant="primary" onClick={handleCreateOffer} disabled={submittingOffer}>
-                {submittingOffer ? <><Spinner size={13} /> Saving…</> : "Extend Offer"}
+                {submittingOffer ? <><Spinner size={13} /> Saving…</> : "Create & review letter"}
               </Btn>
               <Btn variant="secondary" onClick={() => setOfferModal(null)}>Cancel</Btn>
             </div>
+            <p className="text-[11px] mt-3" style={{ color: C.muted }}>
+              Nothing is sent to the candidate until you press Send on the letter.
+            </p>
           </Card>
         </div>
       )}
@@ -3730,6 +3922,14 @@ function PipelineView() {
                     </div>
                   </div>
 
+                  <div>
+                    <label className="block text-xs font-semibold mb-1.5" style={{ color: C.muted }}>Interviewer</label>
+                    <Select value={scheduleForm.interviewerId} onChange={e => setScheduleForm(f => ({ ...f, interviewerId: e.target.value }))}>
+                      <option value="">Choose who will run this interview…</option>
+                      {(interviewers || []).map(u => <option key={u.id} value={u.id}>{u.fullName}</option>)}
+                    </Select>
+                  </div>
+
                   <p className="text-xs leading-relaxed" style={{ color: C.muted }}>
                     The candidate will receive a link to choose a time from the shared <strong>Calendar</strong>.
                     Make sure you have published availability there first.
@@ -3750,7 +3950,7 @@ function PipelineView() {
                 </div>
 
                 <div className="flex gap-2 mt-5">
-                  <Btn variant="primary" onClick={handleScheduleInterview} disabled={scheduling}>
+                  <Btn variant="primary" onClick={handleScheduleInterview} disabled={scheduling || !scheduleForm.interviewerId}>
                     {scheduling ? <><Spinner size={13} /> Sending…</> : <><Calendar size={13} /> Send Booking Link</>}
                   </Btn>
                   <Btn variant="secondary" onClick={() => setScheduleModal(null)}>Cancel</Btn>
@@ -3759,6 +3959,20 @@ function PipelineView() {
             )}
           </Card>
         </div>
+      )}
+
+      {scorecardModal && (
+        <ScorecardModal title={`Scorecard · ${scorecardModal.title}`}
+          criteria={(scorecardCriteria?.types?.[scorecardModal.interviewType] || []).map(k => [k, scorecardCriteria.labels[k] || k])}
+          isPhone={scorecardModal.interviewType === "PHONE_SCREEN"}
+          form={scorecardForm} setForm={setScorecardForm}
+          onSubmit={submitScorecard} onCancel={() => setScorecardModal(null)}
+          submitting={scorecardSaving} error={scorecardError} />
+      )}
+
+      {rejectModal && (
+        <RejectReasonModal candidateName={rejectModal.candidateName} form={rejectForm} setForm={setRejectForm}
+          onConfirm={confirmReject} onCancel={() => setRejectModal(null)} />
       )}
 
       <OutreachModal outreach={outreach} onClose={() => setOutreach(null)} onSent={reload} />
@@ -3838,6 +4052,14 @@ function PipelineView() {
                                         Scheduled: {new Date(ev.confirmedSlot).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
                                       </p>
                                     )}
+                                  </>
+                                )}
+                                {isInterview && ev.verdict && (
+                                  <>
+                                    <p className="text-[10px] font-semibold" style={{ color: verdictColor(ev.verdict) }}>
+                                      Feedback: {VERDICT_LABELS[ev.verdict]} · {ev.averageRating}/5
+                                    </p>
+                                    {ev.feedbackNotes && <p className="text-[10px] leading-snug" style={{ color: C.muted }}>{ev.feedbackNotes}</p>}
                                   </>
                                 )}
                                 {isNotification && (
@@ -5017,10 +5239,20 @@ function ScreeningDetailModal({ result, onClose, onDecision }) {
             </div>
           )}
 
+          {result.rejectionReason && !result.reviewerNotes && (
+            <div className="p-4 rounded-2xl" style={{ backgroundColor: `${C.danger}08`, border: `1px solid ${C.danger}33` }}>
+              <p className="text-sm font-semibold" style={{ color: C.danger }}>Rejection reason</p>
+              <p className="text-xs mt-1" style={{ color: C.text }}>{result.rejectionReason}</p>
+            </div>
+          )}
+
           {result.reviewerDecision && (
-            <div className="p-4 rounded-2xl" style={{ backgroundColor: "#F0FDF4", border: "1px solid #A7F3D0" }}>
-              <p className="text-sm font-semibold" style={{ color: C.success }}>
-                ✓ Human decision recorded: {result.reviewerDecision}
+            <div className="p-4 rounded-2xl"
+              style={result.reviewerDecision === "REJECT"
+                ? { backgroundColor: `${C.danger}08`, border: `1px solid ${C.danger}33` }
+                : { backgroundColor: "#F0FDF4", border: "1px solid #A7F3D0" }}>
+              <p className="text-sm font-semibold" style={{ color: result.reviewerDecision === "REJECT" ? C.danger : C.success }}>
+                {result.reviewerDecision === "REJECT" ? "✗" : "✓"} Human decision recorded: {result.reviewerDecision}
               </p>
               {result.reviewerNotes && (
                 <p className="text-xs mt-1" style={{ color: C.muted }}>{result.reviewerNotes}</p>
@@ -5061,6 +5293,28 @@ function ScreeningView() {
   const error = isAllRoles ? allResultsApi.error : singleResultsApi.error;
   const reload = isAllRoles ? allResultsApi.reload : singleResultsApi.reload;
 
+  // Applications still being matched/screened have no result row yet — poll for them
+  const [inProgress, setInProgress] = useState([]);
+  const prevInProgress = useRef(0);
+  const reloadRef = useRef(reload);
+  reloadRef.current = reload;
+  useEffect(() => {
+    let alive = true;
+    const tick = async () => {
+      try {
+        const list = await apiFetch("/screening/in-progress");
+        if (!alive) return;
+        setInProgress(list);
+        if (list.length < prevInProgress.current) reloadRef.current();
+        prevInProgress.current = list.length;
+      } catch { /* keep the last known state */ }
+    };
+    tick();
+    const id = setInterval(tick, 3000);
+    return () => { alive = false; clearInterval(id); };
+  }, []);
+  const pending = inProgress.filter(p => isAllRoles || String(p.requisitionId) === String(reqId));
+
   async function handleDecision(screeningId, decision, notes) {
     await apiFetch(`/screening/${screeningId}/review`, {
       method: "POST",
@@ -5083,12 +5337,15 @@ function ScreeningView() {
     }
   }
 
-  async function handleReject(screeningId) {
+  const [rejectTarget, setRejectTarget] = useState(null); // { id, name }
+  const [rejectForm, setRejectForm] = useState({ preset: "", note: "" });
+
+  async function handleReject(screeningId, reason) {
     setRejecting(screeningId);
     try {
       await apiFetch(`/screening/${screeningId}/review`, {
         method: "POST",
-        body: JSON.stringify({ decision: "REJECT", notes: "Rejected by recruiter after screening review" }),
+        body: JSON.stringify({ decision: "REJECT", notes: reason }),
       });
       reload();
     } finally {
@@ -5181,6 +5438,26 @@ function ScreeningView() {
             </tr>
           </thead>
           <tbody className="divide-y" style={{ borderColor: C.border }}>
+            {pending.map((p, i) => (
+              <tr key={`pending-${i}`} style={{ backgroundColor: `${C.accent}06` }}>
+                <td className="px-5 py-4">
+                  <div className="flex items-center gap-2.5">
+                    <Avatar name={p.candidateName} size={34} />
+                    <div>
+                      <p className="font-semibold" style={{ color: C.text }}>{p.candidateName}</p>
+                      {isAllRoles && p.requisitionTitle && (
+                        <p className="text-xs" style={{ color: C.muted }}>{p.requisitionTitle}</p>
+                      )}
+                    </div>
+                  </div>
+                </td>
+                <td className="px-5 py-4" colSpan={4}>
+                  <span className="inline-flex items-center gap-2 text-xs font-semibold" style={{ color: C.accent }}>
+                    <Spinner size={13} /> Screening in progress — the AI is reading the CV…
+                  </span>
+                </td>
+              </tr>
+            ))}
             {loading
               ? Array.from({ length: 4 }).map((_, i) => (
                   <tr key={i}>
@@ -5210,7 +5487,16 @@ function ScreeningView() {
                       {(() => {
                         const stage = r.pipelineStage;
                         if (stage === "SHORTLISTED") return <span className="text-xs font-semibold px-2 py-0.5 rounded-full text-white" style={{ backgroundColor: C.success }}>Shortlisted</span>;
-                        if (stage === "REJECTED")    return <span className="text-xs font-semibold px-2 py-0.5 rounded-full text-white" style={{ backgroundColor: C.danger }}>Rejected</span>;
+                        if (stage === "REJECTED")    return (
+                          <div>
+                            <span className="text-xs font-semibold px-2 py-0.5 rounded-full text-white" style={{ backgroundColor: C.danger }}>Rejected</span>
+                            {r.rejectionReason && (
+                              <p className="text-[11px] mt-1 max-w-[200px] truncate" title={r.rejectionReason} style={{ color: C.muted }}>
+                                {r.rejectionReason}
+                              </p>
+                            )}
+                          </div>
+                        );
                         if (stage === "INTERVIEW_SCHEDULED") return <span className="text-xs font-semibold px-2 py-0.5 rounded-full text-white" style={{ backgroundColor: C.accent }}>Interview</span>;
                         if (stage === "OFFER")       return <span className="text-xs font-semibold px-2 py-0.5 rounded-full text-white" style={{ backgroundColor: C.accent }}>Offer</span>;
                         if (stage === "HIRED")       return <span className="text-xs font-semibold px-2 py-0.5 rounded-full text-white" style={{ backgroundColor: C.success }}>Hired</span>;
@@ -5244,7 +5530,7 @@ function ScreeningView() {
                             {rec === "REVIEW" && (
                               <button
                                 disabled={rejecting === r.id}
-                                onClick={() => handleReject(r.id)}
+                                onClick={() => { setRejectForm({ preset: "", note: "" }); setRejectTarget({ id: r.id, name: r.candidateName }); }}
                                 className="text-xs font-semibold px-3 py-1.5 rounded-lg"
                                 style={{ color: C.danger, border: `1px solid ${C.danger}55`, backgroundColor: `${C.danger}08`, opacity: rejecting === r.id ? 0.5 : 1 }}>
                                 {rejecting === r.id ? "…" : "Reject"}
@@ -5299,12 +5585,18 @@ function ScreeningView() {
                 ))}
           </tbody>
         </table>
-        {!loading && sortedResults.length === 0 && (
+        {!loading && sortedResults.length === 0 && pending.length === 0 && (
           <p className="text-center py-12 text-sm" style={{ color: C.muted }}>
             No screening results yet. Upload a resume to screen.
           </p>
         )}
       </Card>
+
+      {rejectTarget && (
+        <RejectReasonModal candidateName={rejectTarget.name} form={rejectForm} setForm={setRejectForm}
+          onConfirm={() => { const t = rejectTarget; setRejectTarget(null); handleReject(t.id, joinRejectReason(rejectForm)); }}
+          onCancel={() => setRejectTarget(null)} />
+      )}
 
       <ScreeningDetailModal
         result={selected}
