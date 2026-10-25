@@ -823,11 +823,244 @@ function CalendarView() {
 }
 
 // ============================================================
+// TALENT INTELLIGENCE — pipeline depth, funnel, supply vs demand, early warnings
+// ============================================================
+const COVERAGE_META = {
+  CRITICAL: { label: "Critical", color: "#EF4444" },
+  AT_RISK:  { label: "At risk",  color: "#F59E0B" },
+  HEALTHY:  { label: "Healthy",  color: "#10B981" },
+  FILLED:   { label: "Filled",   color: "#6366F1" },
+};
+const SKILL_META = {
+  SHORTAGE: { label: "Shortage", color: "#EF4444" },
+  TIGHT:    { label: "Tight",    color: "#F59E0B" },
+  OK:       { label: "Covered",  color: "#10B981" },
+};
+const SEVERITY_COLOR = { HIGH: "#EF4444", MEDIUM: "#F59E0B", LOW: "#64748B" };
+
+function IntelPill({ meta }) {
+  return (
+    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full text-white whitespace-nowrap" style={{ backgroundColor: meta.color }}>
+      {meta.label}
+    </span>
+  );
+}
+
+function IntelSection({ title, hint, children }) {
+  return (
+    <Card className="p-5">
+      <div className="mb-3">
+        <h3 className="text-sm font-bold" style={{ color: C.text }}>{title}</h3>
+        {hint && <p className="text-xs mt-0.5" style={{ color: C.muted }}>{hint}</p>}
+      </div>
+      {children}
+    </Card>
+  );
+}
+
+function IntelligenceView() {
+  const { data, loading, error, reload } = useApi("/intelligence/overview");
+
+  if (loading && !data) return <div className="py-20 flex justify-center"><Spinner size={24} /></div>;
+  if (error) return <ErrorBanner message={error} onRetry={reload} />;
+  if (!data) return null;
+
+  const { kpis, alerts, roleCoverage, funnel, skills, channels, stalled, timeToFill } = data;
+  const maxFunnel = Math.max(1, ...funnel.map(f => f.count));
+  const maxSkill = Math.max(1, ...skills.map(s => Math.max(s.candidatesWithSkill, s.openRolesNeeding)));
+  const th = "text-left px-3 py-2 text-xs font-semibold";
+  const fmtDate = d => new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+  const tiles = [
+    ["Open roles", kpis.openRoles],
+    ["Qualified candidates", kpis.qualifiedCandidates],
+    ["In process", kpis.candidatesInProcess],
+    ["Avg days to fill", kpis.avgDaysToFill != null ? Math.round(kpis.avgDaysToFill) : "—"],
+    ["Offer acceptance", kpis.offerAcceptanceRate != null ? `${Math.round(kpis.offerAcceptanceRate)}%` : "—"],
+    ["Hires", kpis.hires],
+  ];
+
+  return (
+    <div>
+      <TopBar title="Talent Intelligence" subtitle="Where hiring is healthy, where it is at risk, and what to do about it"
+        action={
+          <button onClick={reload} className="w-9 h-9 rounded-xl border flex items-center justify-center" style={{ borderColor: C.border }}>
+            <RefreshCw size={13} style={{ color: C.muted }} />
+          </button>
+        } />
+
+      <div className="space-y-5">
+        {/* Early warnings */}
+        <IntelSection title="Early warnings" hint="Things that need attention, most urgent first">
+          {alerts.length === 0 ? (
+            <p className="text-sm" style={{ color: C.success }}>No risks detected right now.</p>
+          ) : (
+            <div className="space-y-2">
+              {alerts.map((a, i) => (
+                <div key={i} className="px-3 py-2.5 rounded-xl" style={{ borderLeft: `4px solid ${SEVERITY_COLOR[a.severity]}`, backgroundColor: `${SEVERITY_COLOR[a.severity]}0d` }}>
+                  <p className="text-sm font-semibold" style={{ color: C.text }}>{a.title}</p>
+                  <p className="text-xs mt-0.5" style={{ color: C.muted }}>{a.detail}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </IntelSection>
+
+        {/* KPI tiles */}
+        <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" }}>
+          {tiles.map(([label, value]) => (
+            <Card key={label} className="p-4">
+              <p className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: C.muted }}>{label}</p>
+              <p className="text-2xl font-bold mt-1" style={{ color: C.text }}>{value}</p>
+            </Card>
+          ))}
+        </div>
+
+        {/* Role coverage */}
+        <IntelSection title="Pipeline depth by role" hint="Each open role is one opening. Healthy means 3 or more qualified candidates.">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr style={{ backgroundColor: C.bg, color: C.muted }}>
+                  <th className={th}>Role</th><th className={th}>Days open</th><th className={th}>Applicants</th>
+                  <th className={th}>Qualified</th><th className={th}>Interviewing</th><th className={th}>Offers</th>
+                  <th className={th}>Status</th><th className={th}>Expected fill</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y" style={{ borderColor: C.border }}>
+                {roleCoverage.map(r => (
+                  <tr key={r.requisitionId}>
+                    <td className="px-3 py-2.5"><p className="font-semibold" style={{ color: C.text }}>{r.title}</p>
+                      {r.department && <p className="text-xs" style={{ color: C.muted }}>{r.department}</p>}</td>
+                    <td className="px-3 py-2.5" style={{ color: C.text }}>{r.daysOpen}</td>
+                    <td className="px-3 py-2.5" style={{ color: C.text }}>{r.applicants}</td>
+                    <td className="px-3 py-2.5">
+                      <div className="flex items-center gap-2">
+                        <div className="h-1.5 w-16 rounded-full" style={{ backgroundColor: C.border }}>
+                          <div className="h-1.5 rounded-full" style={{ width: `${Math.min(100, (r.qualified / 3) * 100)}%`, backgroundColor: COVERAGE_META[r.status].color }} />
+                        </div>
+                        <span className="text-xs font-semibold" style={{ color: C.text }}>{r.qualified}/3</span>
+                      </div>
+                    </td>
+                    <td className="px-3 py-2.5" style={{ color: C.text }}>{r.interviewing}</td>
+                    <td className="px-3 py-2.5" style={{ color: C.text }}>{r.offers}</td>
+                    <td className="px-3 py-2.5"><IntelPill meta={COVERAGE_META[r.status]} /></td>
+                    <td className="px-3 py-2.5 text-xs" style={{ color: C.muted }}>{r.expectedFillDate ? fmtDate(r.expectedFillDate) : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {roleCoverage.length === 0 && <p className="text-sm py-6 text-center" style={{ color: C.muted }}>No open roles.</p>}
+          </div>
+          <p className="text-xs mt-3" style={{ color: C.muted }}>
+            Time to fill: {timeToFill.averageDays != null ? `${Math.round(timeToFill.averageDays)} days on average. ` : ""}{timeToFill.note}
+          </p>
+        </IntelSection>
+
+        <div className="grid gap-5" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))" }}>
+          {/* Funnel */}
+          <IntelSection title="Hiring funnel" hint="How far candidates get, and the share who move on from each step">
+            <div className="space-y-2">
+              {funnel.map(f => (
+                <div key={f.step}>
+                  <div className="flex items-center justify-between text-xs mb-1">
+                    <span style={{ color: C.text }}>{f.step}</span>
+                    <span style={{ color: C.muted }}>
+                      <strong style={{ color: C.text }}>{f.count}</strong>
+                      {f.conversionFromPrevious != null && ` · ${Math.round(f.conversionFromPrevious)}% of previous`}
+                    </span>
+                  </div>
+                  <div className="h-2 rounded-full" style={{ backgroundColor: C.border }}>
+                    <div className="h-2 rounded-full" style={{ width: `${(f.count / maxFunnel) * 100}%`, backgroundColor: C.accent }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </IntelSection>
+
+          {/* Skills */}
+          <IntelSection title="Skills: demand vs supply" hint="Open roles that need a skill, against candidates in the system who have it">
+            {skills.length === 0 ? <p className="text-sm" style={{ color: C.muted }}>No skills listed on open roles yet.</p> : (
+              <div className="space-y-2.5">
+                {skills.map(s => (
+                  <div key={s.skill}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-semibold capitalize" style={{ color: C.text }}>{s.skill}</span>
+                      <IntelPill meta={SKILL_META[s.status]} />
+                    </div>
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] w-14" style={{ color: C.muted }}>Roles</span>
+                        <div className="h-1.5 rounded-full" style={{ width: `${(s.openRolesNeeding / maxSkill) * 70}%`, minWidth: 4, backgroundColor: C.warning }} />
+                        <span className="text-[10px]" style={{ color: C.text }}>{s.openRolesNeeding}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] w-14" style={{ color: C.muted }}>Candidates</span>
+                        <div className="h-1.5 rounded-full" style={{ width: `${(s.candidatesWithSkill / maxSkill) * 70}%`, minWidth: 4, backgroundColor: C.success }} />
+                        <span className="text-[10px]" style={{ color: C.text }}>{s.candidatesWithSkill}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </IntelSection>
+        </div>
+
+        {/* Channels */}
+        <IntelSection title="Which channels work" hint="Where candidates come from, and how many go on to be advanced or hired">
+          {channels.length === 0 ? <p className="text-sm" style={{ color: C.muted }}>No candidates yet.</p> : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr style={{ backgroundColor: C.bg, color: C.muted }}>
+                    <th className={th}>Channel</th><th className={th}>Candidates</th><th className={th}>Avg score</th>
+                    <th className={th}>Advanced</th><th className={th}>Hired</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y" style={{ borderColor: C.border }}>
+                  {channels.map(c => (
+                    <tr key={c.channel}>
+                      <td className="px-3 py-2.5 font-semibold" style={{ color: C.text }}>{c.channel.replace(/_/g, " ")}</td>
+                      <td className="px-3 py-2.5" style={{ color: C.text }}>{c.candidates}</td>
+                      <td className="px-3 py-2.5" style={{ color: C.text }}>{c.avgScore != null ? Math.round(c.avgScore) : "—"}</td>
+                      <td className="px-3 py-2.5" style={{ color: C.text }}>{c.advanced} <span className="text-xs" style={{ color: C.muted }}>({Math.round(c.advanceRate)}%)</span></td>
+                      <td className="px-3 py-2.5" style={{ color: C.text }}>{c.hired} <span className="text-xs" style={{ color: C.muted }}>({Math.round(c.hireRate)}%)</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </IntelSection>
+
+        {/* Stalled */}
+        <IntelSection title="Stuck candidates" hint="In the same stage for a week or more on a role that is still open">
+          {stalled.length === 0 ? <p className="text-sm" style={{ color: C.success }}>Nobody is stuck.</p> : (
+            <div className="divide-y" style={{ borderColor: C.border }}>
+              {stalled.map(s => (
+                <div key={`${s.candidateId}-${s.requisitionId}`} className="flex items-center justify-between py-2 text-sm">
+                  <div>
+                    <span className="font-semibold" style={{ color: C.text }}>{s.candidateName}</span>
+                    <span className="text-xs ml-2" style={{ color: C.muted }}>{s.roleTitle}</span>
+                  </div>
+                  <span className="text-xs" style={{ color: C.muted }}>{s.stage.replace(/_/g, " ").toLowerCase()} · <strong style={{ color: C.warning }}>{s.daysInStage} days</strong></span>
+                </div>
+              ))}
+            </div>
+          )}
+        </IntelSection>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
 // SIDEBAR
 // ============================================================
 function Sidebar({ active, setActive, user, onLogout }) {
   const nav = [
     { id: "dashboard",    label: "Dashboard",         icon: LayoutGrid },
+    { id: "intelligence", label: "Intelligence",      icon: TrendingUp },
     { id: "roles",        label: "Open Roles",         icon: Briefcase  },
     { id: "pipeline",     label: "Pipeline",           icon: Activity   },
     { id: "screening",    label: "Screening",          icon: FileCheck  },
@@ -6336,6 +6569,7 @@ export default function App() {
 
   const views = {
     dashboard:    <Dashboard setActive={setActive} />,
+    intelligence: <IntelligenceView />,
     roles:        <RolesView setActive={setActive} />,
     pipeline:     <PipelineView />,
     screening:    <ScreeningView />,

@@ -104,6 +104,7 @@ public class OfferResponseService {
                 .ifPresent(ps -> {
                     ps.setStage("HIRED");
                     ps.setUpdatedByAgent("CANDIDATE");
+                    ps.setEnteredAt(LocalDateTime.now());
                     pipelineStageRepository.save(ps);
                 });
         log.info("Offer {} accepted by candidate via email link", offer.getId());
