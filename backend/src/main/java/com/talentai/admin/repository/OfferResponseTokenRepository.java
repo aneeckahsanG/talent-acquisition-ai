@@ -8,4 +8,5 @@ import java.util.Optional;
 public interface OfferResponseTokenRepository extends JpaRepository<OfferResponseToken, Long> {
     Optional<OfferResponseToken> findByToken(String token);
     void deleteByOfferId(Long offerId);
+    Optional<OfferResponseToken> findFirstByOfferIdAndUsedActionOrderByUsedAtDesc(Long offerId, String usedAction);
 }

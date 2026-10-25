@@ -28,6 +28,9 @@ public class DataInitializer implements ApplicationRunner {
     private final JobRequisitionRepository jobRequisitionRepository;
     private final PasswordEncoder passwordEncoder;
 
+    @org.springframework.beans.factory.annotation.Value("${app.demo-user-mailbox:}")
+    private String demoMailbox;
+
     @Override
     @Transactional
     public void run(ApplicationArguments args) {
@@ -47,10 +50,20 @@ public class DataInitializer implements ApplicationRunner {
         String encodedPassword = passwordEncoder.encode("password123");
 
         for (UserSeed seed : users) {
-            if (!appUserRepository.existsByUsername(seed.username())) {
+            String email = demoMailbox(seed.username(), seed.email());
+            var existing = appUserRepository.findByUsername(seed.username());
+            if (existing.isPresent()) {
+                // Keep existing demo users pointed at the configured test mailbox
+                AppUser u = existing.get();
+                if (!email.equals(u.getEmail())) {
+                    u.setEmail(email);
+                    appUserRepository.save(u);
+                    log.info("Updated demo user email: {} -> {}", seed.username(), email);
+                }
+            } else {
                 AppUser user = AppUser.builder()
                         .username(seed.username())
-                        .email(seed.email())
+                        .email(email)
                         .fullName(seed.fullName())
                         .role(seed.role())
                         .passwordHash(encodedPassword)
@@ -59,6 +72,16 @@ public class DataInitializer implements ApplicationRunner {
                 log.info("Seeded demo user: {}", seed.username());
             }
         }
+    }
+
+    /**
+     * Demo users must have unique emails, so a single real test mailbox is used with plus addressing:
+     * me@gmail.com -> me+recruiter1@gmail.com (delivered to the same inbox). Empty = keep the fake addresses.
+     */
+    private String demoMailbox(String username, String fallback) {
+        if (demoMailbox == null || demoMailbox.isBlank() || !demoMailbox.contains("@")) return fallback;
+        int at = demoMailbox.indexOf('@');
+        return demoMailbox.substring(0, at) + "+" + username + demoMailbox.substring(at);
     }
 
     private void seedRequisitions() {

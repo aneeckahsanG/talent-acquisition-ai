@@ -145,6 +145,8 @@ public class OrchestratorDtos {
         private String currency;
         private LocalDate startDate;
         private LocalDate expiryDate;
+        private String acceptedName;      // typed name, once accepted
+        private LocalDateTime acceptedAt;
         private String status;
         private String notes;
         private List<NegotiationHistoryEntry> history;

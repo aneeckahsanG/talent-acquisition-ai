@@ -128,6 +128,7 @@ function NegotiateForm({ token, offerInfo, onDone }) {
 // ── Offer summary shown above the confirm step ───────────────
 function OfferSummary({ info }) {
   const rows = [
+    ["Name on offer", info?.candidateName],
     ["Position", info?.jobTitle],
     ["Monthly salary", info?.salaryAmount !== "" && info?.salaryAmount != null ? `${info.currency} ${Number(info.salaryAmount).toLocaleString()}` : null],
     ["Start date", info?.startDate],
@@ -174,7 +175,7 @@ function AcceptForm({ token, offerInfo, onDone }) {
       <p style={{ margin: "0 0 18px", color: "#64748B", fontSize: 14 }}>Please check the details below, then confirm.</p>
       <OfferSummary info={offerInfo} />
       <label style={{ fontSize: 12, fontWeight: 700, color: "#64748B", marginBottom: 4, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-        Type your full name
+        Type your full name exactly as shown above
       </label>
       <input value={name} onChange={e => setName(e.target.value)} placeholder={offerInfo?.candidateName || "Full name"}
         style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1.5px solid #E2E8F0", fontSize: 14, color: "#1E293B", boxSizing: "border-box", outline: "none" }} />
@@ -182,6 +183,9 @@ function AcceptForm({ token, offerInfo, onDone }) {
         <input type="checkbox" checked={agree} onChange={e => setAgree(e.target.checked)} style={{ marginTop: 3 }} />
         <span>I have read the offer letter and I accept this offer of employment. Typing my name above is my electronic acceptance.</span>
       </label>
+      <p style={{ margin: "-8px 0 16px", fontSize: 11, color: "#94A3B8", lineHeight: 1.5 }}>
+        We record your typed name, the time and your device address as evidence of your acceptance.
+      </p>
       {err && <p style={{ color: "#EF4444", fontSize: 13, margin: "0 0 14px" }}>{err}</p>}
       <Btn disabled={!ready || loading} color="#22C55E">{loading ? "Submitting…" : "Confirm acceptance"}</Btn>
     </form>
@@ -268,6 +272,15 @@ export default function OfferRespondPage() {
               {action === "accept" ? "Offer Accepted!" : "Response Recorded"}
             </h2>
             <p style={{ margin: 0, color: "#475569", fontSize: 15, lineHeight: 1.6 }}>{message}</p>
+            {action === "accept" && (
+              <div style={{ marginTop: 22 }}>
+                <a href={`${API}/public/offer-respond/copy?token=${token}`} target="_blank" rel="noreferrer"
+                  style={{ display: "inline-block", padding: "10px 18px", borderRadius: 8, background: "#6366F1", color: "#fff", fontWeight: 700, fontSize: 13, textDecoration: "none" }}>
+                  Download your copy (PDF)
+                </a>
+                <p style={{ margin: "10px 0 0", fontSize: 12, color: "#94A3B8" }}>A copy has also been emailed to you.</p>
+              </div>
+            )}
           </div>
         )}
 

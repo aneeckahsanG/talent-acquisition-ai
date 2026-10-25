@@ -15,6 +15,7 @@ import java.util.Map;
 public class OrchestratorController {
 
     private final OrchestratorService orchestratorService;
+    private final com.talentai.admin.service.OfferResponseService offerResponseService;
 
     /** Kanban-style pipeline board for a requisition, showing candidates by stage. */
     @GetMapping("/pipeline/{requisitionId}")
@@ -30,6 +31,14 @@ public class OrchestratorController {
             @RequestBody Map<String, String> body) {
         return ResponseEntity.ok(orchestratorService.moveStage(
                 requisitionId, candidateId, body.get("stage"), "HUMAN", body.get("reason")));
+    }
+
+    /** PDF copy of the letter and acceptance record for an accepted offer. */
+    @GetMapping(value = "/offers/{offerId}/signed-copy", produces = "application/pdf")
+    public ResponseEntity<byte[]> signedCopy(@PathVariable Long offerId) {
+        return ResponseEntity.ok()
+                .header("Content-Disposition", "inline; filename=\"offer-acceptance-" + offerId + ".pdf\"")
+                .body(offerResponseService.signedCopyForOffer(offerId));
     }
 
     /** The criteria each interview type is scored on, with display labels. */

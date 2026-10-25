@@ -33,6 +33,23 @@ public class EmailService {
         trySend(to, subject, htmlBody);
     }
 
+    @Async
+    public void sendHtmlWithAttachment(String to, String subject, String htmlBody, String attachmentName, byte[] attachment) {
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            helper.setFrom("TalentAcquisition AI <" + fromAddress + ">");
+            helper.setTo(to);
+            helper.setSubject(subject);
+            helper.setText(htmlBody, true);
+            helper.addAttachment(attachmentName, new org.springframework.core.io.ByteArrayResource(attachment), "application/pdf");
+            mailSender.send(message);
+            log.info("Email sent to {} — subject: {} (with attachment)", to, subject);
+        } catch (Exception e) {
+            log.error("Failed to send email with attachment to {}: {}", to, e.getMessage());
+        }
+    }
+
     /** Sends an internal notification to the HR inbox, with an optional extra HTML block (e.g. a button). */
     @Async
     public void notifyHr(String subject, String bodyText, String extraHtml) {

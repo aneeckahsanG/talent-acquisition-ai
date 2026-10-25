@@ -75,6 +75,7 @@ public class OrchestratorService {
     private final ChatClient chatClient;
     private final com.talentai.common.service.EmailService emailService;
     private final OfferResponseService offerResponseService;
+    private final com.talentai.admin.repository.OfferLetterRepository offerLetterRepository;
 
     @org.springframework.beans.factory.annotation.Value("${app.base-url:http://localhost:5173}")
     private String appBaseUrl;
@@ -275,9 +276,12 @@ public class OrchestratorService {
                         .createdAt(h.getCreatedAt())
                         .build())
                 .toList();
+        var accepted = "ACCEPTED".equals(o.getStatus()) ? offerResponseService.acceptance(o.getId()) : java.util.Optional.<com.talentai.admin.entity.OfferResponseToken>empty();
         return OfferResponse.builder()
                 .id(o.getId()).salaryAmount(o.getSalaryAmount()).currency(o.getCurrency())
                 .startDate(o.getStartDate()).expiryDate(o.getExpiryDate())
+                .acceptedName(accepted.map(t -> t.getSignedName()).orElse(null))
+                .acceptedAt(accepted.map(t -> t.getUsedAt()).orElse(null))
                 .status(o.getStatus()).notes(o.getNotes()).history(history).build();
     }
 
@@ -432,7 +436,14 @@ public class OrchestratorService {
                 + "Best regards,\nHuman Resources\nTalentAcquisition AI";
 
         // Generate a single-use response token and embed action links in the email
-        String token = offerResponseService.generateToken(offerId);
+        // Keep the exact letter and terms that go out, and tie the response link to it
+        var letterSnapshot = offerLetterRepository.save(com.talentai.admin.entity.OfferLetter.builder()
+                .offerId(offerId).letterText(body)
+                .letterHash(com.talentai.admin.service.LetterFingerprint.sha256(body))
+                .salaryAmount(offer.getSalaryAmount()).currency(offer.getCurrency())
+                .startDate(offer.getStartDate()).expiryDate(offer.getExpiryDate())
+                .build());
+        String token = offerResponseService.generateToken(offerId, letterSnapshot.getId());
         String apiBase = appBaseUrl.endsWith("/") ? appBaseUrl.substring(0, appBaseUrl.length() - 1) : appBaseUrl;
         // All three open the confirmation page; nothing changes until the candidate confirms there
         // (email security scanners open links automatically, so a click alone must not act).

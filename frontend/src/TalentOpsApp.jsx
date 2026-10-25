@@ -265,6 +265,29 @@ function ScorecardModal({ title, criteria, isPhone, form, setForm, onSubmit, onC
   );
 }
 
+async function openSignedCopy(offerId) {
+  const res = await fetch(`${API_BASE}/orchestrator/offers/${offerId}/signed-copy`, { headers: { Authorization: `Bearer ${getToken()}` } });
+  if (!res.ok) { alert("Could not open the signed copy."); return; }
+  window.open(URL.createObjectURL(await res.blob()), "_blank");
+}
+
+function SignedCopyLink({ offer }) {
+  if (offer?.status !== "ACCEPTED") return null;
+  return (
+    <div className="space-y-0.5">
+      {offer.acceptedName && (
+        <p className="text-[9px]" style={{ color: C.muted }}>
+          Accepted by {offer.acceptedName}
+          {offer.acceptedAt ? ` · ${new Date(offer.acceptedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}` : ""}
+        </p>
+      )}
+      <button onClick={() => openSignedCopy(offer.id)} className="text-[9px] font-semibold underline" style={{ color: C.accent }}>
+        Download signed copy (PDF)
+      </button>
+    </div>
+  );
+}
+
 function RejectReasonModal({ candidateName, form, setForm, onConfirm, onCancel }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
@@ -2573,6 +2596,8 @@ function PipelineView() {
   const [outreach, setOutreach] = useState(null);
   const [offerForm, setOfferForm] = useState({ salaryAmount: "", currency: "MYR", startDate: "", expiryDate: "", notes: "" });
   const [submittingOffer, setSubmittingOffer] = useState(false);
+  const [offerError, setOfferError] = useState(null);
+  useEffect(() => { setOfferError(null); }, [offerModal]);
   const [updatingOfferId, setUpdatingOfferId] = useState(null);
   const [negotiateForm, setNegotiateForm] = useState({}); // offerId -> { salaryAmount, startDate, notes, changedBy }
   const [savingTerms, setSavingTerms] = useState(null);
@@ -2707,19 +2732,27 @@ function PipelineView() {
 
   async function handleCreateOffer() {
     setSubmittingOffer(true);
+    setOfferError(null);
+    let created;
     try {
-      const created = await apiFetch(`/orchestrator/pipeline/${offerModal.requisitionId ?? reqId}/candidates/${offerModal.candidateId}/offer`, {
+      created = await apiFetch(`/orchestrator/pipeline/${offerModal.requisitionId ?? reqId}/candidates/${offerModal.candidateId}/offer`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...offerForm, salaryAmount: offerForm.salaryAmount ? Number(offerForm.salaryAmount) : null }),
       });
-      setOfferModal(null);
-      setOfferForm({ salaryAmount: "", currency: "MYR", startDate: "", expiryDate: "", notes: "" });
-      reload();
-      // Go straight to reviewing the letter; nothing is sent until "Send to Candidate" is pressed there
-      if (created?.id) await handleGenerateLetter(created.id);
-    } finally {
+    } catch (e) {
+      setOfferError(e.message || "The offer could not be created.");
       setSubmittingOffer(false);
+      return;
+    }
+    setOfferModal(null);
+    setOfferForm({ salaryAmount: "", currency: "MYR", startDate: "", expiryDate: "", notes: "" });
+    reload();
+    setSubmittingOffer(false);
+    // Go straight to reviewing the letter; nothing is sent until "Send to Candidate" is pressed there
+    if (created?.id) {
+      try { await handleGenerateLetter(created.id); }
+      catch (e) { alert("The offer was saved, but the letter could not be opened: " + (e.message || "unknown error") + ". Use 'Review & send' on the card."); }
     }
   }
 
@@ -2994,6 +3027,7 @@ function PipelineView() {
                                     Start: {new Date(c.offer.startDate).toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"})}
                                   </p>
                                 )}
+                                <SignedCopyLink offer={c.offer} />
                               </div>
                             )}
 
@@ -3046,6 +3080,7 @@ function PipelineView() {
                                   </div>
                                   {offer.startDate && <p className="text-[9px]" style={{ color: C.muted }}>Start: {new Date(offer.startDate).toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"})}</p>}
                                   {offer.expiryDate && <p className="text-[9px]" style={{ color: C.muted }}>Expires: {new Date(offer.expiryDate).toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"})}</p>}
+                                  <SignedCopyLink offer={offer} />
 
                                   {/* Status actions */}
                                   {offer.status === "PENDING" && (
@@ -3773,6 +3808,12 @@ function PipelineView() {
                   style={{ borderColor: C.border, color: C.text, backgroundColor: C.bg }} />
               </div>
             </div>
+
+            {offerError && (
+              <p className="text-xs mt-3 px-3 py-2 rounded-xl" style={{ color: C.danger, backgroundColor: `${C.danger}10`, border: `1px solid ${C.danger}33` }}>
+                {offerError}
+              </p>
+            )}
 
             <div className="flex gap-2 mt-5">
               <Btn variant="primary" onClick={handleCreateOffer} disabled={submittingOffer}>

@@ -35,6 +35,15 @@ public class OfferResponseToken {
     @Column(name = "signed_name")
     private String signedName;
 
+    @Column(name = "letter_id")
+    private Long letterId;
+
+    @Column(name = "used_ip", length = 64)
+    private String usedIp;
+
+    @Column(name = "used_user_agent")
+    private String usedUserAgent;
+
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 

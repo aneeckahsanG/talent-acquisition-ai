@@ -4,6 +4,7 @@ import com.talentai.admin.entity.Offer;
 import com.talentai.admin.service.OfferResponseService;
 import com.talentai.common.repository.CandidateRepository;
 import com.talentai.common.repository.JobRequisitionRepository;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -52,9 +53,9 @@ public class PublicOfferController {
 
     /** Candidate confirms acceptance by typing their full name. */
     @PostMapping("/accept")
-    public ResponseEntity<OfferActionResult> accept(@RequestBody AcceptRequest body) {
+    public ResponseEntity<OfferActionResult> accept(@RequestBody AcceptRequest body, HttpServletRequest request) {
         try {
-            offerResponseService.accept(body.getToken(), body.getFullName());
+            offerResponseService.accept(body.getToken(), body.getFullName(), origin(request));
             return ResponseEntity.ok(new OfferActionResult(true, "ACCEPT",
                     "Congratulations! Your offer has been accepted. The recruiting team will be in touch shortly.", null));
         } catch (Exception e) {
@@ -64,9 +65,9 @@ public class PublicOfferController {
 
     /** Candidate confirms they are declining the offer. */
     @PostMapping("/reject")
-    public ResponseEntity<OfferActionResult> reject(@RequestBody TokenRequest body) {
+    public ResponseEntity<OfferActionResult> reject(@RequestBody TokenRequest body, HttpServletRequest request) {
         try {
-            offerResponseService.reject(body.getToken());
+            offerResponseService.reject(body.getToken(), origin(request));
             return ResponseEntity.ok(new OfferActionResult(true, "REJECT",
                     "Thank you for letting us know. Your response has been recorded.", null));
         } catch (Exception e) {
@@ -77,15 +78,33 @@ public class PublicOfferController {
     /** POST /api/public/offer-respond/negotiate
      *  Called when the candidate submits their counter-offer form. */
     @PostMapping("/negotiate")
-    public ResponseEntity<OfferActionResult> negotiate(@RequestBody NegotiateRequest body) {
+    public ResponseEntity<OfferActionResult> negotiate(@RequestBody NegotiateRequest body, HttpServletRequest request) {
         try {
             offerResponseService.negotiate(body.getToken(), body.getCounterSalary(),
-                    body.getCounterStartDate(), body.getNotes());
+                    body.getCounterStartDate(), body.getNotes(), origin(request));
             return ResponseEntity.ok(new OfferActionResult(true, "NEGOTIATE",
                     "Your counter-offer has been submitted. The recruiting team will review and get back to you.", null));
         } catch (Exception e) {
             return ResponseEntity.ok(new OfferActionResult(false, "NEGOTIATE", null, e.getMessage()));
         }
+    }
+
+    /** PDF copy for the candidate, available once they have accepted. */
+    @GetMapping(value = "/copy", produces = "application/pdf")
+    public ResponseEntity<byte[]> copy(@RequestParam String token) {
+        try {
+            return ResponseEntity.ok()
+                    .header("Content-Disposition", "inline; filename=\"offer-acceptance.pdf\"")
+                    .body(offerResponseService.copyForToken(token));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    private static OfferResponseService.Origin origin(HttpServletRequest request) {
+        String forwarded = request.getHeader("X-Forwarded-For");
+        String ip = forwarded != null && !forwarded.isBlank() ? forwarded.split(",")[0].trim() : request.getRemoteAddr();
+        return new OfferResponseService.Origin(ip, request.getHeader("User-Agent"));
     }
 
     /** GET /api/public/offer-respond/info?token=XYZ — the offer summary shown on the confirmation page. */
