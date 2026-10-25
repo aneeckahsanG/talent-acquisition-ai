@@ -11,6 +11,13 @@ import org.springframework.web.bind.annotation.RestController;
 public class IntelligenceController {
 
     private final IntelligenceService intelligenceService;
+    private final ScreeningQualityService screeningQualityService;
+
+    /** How consistent screening is, and how often recruiters agree with the AI. */
+    @GetMapping("/screening-quality")
+    public ScreeningQualityService.Quality screeningQuality() {
+        return screeningQualityService.overview();
+    }
 
     /** Everything the Talent Intelligence page shows, computed from current data. */
     @GetMapping("/overview")

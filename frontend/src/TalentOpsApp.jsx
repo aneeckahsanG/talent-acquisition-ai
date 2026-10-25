@@ -1055,6 +1055,182 @@ function IntelligenceView() {
 }
 
 // ============================================================
+// SCREENING QUALITY — do recruiters agree with the AI, and do recruiters agree with each other?
+// ============================================================
+function ScreeningQualityView() {
+  const { data, loading, error, reload } = useApi("/intelligence/screening-quality");
+
+  if (loading && !data) return <div className="py-20 flex justify-center"><Spinner size={24} /></div>;
+  if (error) return <ErrorBanner message={error} onRetry={reload} />;
+  if (!data) return null;
+
+  const { totals, agreement, matrix, scoreBands, scoreSeparation, reviewers, roles, outcomes, insights, confidence } = data;
+  const th = "text-left px-3 py-2 text-xs font-semibold";
+  const pct = v => (v != null ? `${Math.round(v)}%` : "—");
+  const rateColor = v => (v == null ? C.muted : v >= 80 ? C.success : v >= 60 ? C.warning : C.danger);
+  const AI_LABEL = { ADVANCE: "AI said advance", REJECT: "AI said reject", REVIEW: "AI asked for review" };
+  const tiles = [
+    ["AI and recruiters agree", pct(agreement.rate), `${agreement.agreed} of ${agreement.compared} decisions`, rateColor(agreement.rate)],
+    ["Human decisions", totals.humanDecided, `of ${totals.screened} screened`, C.text],
+    ["AI rejections overturned", pct(agreement.aiRejectOverturnRate), `${agreement.aiRejectOverturned} of ${agreement.aiRejectsWithHumanDecision}`, C.text],
+    ["Avg score: advanced", scoreSeparation.avgScoreHumanAdvance != null ? Math.round(scoreSeparation.avgScoreHumanAdvance) : "—", `rejected: ${scoreSeparation.avgScoreHumanReject != null ? Math.round(scoreSeparation.avgScoreHumanReject) : "—"}`, C.text],
+    ["Waiting for a decision", totals.awaitingReview, "left for review", totals.awaitingReview > 0 ? C.warning : C.text],
+  ];
+
+  return (
+    <div>
+      <TopBar title="Screening Quality" subtitle="How often recruiters agree with the AI, and whether screening is consistent"
+        action={
+          <button onClick={reload} className="w-9 h-9 rounded-xl border flex items-center justify-center" style={{ borderColor: C.border }}>
+            <RefreshCw size={13} style={{ color: C.muted }} />
+          </button>
+        } />
+      <p className="text-xs mb-4 -mt-2" style={{ color: C.muted }}>{confidence}</p>
+
+      <div className="space-y-5">
+        <IntelSection title="What to look at" hint="Findings drawn from the figures below">
+          {insights.length === 0 ? (
+            <p className="text-sm" style={{ color: C.success }}>Nothing unusual found.</p>
+          ) : (
+            <div className="space-y-2">
+              {insights.map((a, i) => (
+                <div key={i} className="px-3 py-2.5 rounded-xl" style={{ borderLeft: `4px solid ${SEVERITY_COLOR[a.severity]}`, backgroundColor: `${SEVERITY_COLOR[a.severity]}0d` }}>
+                  <p className="text-sm font-semibold" style={{ color: C.text }}>{a.title}</p>
+                  <p className="text-xs mt-0.5" style={{ color: C.muted }}>{a.detail}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </IntelSection>
+
+        <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))" }}>
+          {tiles.map(([label, value, sub, color]) => (
+            <Card key={label} className="p-4">
+              <p className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: C.muted }}>{label}</p>
+              <p className="text-2xl font-bold mt-1" style={{ color }}>{value}</p>
+              <p className="text-xs mt-0.5" style={{ color: C.muted }}>{sub}</p>
+            </Card>
+          ))}
+        </div>
+
+        <div className="grid gap-5" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))" }}>
+          <IntelSection title="AI against recruiters" hint="What recruiters did with each kind of AI recommendation">
+            <table className="w-full text-sm">
+              <thead>
+                <tr style={{ backgroundColor: C.bg, color: C.muted }}>
+                  <th className={th}></th><th className={th}>Advanced</th><th className={th}>Rejected</th><th className={th}>No decision yet</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y" style={{ borderColor: C.border }}>
+                {matrix.map(r => (
+                  <tr key={r.aiRecommendation}>
+                    <td className="px-3 py-2.5 font-semibold" style={{ color: C.text }}>{AI_LABEL[r.aiRecommendation]}</td>
+                    <td className="px-3 py-2.5" style={{ color: r.aiRecommendation === "REJECT" && r.humanAdvance > 0 ? C.danger : C.text }}>{r.humanAdvance}</td>
+                    <td className="px-3 py-2.5" style={{ color: r.aiRecommendation === "ADVANCE" && r.humanReject > 0 ? C.danger : C.text }}>{r.humanReject}</td>
+                    <td className="px-3 py-2.5" style={{ color: C.muted }}>{r.noHumanDecision}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="text-xs mt-3" style={{ color: C.muted }}>Red numbers are cases where the recruiter went against the AI.</p>
+          </IntelSection>
+
+          <IntelSection title="Does the score mean anything?" hint="Share of candidates recruiters advanced, by the AI's score">
+            <div className="space-y-2.5">
+              {scoreBands.map(b => (
+                <div key={b.band}>
+                  <div className="flex items-center justify-between text-xs mb-1">
+                    <span style={{ color: C.text }}>{b.band}</span>
+                    <span style={{ color: C.muted }}>
+                      {b.decided === 0 ? "no decisions" : <><strong style={{ color: C.text }}>{pct(b.humanAdvanceRate)}</strong> advanced ({b.humanAdvanced} of {b.decided})</>}
+                    </span>
+                  </div>
+                  <div className="h-2 rounded-full" style={{ backgroundColor: C.border }}>
+                    <div className="h-2 rounded-full" style={{ width: `${b.humanAdvanceRate ?? 0}%`, backgroundColor: C.accent }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="text-xs mt-3" style={{ color: C.muted }}>A useful score climbs from left to right: the higher the score, the more often recruiters advance the candidate.</p>
+          </IntelSection>
+        </div>
+
+        <IntelSection title="Do recruiters decide alike?" hint="Decisions made on the Screening page. Moves made on the Pipeline board are not attributed to a person.">
+          {reviewers.length === 0 ? <p className="text-sm" style={{ color: C.muted }}>No reviewed decisions yet.</p> : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr style={{ backgroundColor: C.bg, color: C.muted }}>
+                  <th className={th}>Recruiter</th><th className={th}>Decisions</th><th className={th}>Advances</th><th className={th}>Agrees with AI</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y" style={{ borderColor: C.border }}>
+                {reviewers.map(r => (
+                  <tr key={r.reviewer}>
+                    <td className="px-3 py-2.5 font-semibold" style={{ color: C.text }}>{r.reviewer}</td>
+                    <td className="px-3 py-2.5" style={{ color: C.text }}>{r.decisions}</td>
+                    <td className="px-3 py-2.5" style={{ color: C.text }}>{pct(r.advanceRate)}</td>
+                    <td className="px-3 py-2.5 font-semibold" style={{ color: rateColor(r.agreementWithAi) }}>{pct(r.agreementWithAi)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </IntelSection>
+
+        <IntelSection title="By role" hint="Where the AI and recruiters line up, and where they do not">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr style={{ backgroundColor: C.bg, color: C.muted }}>
+                  <th className={th}>Role</th><th className={th}>Screened</th><th className={th}>Avg score</th>
+                  <th className={th}>AI advances</th><th className={th}>Human decisions</th><th className={th}>Agreement</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y" style={{ borderColor: C.border }}>
+                {roles.map(r => (
+                  <tr key={r.requisitionId}>
+                    <td className="px-3 py-2.5 font-semibold" style={{ color: C.text }}>{r.title}</td>
+                    <td className="px-3 py-2.5" style={{ color: C.text }}>{r.screened}</td>
+                    <td className="px-3 py-2.5" style={{ color: C.text }}>{r.avgScore != null ? Math.round(r.avgScore) : "—"}</td>
+                    <td className="px-3 py-2.5" style={{ color: C.text }}>{pct(r.aiAdvanceRate)}</td>
+                    <td className="px-3 py-2.5" style={{ color: C.text }}>{r.humanDecided}</td>
+                    <td className="px-3 py-2.5 font-semibold" style={{ color: rateColor(r.agreementRate) }}>{pct(r.agreementRate)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {roles.length === 0 && <p className="text-sm py-6 text-center" style={{ color: C.muted }}>Nothing screened yet.</p>}
+          </div>
+        </IntelSection>
+
+        <IntelSection title="What happened next" hint="How far candidates got, grouped by what the AI recommended">
+          <table className="w-full text-sm">
+            <thead>
+              <tr style={{ backgroundColor: C.bg, color: C.muted }}>
+                <th className={th}>AI recommendation</th><th className={th}>Candidates</th><th className={th}>Shortlisted</th>
+                <th className={th}>Interviewed</th><th className={th}>Hired</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y" style={{ borderColor: C.border }}>
+              {outcomes.map(o => (
+                <tr key={o.aiRecommendation}>
+                  <td className="px-3 py-2.5 font-semibold" style={{ color: C.text }}>{AI_LABEL[o.aiRecommendation]}</td>
+                  <td className="px-3 py-2.5" style={{ color: C.text }}>{o.results}</td>
+                  <td className="px-3 py-2.5" style={{ color: C.text }}>{o.shortlisted}</td>
+                  <td className="px-3 py-2.5" style={{ color: C.text }}>{o.interviewed}</td>
+                  <td className="px-3 py-2.5" style={{ color: C.text }}>{o.hired}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="text-xs mt-3" style={{ color: C.muted }}>If the AI is useful, candidates it advances should get further than candidates it rejects.</p>
+        </IntelSection>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
 // SIDEBAR
 // ============================================================
 function Sidebar({ active, setActive, user, onLogout }) {
@@ -1064,6 +1240,7 @@ function Sidebar({ active, setActive, user, onLogout }) {
     { id: "roles",        label: "Open Roles",         icon: Briefcase  },
     { id: "pipeline",     label: "Pipeline",           icon: Activity   },
     { id: "screening",    label: "Screening",          icon: FileCheck  },
+    { id: "screeningQuality", label: "Screening Quality", icon: CheckCircle2 },
     { id: "calendar",     label: "Calendar",           icon: Calendar   },
     { id: "referrals",    label: "Referral",           icon: UserPlus   },
     { id: "integrations", label: "Integrations",       icon: Globe      },
@@ -6573,6 +6750,7 @@ export default function App() {
     roles:        <RolesView setActive={setActive} />,
     pipeline:     <PipelineView />,
     screening:    <ScreeningView />,
+    screeningQuality: <ScreeningQualityView />,
     calendar:     <CalendarView />,
     referrals:    <ReferralsView currentUser={displayUser} />,
     scheduling:   null,
