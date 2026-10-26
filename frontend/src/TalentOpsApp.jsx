@@ -500,6 +500,132 @@ function TopBar({ title, subtitle, action }) {
   );
 }
 
+function AssistantMessage({ content }) {
+  const parts = content.split(/(\*\*[^*]+\*\*)/g);
+  return parts.map((part, index) => {
+    if (part.startsWith("**") && part.endsWith("**")) {
+      return <strong key={index}>{part.slice(2, -2)}</strong>;
+    }
+    return <React.Fragment key={index}>{part}</React.Fragment>;
+  });
+}
+
+function AssistantPanel({ active, open, onClose }) {
+  const [messages, setMessages] = useState([
+    {
+      role: "assistant",
+      content: "Hi! I can guide you through TalentAcquisition AI or help design a recruitment role.",
+    },
+  ]);
+  const [question, setQuestion] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function ask(e) {
+    e.preventDefault();
+    const message = question.trim();
+    if (!message || loading) return;
+
+    setQuestion("");
+    setMessages(current => [...current, { role: "user", content: message }]);
+    setLoading(true);
+    try {
+      const result = await apiFetch("/assistant/chat", {
+        method: "POST",
+        body: JSON.stringify({ message, currentPage: active }),
+      });
+      setMessages(current => [...current, { role: "assistant", content: result.answer }]);
+    } catch (error) {
+      setMessages(current => [...current, {
+        role: "assistant",
+        content: error.message || "The assistant is temporarily unavailable.",
+      }]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <aside
+      className="h-full shrink-0 overflow-hidden rounded-l-2xl border-l shadow-xl"
+      style={{
+        width: open ? 380 : 0,
+        opacity: open ? 1 : 0,
+        pointerEvents: open ? "auto" : "none",
+        background: "linear-gradient(180deg, #102A43 0%, #0B1F33 100%)",
+        borderColor: "#28506B",
+        transition: "width 280ms ease, opacity 180ms ease",
+      }}
+    >
+      <div className="w-[380px] h-full flex flex-col">
+        <div className="flex items-center justify-between p-4 border-b" style={{ borderColor: "#28506B" }}>
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ backgroundColor: "#183B56" }}>
+              <Sparkles size={16} style={{ color: "#67D5FF" }} />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold" style={{ color: "#F4FAFF" }}>AI Assistance</h2>
+              <p className="text-[11px]" style={{ color: "#A8C4D8" }}>Guidance for the {active} area</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-800" aria-label="Close AI assistance">
+            <X size={16} style={{ color: "#A8C4D8" }} />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto space-y-3 p-4">
+          {messages.map((message, index) => (
+            <div key={`${message.role}-${index}`} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
+              <div
+                className="max-w-[88%] rounded-2xl px-3 py-2.5 text-sm whitespace-pre-wrap"
+                style={{
+                  backgroundColor: message.role === "user" ? "#248EC2" : "#183B56",
+                  color: "#F4FAFF",
+                }}
+              >
+                <AssistantMessage content={message.content} />
+              </div>
+            </div>
+          ))}
+          {loading && (
+            <div className="flex items-center gap-2 text-xs" style={{ color: "#A8C4D8" }}>
+              <Spinner size={14} /> Thinking…
+            </div>
+          )}
+        </div>
+
+        <form onSubmit={ask} className="p-3 border-t" style={{ borderColor: "#28506B" }}>
+          <div className="flex items-end gap-2">
+            <textarea
+              value={question}
+              onChange={e => setQuestion(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  e.currentTarget.form.requestSubmit();
+                }
+              }}
+              rows={2}
+              maxLength={4000}
+              placeholder="Ask how to use the system or design a role…"
+              className="flex-1 resize-none rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2"
+              style={{ borderColor: "#28506B", backgroundColor: "#0B1F33", color: "#F4FAFF" }}
+            />
+            <button
+              type="submit"
+              disabled={loading || !question.trim()}
+              className="h-10 w-10 rounded-xl flex items-center justify-center text-white disabled:opacity-40"
+              style={{ backgroundColor: C.accent }}
+              aria-label="Ask AI assistant"
+            >
+              {loading ? <Spinner size={15} /> : <ArrowRight size={16} />}
+            </button>
+          </div>
+        </form>
+      </div>
+    </aside>
+  );
+}
+
 // ============================================================
 // LOGIN SCREEN
 // ============================================================
@@ -1232,7 +1358,7 @@ function ScreeningQualityView() {
 // ============================================================
 // SIDEBAR
 // ============================================================
-function Sidebar({ active, setActive, user, onLogout }) {
+function Sidebar({ active, setActive, user }) {
   const nav = [
     { id: "dashboard",    label: "Dashboard",         icon: LayoutGrid },
     { id: "intelligence", label: "Intelligence",      icon: TrendingUp },
@@ -1285,11 +1411,6 @@ function Sidebar({ active, setActive, user, onLogout }) {
             <p className="text-xs truncate" style={{ color: "rgba(255,255,255,0.75)" }}>{user?.role}</p>
           </div>
         </div>
-        <button onClick={onLogout}
-          className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium transition-colors"
-          style={{ color: "rgba(255,255,255,0.75)" }}>
-          <LogOut size={13} /> Sign out
-        </button>
       </div>
     </aside>
   );
@@ -1366,10 +1487,19 @@ function Dashboard({ setActive }) {
           <div className="px-5 py-4 border-b flex items-center gap-2" style={{ borderColor: C.border }}>
             <Activity size={16} style={{ color: C.accent }} />
             <h2 className="font-semibold text-sm" style={{ color: C.text }}>Agent Activity Feed</h2>
-            <span className="ml-auto flex items-center gap-1.5 text-xs font-medium" style={{ color: C.success }}>
-              <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: C.success }} />
-              Live
-            </span>
+            <div className="ml-auto flex items-center gap-3">
+              <span className="flex items-center gap-1.5 text-xs font-medium" style={{ color: C.success }}>
+                <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: C.success }} />
+                Live
+              </span>
+              <button
+                onClick={() => setActive("activity")}
+                className="text-xs font-semibold hover:underline"
+                style={{ color: C.accent }}
+              >
+                View detail
+              </button>
+            </div>
           </div>
           <div className="divide-y" style={{ borderColor: C.border }}>
             {loading
@@ -1520,6 +1650,88 @@ function Dashboard({ setActive }) {
           </div>
         </div>
       )}
+
+    </div>
+  );
+}
+
+function ActivityView({ setActive }) {
+  const { data: activity, loading, error, reload } = useApi("/orchestrator/activity?limit=100");
+  const [agentFilter, setAgentFilter] = useState("ALL");
+  const [search, setSearch] = useState("");
+  const entries = activity || [];
+  const agents = [...new Set(entries.map(entry => entry.agentName).filter(Boolean))].sort();
+  const filtered = entries.filter(entry => {
+    const matchesAgent = agentFilter === "ALL" || entry.agentName === agentFilter;
+    const query = search.trim().toLowerCase();
+    const matchesSearch = !query || [
+      entry.agentName, entry.candidateName, entry.requisitionTitle, entry.details,
+    ].some(value => value?.toLowerCase().includes(query));
+    return matchesAgent && matchesSearch;
+  });
+
+  return (
+    <div>
+      <TopBar
+        title="Agent Activity"
+        subtitle="Full activity history across the recruitment agents"
+        action={
+          <div className="flex items-center gap-2">
+            <button onClick={() => setActive("dashboard")}
+              className="text-sm font-semibold px-3 py-2 rounded-xl border hover:bg-slate-50"
+              style={{ borderColor: C.border, color: C.muted }}>
+              Back to Dashboard
+            </button>
+            <button onClick={reload}
+              className="text-sm font-semibold px-3 py-2 rounded-xl border hover:bg-slate-50"
+              style={{ borderColor: C.border, color: C.accent }}>
+              <RefreshCw size={13} className="inline mr-1" /> Refresh
+            </button>
+          </div>
+        }
+      />
+      <Card className="overflow-hidden">
+        <div className="p-4 border-b flex flex-wrap items-center gap-3" style={{ borderColor: C.border }}>
+          <select value={agentFilter} onChange={e => setAgentFilter(e.target.value)}
+            className="text-sm px-3 py-2 rounded-xl border bg-white outline-none"
+            style={{ borderColor: C.border, color: C.text }}>
+            <option value="ALL">All agents</option>
+            {agents.map(agent => <option key={agent} value={agent}>{agent}</option>)}
+          </select>
+          <input value={search} onChange={e => setSearch(e.target.value)}
+            className="flex-1 min-w-52 text-sm px-3 py-2 rounded-xl border outline-none"
+            style={{ borderColor: C.border, color: C.text }}
+            placeholder="Search candidate, role, agent, or activity…" />
+          <span className="text-xs font-medium" style={{ color: C.muted }}>
+            {filtered.length} of {entries.length} activities
+          </span>
+        </div>
+        {error && <div className="p-4"><ErrorBanner message={error} onRetry={reload} /></div>}
+        {loading ? (
+          <div className="p-5 space-y-3"><LoadingCard rows={2} /><LoadingCard rows={2} /></div>
+        ) : filtered.length === 0 ? (
+          <p className="text-sm text-center py-16" style={{ color: C.muted }}>No matching activity found</p>
+        ) : (
+          <div className="divide-y" style={{ borderColor: C.border }}>
+            {filtered.map(entry => (
+              <div key={entry.id} className="px-5 py-4 flex items-start gap-4 hover:bg-slate-50 transition-colors">
+                <AgentPill agent={entry.agentName} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm" style={{ color: C.text }}>
+                    <span className="font-semibold">{entry.candidateName || "—"}</span>
+                    {entry.requisitionTitle && <span style={{ color: C.muted }}> · {entry.requisitionTitle}</span>}
+                  </p>
+                  <p className="text-sm mt-1" style={{ color: C.muted }}>{entry.details || entry.action}</p>
+                </div>
+                <div className="text-right shrink-0">
+                  <p className="text-xs font-semibold" style={{ color: C.text }}>{entry.action}</p>
+                  <p className="text-xs font-mono mt-1" style={{ color: C.muted }}>{timeAgo(entry.createdAt)}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
     </div>
   );
 }
@@ -7354,6 +7566,20 @@ export default function App() {
   });
   const [userMeta, setUserMeta] = useState(null);
   const [active, setActive] = useState("dashboard");
+  const [assistantOpen, setAssistantOpen] = useState(false);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const accountMenuRef = useRef(null);
+
+  useEffect(() => {
+    function closeAccountMenu(event) {
+      if (accountMenuRef.current && !accountMenuRef.current.contains(event.target)) {
+        setAccountMenuOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", closeAccountMenu);
+    return () => document.removeEventListener("mousedown", closeAccountMenu);
+  }, []);
 
   function handleLogin(userData) {
     setUserMeta(userData);
@@ -7373,6 +7599,7 @@ export default function App() {
   const views = {
     dashboard:    <Dashboard setActive={setActive} />,
     intelligence: <IntelligenceView />,
+    activity:     <ActivityView setActive={setActive} />,
     roles:        <RolesView setActive={setActive} />,
     pipeline:     <PipelineView />,
     screening:    <ScreeningView />,
@@ -7392,23 +7619,63 @@ export default function App() {
   return (
     <div className="flex h-screen overflow-hidden"
       style={{ backgroundColor: C.bg, fontFamily: "'Inter',ui-sans-serif,system-ui,sans-serif" }}>
-      <Sidebar active={active} setActive={setActive} user={displayUser} onLogout={handleLogout} />
+      <Sidebar active={active} setActive={setActive} user={displayUser} />
       <div className="flex-1 flex flex-col overflow-hidden">
         <div className="h-14 shrink-0 flex items-center px-8 border-b bg-white gap-3"
           style={{ borderColor: C.border }}>
           <div className="flex-1" />
+          <button
+            onClick={() => setAssistantOpen(open => !open)}
+            className="h-8 px-3 rounded-xl flex items-center gap-1.5 hover:bg-indigo-50 transition-colors"
+            style={{
+              color: assistantOpen ? "#1479A8" : C.accent,
+              backgroundColor: assistantOpen ? "#DDF3FC" : "#EFF9FE",
+            }}
+            title="AI assistance"
+            aria-label="Open AI assistance"
+          >
+            <Sparkles size={16} />
+            <span className="text-xs font-semibold">AI Assistance</span>
+          </button>
           <button className="w-8 h-8 rounded-xl flex items-center justify-center hover:bg-slate-100 transition-colors relative">
             <Bell size={16} style={{ color: C.muted }} />
             <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full"
               style={{ backgroundColor: C.warning }} />
           </button>
-          <Avatar name={displayUser.fullName} size={32} />
-        </div>
-        <main className="flex-1 overflow-y-auto" style={{ padding: active === "pipeline" ? "1.5rem" : "2rem" }}>
-          <div className={active === "pipeline" || active === "referrals" || active === "cvInbox" ? "" : "max-w-6xl mx-auto"}>
-            {views[active]}
+          <div ref={accountMenuRef} className="relative">
+            <button
+              onClick={() => setAccountMenuOpen(open => !open)}
+              className="rounded-full focus:outline-none focus:ring-2 focus:ring-sky-200"
+              aria-label="Open account menu"
+            >
+              <Avatar name={displayUser.fullName} size={32} />
+            </button>
+            {accountMenuOpen && (
+              <div className="absolute right-0 top-11 z-30 w-52 rounded-xl border bg-white p-2 shadow-lg"
+                style={{ borderColor: C.border }}>
+                <div className="px-3 py-2 border-b mb-1" style={{ borderColor: C.border }}>
+                  <p className="text-sm font-semibold truncate" style={{ color: C.text }}>{displayUser.fullName}</p>
+                  <p className="text-xs truncate" style={{ color: C.muted }}>{displayUser.role}</p>
+                </div>
+                <button
+                  onClick={handleLogout}
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-left hover:bg-red-50"
+                  style={{ color: C.danger }}
+                >
+                  <LogOut size={14} /> Sign out
+                </button>
+              </div>
+            )}
           </div>
-        </main>
+        </div>
+        <div className="flex-1 flex min-h-0 overflow-hidden">
+          <main className="flex-1 overflow-y-auto min-w-0" style={{ padding: active === "pipeline" ? "1.5rem" : "2rem" }}>
+            <div className={active === "pipeline" ? "" : "max-w-6xl mx-auto"}>
+              {views[active]}
+            </div>
+          </main>
+          <AssistantPanel active={active} open={assistantOpen} onClose={() => setAssistantOpen(false)} />
+        </div>
       </div>
     </div>
   );
