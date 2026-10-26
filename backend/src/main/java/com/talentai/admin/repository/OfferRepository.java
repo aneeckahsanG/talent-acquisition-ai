@@ -7,4 +7,5 @@ import java.util.Optional;
 
 public interface OfferRepository extends JpaRepository<Offer, Long> {
     Optional<Offer> findByCandidateIdAndRequisitionId(Long candidateId, Long requisitionId);
+    java.util.List<Offer> findByCandidateId(Long candidateId);
 }

@@ -9,6 +9,7 @@ import java.util.Optional;
 public interface SourcingMatchRepository extends JpaRepository<SourcingMatch, Long> {
     List<SourcingMatch> findByRequisitionIdOrderByMatchScoreDesc(Long requisitionId);
     Optional<SourcingMatch> findByCandidateIdAndRequisitionId(Long candidateId, Long requisitionId);
+    List<SourcingMatch> findByCandidateId(Long candidateId);
     List<SourcingMatch> findByRequisitionIdAndIsProactiveFalseOrderByCreatedAtDesc(Long requisitionId);
     Optional<SourcingMatch> findByCandidateIdAndRequisitionIdAndIsProactiveFalse(Long candidateId, Long requisitionId);
 }

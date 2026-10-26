@@ -1583,7 +1583,7 @@ function Sidebar({ active, setActive, user }) {
     { id: "calendar",     label: "Calendar",           icon: Calendar   },
     { id: "referrals",    label: "Referral",           icon: UserPlus   },
     { id: "integrations", label: "Integrations",       icon: Globe      },
-    { id: "cvInbox",      label: "CV Inbox",           icon: Inbox      },
+    { id: "cvInbox",      label: "Resume Inbox",       icon: Inbox      },
   ];
 
   return (
@@ -6513,7 +6513,7 @@ function ScreeningView() {
                 </td>
                 <td className="px-5 py-4" colSpan={4}>
                   <span className="inline-flex items-center gap-2 text-xs font-semibold" style={{ color: C.accent }}>
-                    <Spinner size={13} /> Screening in progress — the AI is reading the CV…
+                    <Spinner size={13} /> Screening in progress — the AI is reading the resume…
                   </span>
                 </td>
               </tr>
@@ -7393,7 +7393,7 @@ function CvInboxView() {
 
   return (
     <div>
-      <TopBar title="CV Inbox" subtitle="AI pre-screens CVs dropped via SFTP before they reach your pipeline"
+      <TopBar title="Resume Inbox" subtitle="AI pre-screens resumes dropped via SFTP before they reach your pipeline"
         action={
           <div className="flex gap-2">
             <Btn variant="secondary" onClick={() => setSettingsOpen(true)}>
@@ -7421,7 +7421,7 @@ function CvInboxView() {
 
       {processResult && (
         <div className="mb-5 p-3 rounded-xl text-sm" style={{ backgroundColor: C.surface, color: C.text }}>
-          Processed {processResult.processed} CV{processResult.processed === 1 ? "" : "s"} ({processResult.filesFound} found) —{" "}
+          Processed {processResult.processed} resume{processResult.processed === 1 ? "" : "s"} ({processResult.filesFound} found) —{" "}
           {processResult.considered} considered, {processResult.excluded} excluded
           {processResult.failed ? `, ${processResult.failed} failed` : ""}.
         </div>
@@ -7453,7 +7453,7 @@ function CvInboxView() {
       {!current.loading && !current.error && (
         <Card className="overflow-hidden">
           {(current.data || []).length === 0 ? (
-            <div className="p-12 text-center"><p style={{ color: C.muted }}>No {tab} CVs yet.</p></div>
+            <div className="p-12 text-center"><p style={{ color: C.muted }}>No {tab} resumes yet.</p></div>
           ) : (
             <table className="w-full text-sm">
               <thead>
@@ -7774,6 +7774,368 @@ function CvInboxSettingsDrawer({ onClose, onSaved }) {
 }
 
 // ============================================================
+// CANDIDATE SEARCH + PROFILE
+// ============================================================
+function CandidateSearchBox({ onOpen }) {
+  const [text, setText] = useState("");
+  const [hits, setHits] = useState(null); // null = nothing searched yet
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [open, setOpen] = useState(false);
+  const boxRef = useRef(null);
+  const latest = useRef(0);
+
+  useEffect(() => {
+    function closeOnOutside(event) {
+      if (boxRef.current && !boxRef.current.contains(event.target)) setOpen(false);
+    }
+    document.addEventListener("mousedown", closeOnOutside);
+    return () => document.removeEventListener("mousedown", closeOnOutside);
+  }, []);
+
+  useEffect(() => {
+    const q = text.trim();
+    if (q.length < 2) { setHits(null); setLoading(false); setError(null); return; }
+    const ticket = ++latest.current;
+    setLoading(true);
+    const timer = setTimeout(async () => {
+      try {
+        const result = await apiFetch(`/candidates/search?q=${encodeURIComponent(q)}`);
+        if (ticket !== latest.current) return; // a newer search superseded this one
+        setHits(result); setError(null);
+      } catch (e) {
+        if (ticket === latest.current) setError(e.message);
+      } finally {
+        if (ticket === latest.current) setLoading(false);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [text]);
+
+  function pick(hit) {
+    setOpen(false);
+    setText("");
+    setHits(null);
+    onOpen(hit.id);
+  }
+
+  function onKeyDown(e) {
+    if (e.key === "Escape") setOpen(false);
+    if (e.key === "Enter" && hits && hits.length > 0) pick(hits[0]);
+  }
+
+  const q = text.trim();
+  return (
+    <div ref={boxRef} className="relative w-80">
+      <div className="flex items-center gap-2 h-8 px-3 rounded-xl border bg-slate-50 focus-within:bg-white focus-within:ring-2 focus-within:ring-sky-200"
+        style={{ borderColor: C.border }}>
+        <Search size={14} style={{ color: C.muted }} />
+        <input
+          value={text}
+          onChange={e => { setText(e.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          onKeyDown={onKeyDown}
+          placeholder="Find a candidate by email, name, phone…"
+          aria-label="Search candidates"
+          className="flex-1 min-w-0 bg-transparent outline-none text-xs"
+          style={{ color: C.text }}
+        />
+        {loading && <Spinner size={12} />}
+      </div>
+      {open && q.length > 0 && (
+        <div className="absolute left-0 right-0 top-10 z-30 rounded-xl border bg-white shadow-lg overflow-hidden"
+          style={{ borderColor: C.border }}>
+          {q.length < 2 && <p className="px-4 py-3 text-xs" style={{ color: C.muted }}>Type at least 2 characters.</p>}
+          {q.length >= 2 && error && <p className="px-4 py-3 text-xs" style={{ color: C.danger }}>{error}</p>}
+          {q.length >= 2 && !error && hits && hits.length === 0 && !loading && (
+            <p className="px-4 py-3 text-xs" style={{ color: C.muted }}>No candidate matches “{q}”.</p>
+          )}
+          {!error && hits && hits.map(h => (
+            <button key={h.id} onClick={() => pick(h)}
+              className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-sky-50 border-b last:border-b-0"
+              style={{ borderColor: C.border }}>
+              <Avatar name={h.fullName} size={30} />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold truncate" style={{ color: C.text }}>{h.fullName}</p>
+                <p className="text-xs truncate" style={{ color: C.muted }}>{h.email}</p>
+                <p className="text-xs truncate" style={{ color: C.muted }}>
+                  {h.applicationCount === 0 ? "No applications"
+                    : `${h.latestRole || "Role"} · ${STAGE_LABELS[h.latestStage] || h.latestStage}${h.applicationCount > 1 ? ` · +${h.applicationCount - 1} more` : ""}`}
+                </p>
+              </div>
+              <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded"
+                style={{ color: C.muted, backgroundColor: "#F1F5F9" }}>{h.matchedOn}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const VERDICT_META = {
+  STRONG_YES: { label: "Strong yes", color: C.success },
+  YES:        { label: "Yes",        color: C.success },
+  NO:         { label: "No",         color: C.danger },
+  STRONG_NO:  { label: "Strong no",  color: C.danger },
+};
+
+function titleCase(s) {
+  return (s || "").toLowerCase().replace(/_/g, " ").replace(/^\w/, c => c.toUpperCase());
+}
+
+function formatFullDateTime(iso) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleString("en-GB", {
+    day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit",
+  });
+}
+
+function ProfileSection({ title, count, children }) {
+  return (
+    <Card className="p-5">
+      <h2 className="text-sm font-bold mb-3" style={{ color: C.text }}>
+        {title}{count !== undefined && <span className="font-normal ml-1.5" style={{ color: C.muted }}>({count})</span>}
+      </h2>
+      {children}
+    </Card>
+  );
+}
+
+function CandidateProfileView({ candidateId, onBack, onOpenCandidate }) {
+  const { data: p, loading, error, reload } = useApi(`/candidates/${candidateId}/profile`, [candidateId]);
+  const { data: history } = useApi(`/candidates/${candidateId}/history`, [candidateId]);
+  const [showCv, setShowCv] = useState(false);
+  const [openEmail, setOpenEmail] = useState(null);
+
+  const back = (
+    <button onClick={onBack} className="inline-flex items-center gap-1 text-xs font-semibold mb-4 hover:underline"
+      style={{ color: C.accent }}>
+      <ChevronRight size={13} style={{ transform: "rotate(180deg)" }} /> Back
+    </button>
+  );
+
+  if (loading && !p) return <div>{back}<LoadingCard rows={5} /></div>;
+  if (error) return <div>{back}<ErrorBanner message={error} onRetry={reload} /></div>;
+  if (!p) return null;
+
+  const events = (history?.events || []);
+
+  return (
+    <div>
+      {back}
+      <Card className="p-6 mb-5">
+        <div className="flex items-start gap-4">
+          <Avatar name={p.fullName} size={56} />
+          <div className="flex-1 min-w-0">
+            <h1 className="text-2xl font-bold tracking-tight" style={{ color: C.text }}>{p.fullName}</h1>
+            {p.headline && <p className="text-sm mt-0.5" style={{ color: C.muted }}>{p.headline}</p>}
+            <div className="flex flex-wrap gap-x-6 gap-y-1 mt-3 text-sm" style={{ color: C.text }}>
+              <span className="inline-flex items-center gap-1.5"><Mail size={13} style={{ color: C.muted }} />{p.email || "No email"}</span>
+              {p.phone && <span>{p.phone}</span>}
+              <span style={{ color: C.muted }}>Source: {titleCase(p.sourceChannel)}</span>
+              {p.yearsExperience != null && <span style={{ color: C.muted }}>{Number(p.yearsExperience)} yrs experience</span>}
+              <span style={{ color: C.muted }}>Added {formatFullDateTime(p.createdAt)}</span>
+            </div>
+            {p.skills && (
+              <div className="flex flex-wrap gap-1.5 mt-3">
+                {p.skills.split(",").map(s => s.trim()).filter(Boolean).map(s => (
+                  <span key={s} className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: "#EFF9FE", color: "#1479A8" }}>{s}</span>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+        {p.sharedEmailWith.length > 0 && (
+          <div className="mt-4 p-3 rounded-xl border text-sm flex items-start gap-2"
+            style={{ backgroundColor: "#FFFBEB", borderColor: "#FDE68A", color: "#92400E" }}>
+            <AlertCircle size={15} className="mt-0.5 shrink-0" />
+            <span>
+              This email address is also used by{" "}
+              {p.sharedEmailWith.map((o, i) => (
+                <span key={o.id}>
+                  {i > 0 && ", "}
+                  <button onClick={() => onOpenCandidate(o.id)} className="font-semibold underline">{o.fullName}</button>
+                </span>
+              ))}
+              . These may be different people (shared inbox) or the same person entered twice.
+            </span>
+          </div>
+        )}
+      </Card>
+
+      <div className="grid gap-5">
+        <ProfileSection title="Applications" count={p.applications.length}>
+          {p.applications.length === 0 && <p className="text-sm" style={{ color: C.muted }}>No applications yet.</p>}
+          <div className="grid gap-3">
+            {p.applications.map(a => (
+              <div key={a.requisitionId} className="rounded-xl border p-4" style={{ borderColor: C.border }}>
+                <div className="flex items-center gap-3 flex-wrap">
+                  <p className="text-sm font-semibold flex-1 min-w-0" style={{ color: C.text }}>
+                    {a.roleTitle || `Role ${a.requisitionId}`}
+                    {a.department && <span className="font-normal" style={{ color: C.muted }}> · {a.department}</span>}
+                  </p>
+                  {a.screeningScore != null && <ScoreRing score={Number(a.screeningScore)} size={40} />}
+                  {a.recommendation && <RecBadge rec={a.recommendation} />}
+                  <Badge color={a.stage === "REJECTED" ? C.danger : a.stage === "HIRED" ? C.success : C.accent}>
+                    {STAGE_LABELS[a.stage] || a.stage}
+                  </Badge>
+                </div>
+                <p className="text-xs mt-1" style={{ color: C.muted }}>In this stage since {formatFullDateTime(a.stageEnteredAt)}</p>
+                {a.reviewerDecision && (
+                  <p className="text-xs mt-2" style={{ color: C.text }}>
+                    <span className="font-semibold">Reviewer decision:</span> {titleCase(a.reviewerDecision)}
+                    {a.reviewerNotes && <span style={{ color: C.muted }}> — {a.reviewerNotes}</span>}
+                  </p>
+                )}
+                {a.stage === "REJECTED" && a.stageNotes && (
+                  <p className="text-xs mt-1" style={{ color: C.text }}>
+                    <span className="font-semibold">Rejection reason:</span> <span style={{ color: C.muted }}>{a.stageNotes}</span>
+                  </p>
+                )}
+                {a.rationale && <p className="text-xs mt-2 leading-relaxed" style={{ color: C.muted }}>{a.rationale}</p>}
+              </div>
+            ))}
+          </div>
+        </ProfileSection>
+
+        <ProfileSection title="Interviews" count={p.interviews.length}>
+          {p.interviews.length === 0 && <p className="text-sm" style={{ color: C.muted }}>No interviews.</p>}
+          <div className="grid gap-3">
+            {p.interviews.map(i => {
+              const v = i.scorecard ? VERDICT_META[i.scorecard.verdict] : null;
+              return (
+                <div key={i.id} className="rounded-xl border p-4" style={{ borderColor: C.border }}>
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <p className="text-sm font-semibold flex-1 min-w-0" style={{ color: C.text }}>
+                      {titleCase(i.interviewType)} interview
+                      <span className="font-normal" style={{ color: C.muted }}> · {i.roleTitle}</span>
+                    </p>
+                    <Badge color={i.status === "COMPLETED" ? C.success : i.status === "CANCELLED" ? C.danger : C.accent}>{titleCase(i.status)}</Badge>
+                  </div>
+                  <p className="text-xs mt-1" style={{ color: C.muted }}>
+                    {i.confirmedSlot ? formatFullDateTime(i.confirmedSlot) : "No confirmed time"}
+                    {i.interviewerName && ` · with ${i.interviewerName}`}
+                  </p>
+                  {i.scorecard && (
+                    <div className="mt-3 pt-3 border-t" style={{ borderColor: C.border }}>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-semibold" style={{ color: C.text }}>Scorecard</span>
+                        {v && <Badge color={v.color}>{v.label}</Badge>}
+                        {Object.entries(i.scorecard.ratings || {}).map(([k, r]) => (
+                          <span key={k} className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: "#F1F5F9", color: C.muted }}>
+                            {titleCase(k)}: {r}/5
+                          </span>
+                        ))}
+                      </div>
+                      {i.scorecard.notes && <p className="text-xs mt-2 leading-relaxed" style={{ color: C.muted }}>{i.scorecard.notes}</p>}
+                      {(i.scorecard.noticePeriod || i.scorecard.expectedSalary) && (
+                        <p className="text-xs mt-1" style={{ color: C.muted }}>
+                          {i.scorecard.noticePeriod && `Notice period: ${i.scorecard.noticePeriod}`}
+                          {i.scorecard.noticePeriod && i.scorecard.expectedSalary && " · "}
+                          {i.scorecard.expectedSalary && `Expected salary: ${i.scorecard.expectedSalary}`}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </ProfileSection>
+
+        {p.offers.length > 0 && (
+          <ProfileSection title="Offers" count={p.offers.length}>
+            <div className="grid gap-2">
+              {p.offers.map(o => (
+                <div key={o.id} className="flex items-center gap-3 flex-wrap text-sm">
+                  <span className="font-semibold flex-1 min-w-0" style={{ color: C.text }}>{o.roleTitle}</span>
+                  <span style={{ color: C.muted }}>{o.currency} {Number(o.salaryAmount).toLocaleString()}</span>
+                  <span className="text-xs" style={{ color: C.muted }}>Start {o.startDate || "—"} · expires {o.expiryDate || "—"}</span>
+                  <Badge color={o.status === "ACCEPTED" ? C.success : o.status === "DECLINED" ? C.danger : C.accent}>{titleCase(o.status)}</Badge>
+                </div>
+              ))}
+            </div>
+          </ProfileSection>
+        )}
+
+        <ProfileSection title="Emails sent" count={p.emails.length}>
+          {p.emails.length === 0 && <p className="text-sm" style={{ color: C.muted }}>No emails recorded.</p>}
+          <div className="grid gap-1">
+            {p.emails.map(m => (
+              <div key={m.id}>
+                <button onClick={() => setOpenEmail(openEmail === m.id ? null : m.id)}
+                  className="w-full flex items-center gap-3 py-1.5 text-left text-sm hover:bg-slate-50 rounded-lg px-2">
+                  <span className="text-xs w-32 shrink-0" style={{ color: C.muted }}>{formatFullDateTime(m.createdAt)}</span>
+                  <span className="flex-1 min-w-0 truncate" style={{ color: C.text }}>{m.subject || titleCase(m.type)}</span>
+                  <Badge color={m.status === "SENT" ? C.success : C.danger}>{titleCase(m.status)}</Badge>
+                </button>
+                {openEmail === m.id && (
+                  <div className="ml-2 mb-2 p-3 rounded-xl text-xs whitespace-pre-wrap leading-relaxed"
+                    style={{ backgroundColor: "#F8FAFC", color: C.text }}>
+                    <p className="mb-2" style={{ color: C.muted }}>To: {m.recipientEmail}</p>
+                    {m.body}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </ProfileSection>
+
+        <ProfileSection title="Timeline" count={events.length}>
+          {events.length === 0 && <p className="text-sm" style={{ color: C.muted }}>No activity recorded.</p>}
+          <div className="grid gap-2">
+            {events.map((e, idx) => (
+              <div key={idx} className="flex gap-3 text-sm">
+                <span className="text-xs w-32 shrink-0 pt-0.5" style={{ color: C.muted }}>{formatFullDateTime(e.timestamp)}</span>
+                <span style={{ color: C.text }}>
+                  {e.type === "STAGE" && <>Moved to <b>{STAGE_LABELS[e.stage] || e.stage}</b>{e.requisitionTitle && ` · ${e.requisitionTitle}`}{e.notes && <span style={{ color: C.muted }}> — {e.notes}</span>}</>}
+                  {e.type === "INTERVIEW" && <>{titleCase(e.interviewType)} interview · {titleCase(e.interviewStatus)}</>}
+                  {e.type === "NOTIFICATION" && <>Email: {e.message || e.channel}</>}
+                  {!["STAGE", "INTERVIEW", "NOTIFICATION"].includes(e.type) && titleCase(e.type)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </ProfileSection>
+
+        <ProfileSection title="Resume">
+          {p.resumeText ? (
+            <>
+              <div className="flex items-center gap-3 mb-2">
+                {p.resumeFilename && <span className="text-xs inline-flex items-center gap-1" style={{ color: C.muted }}><FileText size={12} />{p.resumeFilename}</span>}
+                <button onClick={() => setShowCv(s => !s)} className="text-xs font-semibold" style={{ color: C.accent }}>
+                  {showCv ? "Hide text" : "Show text"}
+                </button>
+              </div>
+              {showCv && (
+                <pre className="text-xs whitespace-pre-wrap leading-relaxed p-4 rounded-xl max-h-96 overflow-y-auto"
+                  style={{ backgroundColor: "#F8FAFC", color: C.text, fontFamily: "inherit" }}>{p.resumeText}</pre>
+              )}
+            </>
+          ) : <p className="text-sm" style={{ color: C.muted }}>No resume text on file.</p>}
+        </ProfileSection>
+
+        {p.recentViews && (
+          <ProfileSection title="Who has viewed this profile" count={p.recentViews.length}>
+            {p.recentViews.length === 0
+              ? <p className="text-sm" style={{ color: C.muted }}>Nobody before you.</p>
+              : <div className="grid gap-1">
+                  {p.recentViews.map((v, i) => (
+                    <p key={i} className="text-xs" style={{ color: C.muted }}>
+                      <span className="font-semibold" style={{ color: C.text }}>{v.username}</span> · {formatFullDateTime(v.at)}
+                    </p>
+                  ))}
+                </div>}
+            <p className="text-xs mt-2" style={{ color: C.muted }}>Latest 10 views, visible to admins only.</p>
+          </ProfileSection>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
 // APP SHELL
 // ============================================================
 export default function App() {
@@ -7792,6 +8154,8 @@ export default function App() {
   });
   const [userMeta, setUserMeta] = useState(null);
   const [active, setActive] = useState("dashboard");
+  const [candidateId, setCandidateId] = useState(null);
+  const [cameFrom, setCameFrom] = useState("dashboard");
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const accountMenuRef = useRef(null);
@@ -7822,6 +8186,12 @@ export default function App() {
 
   const displayUser = userMeta || { fullName: user.username, role: "" };
 
+  function openCandidate(id) {
+    if (active !== "candidate") setCameFrom(active);
+    setCandidateId(id);
+    setActive("candidate");
+  }
+
   const views = {
     dashboard:    <Dashboard setActive={setActive} />,
     intelligence: <IntelligenceView />,
@@ -7840,6 +8210,9 @@ export default function App() {
       </div>
     ),
     cvInbox: <CvInboxView />,
+    candidate: candidateId && (
+      <CandidateProfileView candidateId={candidateId} onBack={() => setActive(cameFrom)} onOpenCandidate={openCandidate} />
+    ),
   };
 
   return (
@@ -7849,6 +8222,7 @@ export default function App() {
       <div className="flex-1 flex flex-col overflow-hidden">
         <div className="h-14 shrink-0 flex items-center px-8 border-b bg-white gap-3"
           style={{ borderColor: C.border }}>
+          <CandidateSearchBox onOpen={openCandidate} />
           <div className="flex-1" />
           <button
             onClick={() => setAssistantOpen(open => !open)}
