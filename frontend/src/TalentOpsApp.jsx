@@ -7826,7 +7826,7 @@ function CandidateSearchBox({ onOpen }) {
 
   const q = text.trim();
   return (
-    <div ref={boxRef} className="relative w-80">
+    <div ref={boxRef} className="relative w-96">
       <div className="flex items-center gap-2 h-8 px-3 rounded-xl border bg-slate-50 focus-within:bg-white focus-within:ring-2 focus-within:ring-sky-200"
         style={{ borderColor: C.border }}>
         <Search size={14} style={{ color: C.muted }} />
@@ -7835,7 +7835,7 @@ function CandidateSearchBox({ onOpen }) {
           onChange={e => { setText(e.target.value); setOpen(true); }}
           onFocus={() => setOpen(true)}
           onKeyDown={onKeyDown}
-          placeholder="Find a candidate by email, name, phone…"
+          placeholder="Search all candidates by email, name, phone…"
           aria-label="Search candidates"
           className="flex-1 min-w-0 bg-transparent outline-none text-xs"
           style={{ color: C.text }}
