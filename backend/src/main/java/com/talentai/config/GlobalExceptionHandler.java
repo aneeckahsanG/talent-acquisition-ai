@@ -36,6 +36,12 @@ public class GlobalExceptionHandler {
         return ResponseEntity.badRequest().body(errorBody(HttpStatus.BAD_REQUEST, ex.getMessage(), null));
     }
 
+    @ExceptionHandler(com.talentai.aiusage.AiBudgetExceededException.class)
+    public ResponseEntity<Map<String, Object>> handleAiBudget(com.talentai.aiusage.AiBudgetExceededException ex) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(errorBody(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage() + " AI features are paused until the limit is raised or resets.", null));
+    }
+
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<Map<String, Object>> handleMessageNotReadable(HttpMessageNotReadableException ex) {
         return ResponseEntity.badRequest().body(errorBody(HttpStatus.BAD_REQUEST, "Invalid request body: " + ex.getMostSpecificCause().getMessage(), null));

@@ -11,19 +11,22 @@ import org.springframework.core.Ordered;
 import java.util.Optional;
 
 /**
- * Wraps every call made through the shared ChatClient and records its token use and estimated cost.
- * The feature is the application class and method that made the call, so no call site needs changing.
+ * Wraps every call made through the shared ChatClient: refuses it when the AI budget is used up,
+ * and otherwise records its token use and estimated cost. The feature is the application class and
+ * method that made the call, so no call site needs changing.
  */
 @RequiredArgsConstructor
 public class AiUsageAdvisor implements CallAdvisor {
 
     private final AiUsageRecorder recorder;
+    private final AiBudgetGuard budgetGuard;
 
     @Override
     public ChatClientResponse adviseCall(ChatClientRequest request, CallAdvisorChain chain) {
         String feature = callerOf();
         long started = System.currentTimeMillis();
         try {
+            budgetGuard.checkAllowed();
             ChatClientResponse response = chain.nextCall(request);
             long took = System.currentTimeMillis() - started;
             int in = 0, out = 0;
@@ -40,6 +43,11 @@ public class AiUsageAdvisor implements CallAdvisor {
                 }
             } catch (Exception ignored) {
                 // usage is best-effort: never let bookkeeping break the call
+            }
+            try {
+                budgetGuard.addSpend(recorder.estimateCost(in, out).doubleValue());
+            } catch (Exception ignored) {
+                // the running total is best-effort too
             }
             recorder.record(feature, model, in, out, true, null, took);
             return response;

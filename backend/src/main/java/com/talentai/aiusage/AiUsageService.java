@@ -21,6 +21,7 @@ public class AiUsageService {
     private final AiUsageLogRepository repository;
     private final ScreeningResultRepository screeningRepository;
     private final PipelineStageRepository stageRepository;
+    private final AiBudgetGuard budgetGuard;
 
     @Value("${app.ai.price-input-per-million-usd:3.0}")
     private double inputPrice;
@@ -29,7 +30,7 @@ public class AiUsageService {
 
     public record Report(LocalDateTime generatedAt, Period today, Period last7Days, Period last30Days,
                          Double projectedMonthlyCost, List<FeatureCost> byFeature, List<DayCost> byDay,
-                         UnitCosts unitCosts, List<Failure> recentFailures, String pricing) {}
+                         UnitCosts unitCosts, List<Failure> recentFailures, AiBudgetGuard.Status budget, int blockedCallsToday, String pricing) {}
 
     public record Failure(LocalDateTime at, String feature, String error) {}
 
@@ -85,7 +86,9 @@ public class AiUsageService {
         List<Failure> failures = logs.stream().filter(l -> !l.isSuccess())
                 .sorted(Comparator.comparing(AiUsageLog::getCreatedAt).reversed()).limit(5)
                 .map(l -> new Failure(l.getCreatedAt(), l.getFeature(), l.getError())).toList();
-        return new Report(now, today, week, month, projected, byFeature, byDay, unit, failures, pricing);
+        int blockedToday = (int) logs.stream().filter(l -> !l.getCreatedAt().isBefore(startOfToday) && !l.isSuccess()
+                && l.getError() != null && l.getError().startsWith("AiBudgetExceededException")).count();
+        return new Report(now, today, week, month, projected, byFeature, byDay, unit, failures, budgetGuard.status(), blockedToday, pricing);
     }
 
     private Period period(List<AiUsageLog> logs) {

@@ -195,7 +195,15 @@ public class ScreeningAgentService {
         if (screeningResultRepository.findByCandidateIdAndRequisitionId(candidate.getId(), requisition.getId()).isPresent()) {
             return;
         }
-        runScreening(candidate, requisition, true);
+        try {
+            runScreening(candidate, requisition, true);
+        } catch (IllegalStateException e) {
+            // The AI call failed or was refused (outage, bad response, or the AI budget is used up).
+            // Swallow it here, inside the transaction: letting it escape would mark the caller's whole
+            // transaction rollback-only and lose the application. The candidate stays unscreened and is
+            // picked up again later.
+            log.warn("Screening skipped for candidate {} / requisition {}: {}", candidate.getId(), requisition.getId(), e.getMessage());
+        }
     }
 
     private ScreeningResult runScreening(Candidate candidate, JobRequisition requisition) {

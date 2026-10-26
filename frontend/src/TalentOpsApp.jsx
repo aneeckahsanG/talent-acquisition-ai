@@ -983,6 +983,124 @@ function IntelSection({ title, hint, children }) {
   );
 }
 
+const BUDGET_STATE = {
+  NO_LIMIT:   { label: "No limit set",            color: "#64748B" },
+  OK:         { label: "Within budget",           color: "#10B981" },
+  WARNING:    { label: "Nearly used up",          color: "#F59E0B" },
+  BLOCKED:    { label: "AI paused",               color: "#EF4444" },
+  OVER_LIMIT: { label: "Over limit, not stopping", color: "#F59E0B" },
+};
+
+function BudgetPanel({ budget, blockedToday, onChange }) {
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState({
+    daily: budget.dailyLimit ?? "", monthly: budget.monthlyLimit ?? "", warn: budget.warnPercent, hardStop: budget.hardStop,
+  });
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const money = v => `$${Number(v).toFixed(v < 1 ? 4 : 2)}`;
+  const meta = BUDGET_STATE[budget.state] || BUDGET_STATE.NO_LIMIT;
+  const bar = (label, spent, limit, percent) => (
+    <div>
+      <div className="flex items-center justify-between text-xs mb-1">
+        <span style={{ color: C.text }}>{label}</span>
+        <span style={{ color: C.muted }}>
+          <strong style={{ color: C.text }}>{money(spent)}</strong>{limit != null ? ` of ${money(limit)} (${Math.round(percent)}%)` : " · no limit"}
+        </span>
+      </div>
+      <div className="h-2 rounded-full" style={{ backgroundColor: C.border }}>
+        <div className="h-2 rounded-full" style={{
+          width: limit != null ? `${Math.min(100, percent)}%` : "0%",
+          backgroundColor: percent >= 100 ? "#EF4444" : percent >= budget.warnPercent ? "#F59E0B" : C.success }} />
+      </div>
+    </div>
+  );
+
+  async function save() {
+    setSaving(true); setMsg(null);
+    try {
+      await apiFetch("/intelligence/ai-budget", {
+        method: "PUT",
+        body: JSON.stringify({
+          dailyLimitUsd: form.daily === "" ? null : Number(form.daily),
+          monthlyLimitUsd: form.monthly === "" ? null : Number(form.monthly),
+          warnPercent: Number(form.warn), hardStop: form.hardStop,
+        }),
+      });
+      setMsg({ text: "Saved." }); setOpen(false); onChange();
+    } catch (e) { setMsg({ err: true, text: e.message }); }
+    finally { setSaving(false); }
+  }
+
+  async function screenWaiting() {
+    setMsg(null);
+    try {
+      const r = await apiFetch("/intelligence/retry-unscreened", { method: "POST" });
+      setMsg({ text: r.screened > 0 ? `${r.screened} waiting applicant${r.screened === 1 ? "" : "s"} screened.` : "Nobody was waiting, or AI use is still paused." });
+      onChange();
+    } catch (e) { setMsg({ err: true, text: e.message }); }
+  }
+
+  const inputCls = "w-full px-3 py-2 rounded-xl border text-sm";
+  const inputSty = { borderColor: C.border, color: C.text, backgroundColor: C.bg };
+  return (
+    <div className="mb-5 p-4 rounded-xl" style={{ border: `1px solid ${meta.color}55`, backgroundColor: `${meta.color}08` }}>
+      <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
+        <div className="flex items-center gap-2">
+          <p className="text-sm font-bold" style={{ color: C.text }}>Spending limits</p>
+          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full text-white" style={{ backgroundColor: meta.color }}>{meta.label}</span>
+        </div>
+        <div className="flex items-center gap-3">
+          <button onClick={screenWaiting} className="text-xs underline" style={{ color: C.accent }}>Screen waiting applicants now</button>
+          <button onClick={() => setOpen(o => !o)} className="text-xs font-semibold px-3 py-1.5 rounded-lg border" style={{ borderColor: C.border, color: C.text }}>
+            {open ? "Close" : "Change limits"}
+          </button>
+        </div>
+      </div>
+      <div className="space-y-2.5">
+        {bar("Today", budget.dailySpent, budget.dailyLimit, budget.dailyPercent ?? 0)}
+        {bar("This month", budget.monthlySpent, budget.monthlyLimit, budget.monthlyPercent ?? 0)}
+      </div>
+      {budget.state === "BLOCKED" && (
+        <p className="text-xs mt-3" style={{ color: C.text }}>
+          AI calls are paused. New applications are still saved and are screened automatically once AI use resumes
+          {blockedToday > 0 ? ` (${blockedToday} call${blockedToday === 1 ? "" : "s"} refused today)` : ""}.
+        </p>
+      )}
+      {msg && <p className="text-xs mt-2" style={{ color: msg.err ? C.danger : C.success }}>{msg.text}</p>}
+      {open && (
+        <div className="mt-4 grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" }}>
+          <div>
+            <label className="block text-xs font-semibold mb-1.5" style={{ color: C.muted }}>Daily limit (US$)</label>
+            <input type="number" min="0" step="0.01" className={inputCls} style={inputSty} placeholder="No limit"
+              value={form.daily} onChange={e => setForm(f => ({ ...f, daily: e.target.value }))} />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold mb-1.5" style={{ color: C.muted }}>Monthly limit (US$)</label>
+            <input type="number" min="0" step="0.01" className={inputCls} style={inputSty} placeholder="No limit"
+              value={form.monthly} onChange={e => setForm(f => ({ ...f, monthly: e.target.value }))} />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold mb-1.5" style={{ color: C.muted }}>Warn at (% of limit)</label>
+            <input type="number" min="1" max="100" className={inputCls} style={inputSty}
+              value={form.warn} onChange={e => setForm(f => ({ ...f, warn: e.target.value }))} />
+          </div>
+          <div className="flex flex-col justify-end gap-2">
+            <label className="flex items-center gap-2 text-xs" style={{ color: C.text }}>
+              <input type="checkbox" checked={form.hardStop} onChange={e => setForm(f => ({ ...f, hardStop: e.target.checked }))} />
+              Pause AI when a limit is reached
+            </label>
+            <Btn variant="primary" onClick={save} disabled={saving}>{saving ? "Saving…" : "Save limits"}</Btn>
+          </div>
+          <p className="text-[11px]" style={{ gridColumn: "1 / -1", color: C.muted }}>
+            Only an admin can save changes. Leave a limit blank for no limit. The HR inbox gets an email when a warning level is reached and when AI is paused.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AiUsageSection() {
   const { data, loading, error, reload } = useApi("/intelligence/ai-usage");
   const money = v => (v == null ? "—" : `$${v.toFixed(v < 1 ? 4 : 2)}`);
@@ -993,7 +1111,7 @@ function AiUsageSection() {
   if (error) return <IntelSection title="AI usage and cost"><ErrorBanner message={error} onRetry={reload} /></IntelSection>;
   if (!data) return null;
 
-  const { today, last7Days, last30Days, projectedMonthlyCost, byFeature, byDay, unitCosts, recentFailures, pricing } = data;
+  const { today, last7Days, last30Days, projectedMonthlyCost, byFeature, byDay, unitCosts, recentFailures, pricing, budget, blockedCallsToday } = data;
   const maxDay = Math.max(0.0001, ...byDay.map(d => d.cost));
   const tiles = [
     ["Today", money(today.cost), `${today.calls} calls`],
@@ -1006,6 +1124,7 @@ function AiUsageSection() {
 
   return (
     <IntelSection title="AI usage and cost" hint="What the AI is costing, and where. These are estimates from token counts.">
+      <BudgetPanel key={`${budget.dailyLimit}-${budget.monthlyLimit}-${budget.warnPercent}-${budget.hardStop}`} budget={budget} blockedToday={blockedCallsToday} onChange={reload} />
       {last30Days.calls === 0 ? (
         <p className="text-sm" style={{ color: C.muted }}>No AI calls recorded yet. They appear here as soon as the AI is used.</p>
       ) : (
@@ -1517,21 +1636,14 @@ function Sidebar({ active, setActive, user }) {
 function Dashboard({ setActive }) {
   const { data: summary, loading, error, reload } = useApi("/orchestrator/dashboard");
   const { data: insights, reload: reloadInsights } = useApi("/orchestrator/insights");
+  const { data: attention, reload: reloadAttention } = useApi("/intelligence/attention");
 
   const stats = summary ? [
     { label: "Open Requisitions",    value: summary.openRequisitions,       icon: Briefcase,  color: C.accent,   nav: "roles"      },
     { label: "Candidates in Pipeline",value: summary.candidatesInPipeline,   icon: Activity,   color: "#8B5CF6",  nav: "pipeline"   },
     { label: "Screened This Week",    value: summary.candidatesScreenedThisWeek,icon: FileCheck, color: "#0EA5E9",  nav: "screening"  },
     { label: "Edge Cases to Review", value: summary.edgeCasesAwaitingReview,icon: AlertCircle,color: C.warning,  nav: "screening"  },
-    { label: "Stalled Candidates",   value: summary.stalledCandidates,      icon: Clock,      color: C.danger,   nav: "pipeline"   },
     { label: "Interviews Scheduled", value: summary.interviewsScheduled,    icon: Calendar,   color: C.success,  nav: "pipeline"   },
-  ] : [];
-
-  const funnelMax = summary ? Math.max(summary.candidatesInPipeline, summary.totalCandidates, 1) : 1;
-  const funnelStages = summary ? [
-    { label: "In Pipeline",        value: summary.candidatesInPipeline,       color: C.accent  },
-    { label: "Screened This Week", value: summary.candidatesScreenedThisWeek, color: "#8B5CF6" },
-    { label: "Interviews",     value: summary.interviewsScheduled,     color: C.success   },
   ] : [];
 
   return (
@@ -1539,7 +1651,7 @@ function Dashboard({ setActive }) {
       <TopBar title="Dashboard"
         subtitle="Real-time view of agent activity across talent acquisition"
         action={
-          <button onClick={() => { reload(); reloadInsights(); }} className="flex items-center gap-1.5 text-sm font-medium px-3 py-2 rounded-xl border"
+          <button onClick={() => { reload(); reloadInsights(); reloadAttention(); }} className="flex items-center gap-1.5 text-sm font-medium px-3 py-2 rounded-xl border"
             style={{ borderColor: C.border, color: C.muted }}>
             <RefreshCw size={13} /> Refresh
           </button>
@@ -1548,8 +1660,37 @@ function Dashboard({ setActive }) {
 
       {error && <ErrorBanner message={error} onRetry={reload} />}
 
-      {/* KPI cards — 3 per row */}
-      <div className="grid grid-cols-3 gap-4 mb-6">
+      {/* What needs a person's action today */}
+      {attention && (() => {
+        const items = [
+          ["Edge cases to review", attention.edgeCasesToReview, "screening"],
+          ["Offers awaiting a reply", attention.offersAwaitingReply, "pipeline"],
+          ["Interviews today", attention.interviewsToday, "calendar"],
+          ["Waiting to book a time", attention.waitingToBook, "pipeline"],
+          ["Applicants waiting to be screened", attention.applicantsWaitingScreening, "screening"],
+        ];
+        const total = items.reduce((n, [, v]) => n + v, 0);
+        return (
+          <Card className="p-5 mb-6">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="font-semibold text-sm" style={{ color: C.text }}>Needs your attention</h2>
+              {total === 0 && <span className="text-xs font-semibold" style={{ color: C.success }}>Nothing is waiting on you right now.</span>}
+            </div>
+            <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" }}>
+              {items.map(([label, value, nav]) => (
+                <button key={label} onClick={() => setActive(nav)} className="text-left p-3 rounded-xl border hover:shadow-sm transition-shadow"
+                  style={{ borderColor: value > 0 ? `${C.warning}66` : C.border, backgroundColor: value > 0 ? `${C.warning}0d` : "transparent" }}>
+                  <p className="text-2xl font-bold font-mono" style={{ color: value > 0 ? C.warning : C.muted }}>{value}</p>
+                  <p className="text-xs mt-0.5" style={{ color: C.text }}>{label}</p>
+                </button>
+              ))}
+            </div>
+          </Card>
+        );
+      })()}
+
+      {/* KPI cards */}
+      <div className="grid grid-cols-5 gap-4 mb-6">
         {loading
           ? Array.from({ length: 6 }).map((_, i) => (
               <Card key={i} className="p-5">
@@ -1638,37 +1779,27 @@ function Dashboard({ setActive }) {
             <EdgeCasesList onViewAll={() => setActive("screening")} />
           </Card>
 
-          {/* Pipeline funnel */}
-          {!loading && (
-            <Card className="overflow-hidden">
-              <div className="px-5 py-4 border-b" style={{ borderColor: C.border }}>
-                <h2 className="font-semibold text-sm" style={{ color: C.text }}>Pipeline Overview</h2>
-              </div>
-              <div className="p-5 space-y-4">
-                {funnelStages.map((stage) => (
-                  <div key={stage.label}>
-                    <div className="flex justify-between text-xs mb-1.5">
-                      <span style={{ color: C.muted }}>{stage.label}</span>
-                      <span className="font-semibold font-mono tabular-nums" style={{ color: C.text }}>{stage.value}</span>
-                    </div>
-                    <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: `${stage.color}18` }}>
-                      <div className="h-full rounded-full transition-all duration-500"
-                        style={{
-                          width: `${Math.max(Math.round((stage.value / funnelMax) * 100), stage.value > 0 ? 4 : 0)}%`,
-                          backgroundColor: stage.color,
-                        }} />
-                    </div>
+          {/* Most urgent hiring risks; the full analysis lives on Intelligence */}
+          <Card className="overflow-hidden">
+            <div className="px-5 py-4 border-b flex items-center justify-between" style={{ borderColor: C.border }}>
+              <h2 className="font-semibold text-sm" style={{ color: C.text }}>Hiring risks</h2>
+              <button onClick={() => setActive("intelligence")} className="text-xs font-semibold hover:underline" style={{ color: C.accent }}>
+                Full analysis
+              </button>
+            </div>
+            <div className="p-4 space-y-2">
+              {!attention ? <p className="text-xs" style={{ color: C.muted }}>Loading…</p>
+                : attention.topWarnings.length === 0 ? <p className="text-sm" style={{ color: C.success }}>No risks detected right now.</p>
+                : attention.topWarnings.map((a, i) => (
+                  <div key={i} className="px-3 py-2 rounded-xl" style={{
+                    borderLeft: `4px solid ${a.severity === "HIGH" ? "#EF4444" : a.severity === "MEDIUM" ? "#F59E0B" : "#64748B"}`,
+                    backgroundColor: C.bg }}>
+                    <p className="text-xs font-semibold" style={{ color: C.text }}>{a.title}</p>
+                    <p className="text-[11px] mt-0.5" style={{ color: C.muted }}>{a.detail}</p>
                   </div>
                 ))}
-                <div className="pt-3 mt-1 border-t flex items-center justify-between" style={{ borderColor: C.border }}>
-                  <span className="text-xs" style={{ color: C.muted }}>Avg. days to fill</span>
-                  <span className="text-sm font-bold font-mono tabular-nums" style={{ color: summary?.avgDaysToFill > 0 ? C.text : C.muted }}>
-                    {summary?.avgDaysToFill > 0 ? `${summary.avgDaysToFill}d` : "—"}
-                  </span>
-                </div>
-              </div>
-            </Card>
-          )}
+            </div>
+          </Card>
         </div>
       </div>
 

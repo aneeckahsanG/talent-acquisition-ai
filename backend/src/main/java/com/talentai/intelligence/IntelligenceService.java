@@ -72,6 +72,10 @@ public class IntelligenceService {
     public record ChannelStat(String channel, int candidates, int advanced, int hired, Double avgScore,
                               Double advanceRate, Double hireRate) {}
 
+    /** What needs a person's action today, plus the most urgent early warnings. */
+    public record Attention(int edgeCasesToReview, int offersAwaitingReply, int interviewsToday, int waitingToBook,
+                            int applicantsWaitingScreening, List<Alert> topWarnings) {}
+
     public record Stalled(Long candidateId, String candidateName, Long requisitionId, String roleTitle, String stage,
                           int daysInStage) {}
 
@@ -188,6 +192,34 @@ public class IntelligenceService {
         List<Alert> alerts = alerts(coverage, skills, stalled, funnel, accepted, declined, interviewsByReq, openRoles, now);
         return new Overview(now, kpis, alerts, coverage, funnel, skills, channels,
                 stalled.stream().limit(10).toList(), ttf);
+    }
+
+    public Attention attention() {
+        LocalDateTime now = LocalDateTime.now();
+        List<ScreeningResult> screenings = screeningRepository.findAll();
+        int edgeCases = (int) screenings.stream()
+                .filter(s -> Boolean.TRUE.equals(s.getIsEdgeCase()) && s.getReviewerDecision() == null).count();
+        int offersAwaiting = (int) offerRepository.findAll().stream().filter(o -> "SENT".equals(o.getStatus())).count();
+
+        List<InterviewSchedule> interviews = interviewRepository.findAll();
+        int today = (int) interviews.stream().filter(i -> "CONFIRMED".equals(i.getStatus()) && i.getConfirmedSlot() != null
+                && i.getConfirmedSlot().toLocalDate().equals(now.toLocalDate())).count();
+        int waitingToBook = (int) interviews.stream().filter(i -> "PROPOSED".equals(i.getStatus())).count();
+
+        Set<String> screenedKeys = screenings.stream().map(s -> key(s.getCandidateId(), s.getRequisitionId())).collect(Collectors.toSet());
+        Map<Long, Candidate> candById = candidateRepository.findAll().stream().collect(Collectors.toMap(Candidate::getId, c -> c));
+        Set<Long> openRoleIds = requisitionRepository.findAll().stream().filter(r -> "OPEN".equals(r.getStatus()))
+                .map(JobRequisition::getId).collect(Collectors.toSet());
+        LocalDateTime since = now.minusDays(14);
+        int unscreened = (int) matchRepository.findAll().stream()
+                .filter(m -> Boolean.FALSE.equals(m.getIsProactive()) && "APPLIED".equals(m.getStatus())
+                        && m.getCreatedAt() != null && m.getCreatedAt().isAfter(since) && openRoleIds.contains(m.getRequisitionId()))
+                .filter(m -> !screenedKeys.contains(key(m.getCandidateId(), m.getRequisitionId())))
+                .filter(m -> { Candidate c = candById.get(m.getCandidateId()); return c != null && c.getResumeText() != null && !c.getResumeText().isBlank(); })
+                .count();
+
+        return new Attention(edgeCases, offersAwaiting, today, waitingToBook, unscreened,
+                overview().alerts().stream().limit(3).toList());
     }
 
     // ---- pieces --------------------------------------------------------------------------------
