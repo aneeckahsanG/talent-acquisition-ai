@@ -29,7 +29,7 @@ public class AssistantService {
 
         try {
             String answer = chatClient.prompt()
-                    .system(promptLoader.load("assistant"))
+                    .system(promptLoader.load("assistant") + "\n\n" + promptLoader.load("assistant-guide"))
                     .user(userPrompt)
                     .call()
                     .content();

@@ -510,6 +510,12 @@ function AssistantMessage({ content }) {
   });
 }
 
+const ASSISTANT_PAGE_NAMES = {
+  dashboard: "the Dashboard", intelligence: "Intelligence", activity: "Agent Activity", roles: "Open Roles",
+  pipeline: "the Pipeline", screening: "Screening", screeningQuality: "Screening Quality", calendar: "the Calendar",
+  referrals: "Referrals", integrations: "Integrations", cvInbox: "the Resume Inbox", candidate: "a candidate profile",
+};
+
 function AssistantPanel({ active, open, onClose }) {
   const [messages, setMessages] = useState([
     {
@@ -564,7 +570,7 @@ function AssistantPanel({ active, open, onClose }) {
             </div>
             <div>
               <h2 className="text-sm font-bold" style={{ color: "#F4FAFF" }}>AI Assistance</h2>
-              <p className="text-[11px]" style={{ color: "#A8C4D8" }}>Guidance for the {active} area</p>
+              <p className="text-[11px]" style={{ color: "#A8C4D8" }}>Guidance for {ASSISTANT_PAGE_NAMES[active] || active}</p>
             </div>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-800" aria-label="Close AI assistance">
@@ -3791,7 +3797,10 @@ function PipelineView() {
     } catch { setOutreach(null); }
   }
 
-  const visibleStages = PIPELINE_STAGES.filter(s => showClosed || (s !== "REJECTED" && s !== "NO_SHOW"));
+  // Applicants and imports start at Screened, so Sourced only fills when the Sourcing Agent matches someone
+  const sourcedCount = (board?.stages?.SOURCED || []).length;
+  const visibleStages = PIPELINE_STAGES.filter(s =>
+    (s !== "SOURCED" || sourcedCount > 0) && (showClosed || (s !== "REJECTED" && s !== "NO_SHOW")));
   const closedCount = ["REJECTED", "NO_SHOW"].reduce((n, st) => n + ((board?.stages?.[st]) || []).length, 0);
 
   return (
