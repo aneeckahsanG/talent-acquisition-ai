@@ -12,6 +12,13 @@ public class IntelligenceController {
 
     private final IntelligenceService intelligenceService;
     private final ScreeningQualityService screeningQualityService;
+    private final com.talentai.aiusage.AiUsageService aiUsageService;
+
+    /** What the AI is costing: by period, by feature, by day, and per candidate and hire. */
+    @GetMapping("/ai-usage")
+    public com.talentai.aiusage.AiUsageService.Report aiUsage() {
+        return aiUsageService.report();
+    }
 
     /** How consistent screening is, and how often recruiters agree with the AI. */
     @GetMapping("/screening-quality")

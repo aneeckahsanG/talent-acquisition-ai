@@ -983,6 +983,99 @@ function IntelSection({ title, hint, children }) {
   );
 }
 
+function AiUsageSection() {
+  const { data, loading, error, reload } = useApi("/intelligence/ai-usage");
+  const money = v => (v == null ? "—" : `$${v.toFixed(v < 1 ? 4 : 2)}`);
+  const num = v => Number(v).toLocaleString();
+  const th = "text-left px-3 py-2 text-xs font-semibold";
+
+  if (loading && !data) return <IntelSection title="AI usage and cost"><Spinner size={18} /></IntelSection>;
+  if (error) return <IntelSection title="AI usage and cost"><ErrorBanner message={error} onRetry={reload} /></IntelSection>;
+  if (!data) return null;
+
+  const { today, last7Days, last30Days, projectedMonthlyCost, byFeature, byDay, unitCosts, recentFailures, pricing } = data;
+  const maxDay = Math.max(0.0001, ...byDay.map(d => d.cost));
+  const tiles = [
+    ["Today", money(today.cost), `${today.calls} calls`],
+    ["Last 7 days", money(last7Days.cost), `${last7Days.calls} calls`],
+    ["Last 30 days", money(last30Days.cost), `${num(last30Days.inputTokens + last30Days.outputTokens)} tokens`],
+    ["Projected this month", money(projectedMonthlyCost), "at the last 7 days' pace"],
+    ["Per screened candidate", money(unitCosts.costPerScreenedCandidate), `${unitCosts.screenedCandidates} screened`],
+    ["Per hire", money(unitCosts.costPerHire), `${unitCosts.hires} hire${unitCosts.hires === 1 ? "" : "s"}, all AI use`],
+  ];
+
+  return (
+    <IntelSection title="AI usage and cost" hint="What the AI is costing, and where. These are estimates from token counts.">
+      {last30Days.calls === 0 ? (
+        <p className="text-sm" style={{ color: C.muted }}>No AI calls recorded yet. They appear here as soon as the AI is used.</p>
+      ) : (
+        <div className="space-y-5">
+          <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" }}>
+            {tiles.map(([label, value, sub]) => (
+              <div key={label} className="p-3 rounded-xl" style={{ backgroundColor: C.bg }}>
+                <p className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: C.muted }}>{label}</p>
+                <p className="text-xl font-bold mt-1" style={{ color: C.text }}>{value}</p>
+                <p className="text-[11px] mt-0.5" style={{ color: C.muted }}>{sub}</p>
+              </div>
+            ))}
+          </div>
+
+          <div>
+            <p className="text-xs font-semibold mb-2" style={{ color: C.text }}>Cost per day, last 14 days</p>
+            <div className="flex items-end gap-1" style={{ height: 70 }}>
+              {byDay.map(d => (
+                <div key={d.date} className="flex-1 rounded-t" title={`${d.date}: ${money(d.cost)} (${d.calls} calls)`}
+                  style={{ height: `${Math.max(3, (d.cost / maxDay) * 100)}%`, backgroundColor: d.cost > 0 ? C.accent : C.border }} />
+              ))}
+            </div>
+            <div className="flex justify-between text-[10px] mt-1" style={{ color: C.muted }}>
+              <span>{byDay[0].date.slice(5)}</span><span>{byDay[byDay.length - 1].date.slice(5)}</span>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr style={{ backgroundColor: C.bg, color: C.muted }}>
+                  <th className={th}>What asked for it</th><th className={th}>Calls</th><th className={th}>Failed</th>
+                  <th className={th}>Avg tokens in / out</th><th className={th}>Avg per call</th><th className={th}>Total</th><th className={th}>Share</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y" style={{ borderColor: C.border }}>
+                {byFeature.map(f => (
+                  <tr key={f.feature}>
+                    <td className="px-3 py-2.5 font-semibold" style={{ color: C.text }}>{f.feature}</td>
+                    <td className="px-3 py-2.5" style={{ color: C.text }}>{f.calls}</td>
+                    <td className="px-3 py-2.5" style={{ color: f.failedCalls > 0 ? C.danger : C.muted }}>{f.failedCalls}</td>
+                    <td className="px-3 py-2.5 text-xs" style={{ color: C.muted }}>{num(f.avgInputTokens)} / {num(f.avgOutputTokens)}</td>
+                    <td className="px-3 py-2.5" style={{ color: C.text }}>{money(f.avgCostPerCall)}</td>
+                    <td className="px-3 py-2.5 font-semibold" style={{ color: C.text }}>{money(f.totalCost)}</td>
+                    <td className="px-3 py-2.5 text-xs" style={{ color: C.muted }}>{Math.round(f.shareOfCost)}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {recentFailures.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold mb-2" style={{ color: C.danger }}>Recent failed calls ({last30Days.failedCalls} in 30 days)</p>
+              <div className="space-y-1">
+                {recentFailures.map((f, i) => (
+                  <p key={i} className="text-xs" style={{ color: C.muted }}>
+                    {new Date(f.at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })} · <strong style={{ color: C.text }}>{f.feature}</strong> · {(f.error || "").slice(0, 120)}
+                  </p>
+                ))}
+              </div>
+            </div>
+          )}
+          <p className="text-[11px]" style={{ color: C.muted }}>{pricing}</p>
+        </div>
+      )}
+    </IntelSection>
+  );
+}
+
 function IntelligenceView() {
   const { data, loading, error, reload } = useApi("/intelligence/overview");
 
@@ -1174,6 +1267,8 @@ function IntelligenceView() {
             </div>
           )}
         </IntelSection>
+
+        <AiUsageSection />
       </div>
     </div>
   );
