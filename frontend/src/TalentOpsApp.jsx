@@ -7581,6 +7581,8 @@ function CvInboxSettingsDrawer({ onClose, onSaved }) {
   });
   const [embeddedPasswordSet, setEmbeddedPasswordSet] = useState(false);
   const [externalPasswordSet, setExternalPasswordSet] = useState(false);
+  const [serverStatus, setServerStatus] = useState(null);   // { running, message } for the embedded server
+  const [saveError, setSaveError] = useState(null);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -7604,6 +7606,7 @@ function CvInboxSettingsDrawer({ onClose, onSaved }) {
         }));
         setEmbeddedPasswordSet(!!s.embeddedPasswordSet);
         setExternalPasswordSet(!!s.externalPasswordSet);
+        setServerStatus({ running: !!s.embeddedRunning, message: s.embeddedStatus });
       } finally {
         setLoading(false);
       }
@@ -7624,6 +7627,8 @@ function CvInboxSettingsDrawer({ onClose, onSaved }) {
         body: JSON.stringify(form),
       });
       setTestResult(result);
+    } catch (e) {
+      setTestResult({ success: false, message: e.message });
     } finally {
       setTesting(false);
     }
@@ -7631,9 +7636,12 @@ function CvInboxSettingsDrawer({ onClose, onSaved }) {
 
   async function handleSave() {
     setSaving(true);
+    setSaveError(null);
     try {
       await apiFetch("/cv-inbox/settings", { method: "PUT", body: JSON.stringify(form) });
       onSaved();
+    } catch (e) {
+      setSaveError(e.message || "The settings could not be saved.");
     } finally {
       setSaving(false);
     }
@@ -7676,6 +7684,14 @@ function CvInboxSettingsDrawer({ onClose, onSaved }) {
                 <p className="text-xs" style={{ color: C.muted }}>
                   This app hosts its own SFTP server. HR connects into it with these credentials.
                 </p>
+                {serverStatus && (
+                  <div className="px-3 py-2 rounded-xl text-xs" style={{
+                    backgroundColor: serverStatus.running ? "#F0FDF4" : "#FFFBEB",
+                    color: serverStatus.running ? C.success : "#B45309",
+                  }}>
+                    {serverStatus.running ? "● " : "○ "}{serverStatus.message}
+                  </div>
+                )}
                 <div>
                   <label className="text-xs font-semibold block mb-1" style={{ color: C.muted }}>Port</label>
                   <input type="number" className={inputStyle} style={inputColors}
@@ -7691,6 +7707,7 @@ function CvInboxSettingsDrawer({ onClose, onSaved }) {
                   <input type="password" className={inputStyle} style={inputColors}
                     placeholder={embeddedPasswordSet ? "Leave blank to keep unchanged" : ""}
                     value={form.embeddedPassword} onChange={e => set("embeddedPassword", e.target.value)} />
+                  <p className="text-[11px] mt-1" style={{ color: C.muted }}>At least 8 characters. The default "change-me" is not allowed.</p>
                 </div>
               </div>
             ) : (
@@ -7756,6 +7773,10 @@ function CvInboxSettingsDrawer({ onClose, onSaved }) {
               }}>
                 {testResult.success ? "✓ " : "✗ "}{testResult.message}
               </div>
+            )}
+
+            {saveError && (
+              <div className="p-3 rounded-xl text-sm" style={{ backgroundColor: "#FEF2F2", color: C.danger }}>{saveError}</div>
             )}
 
             <div className="flex gap-2 pt-2">

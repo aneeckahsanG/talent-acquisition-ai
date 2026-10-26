@@ -42,7 +42,31 @@ public class SftpServerConfig {
     @Value("${app.cv-inbox.root-path}")
     private String rootPath;
 
+    /** Empty means listen on every network interface (needed for HR to connect from another machine). */
+    @Value("${app.sftp.bind-host:}")
+    private String bindHost;
+
     private SshServer sshServer;
+    private volatile boolean running;
+    private volatile String statusMessage = "Not started yet.";
+
+    public boolean isRunning() { return running; }
+
+    public String getStatusMessage() { return statusMessage; }
+
+    /** Called when the source is switched to an external SFTP server and the embedded one is not used. */
+    public synchronized void markNotUsed() {
+        stop();
+        statusMessage = "Not used: the source is set to an external SFTP server.";
+    }
+
+    /** The seeded login (hr / change-me) is public knowledge, so the embedded server must not run with it. */
+    public static boolean isWeakPassword(String password) {
+        return password == null || password.isBlank() || password.length() < 8 || "change-me".equalsIgnoreCase(password.trim());
+    }
+
+    public static final String WEAK_PASSWORD_MESSAGE =
+            "The SFTP password must be at least 8 characters, and the default 'change-me' is not allowed.";
 
     @EventListener(ApplicationReadyEvent.class)
     public void onReady() {
@@ -55,6 +79,11 @@ public class SftpServerConfig {
     /** Stops any running server and starts a fresh one with the given port/username/password. */
     public synchronized void restart(CvInboxSettings settings) {
         stop();
+        if (isWeakPassword(settings.getEmbeddedPassword())) {
+            statusMessage = "Not running: " + WEAK_PASSWORD_MESSAGE + " Set a new password in the SFTP settings.";
+            log.warn("CV Inbox SFTP server not started: {}", WEAK_PASSWORD_MESSAGE);
+            return;
+        }
         try {
             // RootedFileSystemProvider's containment checks require an absolute root —
             // a relative path (e.g. the default "./data/cv-inbox") makes every path it
@@ -69,6 +98,7 @@ public class SftpServerConfig {
 
             SshServer server = SshServer.setUpDefaultServer();
             server.setPort(settings.getEmbeddedPort());
+            if (bindHost != null && !bindHost.isBlank()) server.setHost(bindHost.trim());
             server.setKeyPairProvider(new SimpleGeneratorHostKeyProvider(Paths.get(hostKeyPath)));
             server.setPasswordAuthenticator((user, pass, session) ->
                     username.equals(user) && password.equals(pass));
@@ -76,15 +106,20 @@ public class SftpServerConfig {
             server.setFileSystemFactory(new VirtualFileSystemFactory(root));
             server.start();
             sshServer = server;
+            running = true;
+            statusMessage = "Running on port " + settings.getEmbeddedPort() + ".";
 
             log.info("CV Inbox SFTP server started on port {} (root: {})", settings.getEmbeddedPort(), root);
         } catch (IOException e) {
+            statusMessage = "Not running: could not start on port " + settings.getEmbeddedPort()
+                    + " (" + e.getMessage() + "). The port may already be in use; choose another in the SFTP settings.";
             log.error("Failed to start CV Inbox SFTP server on port {}", settings.getEmbeddedPort(), e);
         }
     }
 
     @PreDestroy
     public synchronized void stop() {
+        running = false;
         if (sshServer != null) {
             try {
                 sshServer.stop();

@@ -96,6 +96,8 @@ public class CvInboxDtos {
         private boolean proxyEnabled;
         private String proxyHost;
         private Integer proxyPort;
+        private boolean embeddedRunning;
+        private String embeddedStatus;
     }
 
     /** Save request. A blank password field means "leave the stored password unchanged". */

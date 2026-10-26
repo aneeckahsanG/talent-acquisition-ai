@@ -21,6 +21,7 @@ import com.talentai.cvinbox.service.ExternalSftpClientService;
 import com.talentai.cvinbox.service.ExternalSftpClientService.TestConnectionResult;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Collections;
@@ -105,14 +106,26 @@ public class CvInboxController {
                 .proxyEnabled(Boolean.TRUE.equals(s.getProxyEnabled()))
                 .proxyHost(s.getProxyHost())
                 .proxyPort(s.getProxyPort())
+                .embeddedRunning(sftpServerConfig.isRunning())
+                .embeddedStatus(sftpServerConfig.getStatusMessage())
                 .build());
+    }
+
+    private static boolean isAdmin(Authentication authentication) {
+        return authentication != null && authentication.getAuthorities().stream()
+                .anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()));
+    }
+
+    private static ResponseEntity<Map<String, String>> adminOnly() {
+        return ResponseEntity.status(403).body(Map.of("message", "Only an admin can change the CV Inbox SFTP settings."));
     }
 
     /** Saves the settings and, for EMBEDDED mode, restarts the SFTP server immediately with the
      *  new port/credentials; for EXTERNAL mode, stops the embedded server since HR is no longer
      *  pushing into us. A blank password in the request means "keep the stored password". */
     @PutMapping("/settings")
-    public ResponseEntity<CvInboxSettingsResponse> saveSettings(@RequestBody SaveSettingsRequest request) {
+    public ResponseEntity<?> saveSettings(@RequestBody SaveSettingsRequest request, Authentication authentication) {
+        if (!isAdmin(authentication)) return adminOnly();
         // Only overwrite a field when the request actually provided it — a request that only
         // carries one mode's fields (e.g. a client switching modes without resending the other
         // mode's values) must not wipe out the settings for the mode it isn't editing right now.
@@ -133,10 +146,14 @@ public class CvInboxController {
         s.setProxyEnabled(request.isProxyEnabled());
         if (request.getProxyHost() != null) s.setProxyHost(request.getProxyHost());
         if (request.getProxyPort() != null) s.setProxyPort(request.getProxyPort());
+        if (!"EXTERNAL".equals(s.getMode()) && SftpServerConfig.isWeakPassword(s.getEmbeddedPassword())) {
+            // refuse before saving: the embedded server would otherwise accept logins with a guessable password
+            return ResponseEntity.badRequest().body(Map.of("message", SftpServerConfig.WEAK_PASSWORD_MESSAGE));
+        }
         s = cvInboxSettingsRepository.save(s);
 
         if ("EXTERNAL".equals(s.getMode())) {
-            sftpServerConfig.stop();
+            sftpServerConfig.markNotUsed();
         } else {
             sftpServerConfig.restart(s);
         }
@@ -149,7 +166,9 @@ public class CvInboxController {
      *  most common case: open the drawer, click Test Connection without retyping anything) would
      *  falsely report an auth failure against an empty password. */
     @PostMapping("/settings/test-connection")
-    public ResponseEntity<TestConnectionResponse> testConnection(@RequestBody TestConnectionRequest request) {
+    public ResponseEntity<?> testConnection(@RequestBody TestConnectionRequest request, Authentication authentication) {
+        // Connecting out to a host of the caller's choosing is only safe for an admin.
+        if (!isAdmin(authentication)) return adminOnly();
         CvInboxSettings stored = currentSettings();
 
         if ("EXTERNAL".equals(request.getMode())) {

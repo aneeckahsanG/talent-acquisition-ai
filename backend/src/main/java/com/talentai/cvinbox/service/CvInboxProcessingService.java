@@ -7,6 +7,7 @@ import com.talentai.common.entity.PipelineStage;
 import com.talentai.common.repository.CandidateRepository;
 import com.talentai.common.repository.JobRequisitionRepository;
 import com.talentai.common.repository.PipelineStageRepository;
+import com.talentai.admin.service.LetterFingerprint;
 import com.talentai.common.util.PdfTextExtractor;
 import com.talentai.cvinbox.dto.CvInboxDtos.ProcessNowResponse;
 import com.talentai.cvinbox.dto.CvInboxDtos.RoleMatchDetail;
@@ -35,8 +36,6 @@ import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
@@ -63,9 +62,6 @@ import java.util.stream.Stream;
 @RequiredArgsConstructor
 @Slf4j
 public class CvInboxProcessingService {
-
-    private static final Pattern EMAIL_PATTERN =
-            Pattern.compile("[a-zA-Z0-9._%+\\-]+@[a-zA-Z0-9.\\-]+\\.[a-zA-Z]{2,}");
 
     private final CandidateRepository candidateRepository;
     private final JobRequisitionRepository jobRequisitionRepository;
@@ -183,10 +179,10 @@ public class CvInboxProcessingService {
             throw new IOException("Could not extract any text from the file.");
         }
 
-        String email = extractEmail(resumeText);
-        String name = extractHeuristicName(resumeText);
+        String email = CvIdentityExtractor.extractEmail(resumeText);
+        String name = CvIdentityExtractor.extractName(resumeText);
 
-        Candidate candidate = (email != null) ? candidateRepository.findByEmail(email).orElse(null) : null;
+        Candidate candidate = findExistingCandidate(email, name);
         if (candidate == null) {
             candidate = Candidate.builder()
                     .fullName(name != null ? name : fileName)
@@ -196,10 +192,9 @@ public class CvInboxProcessingService {
                     .sourceChannel("SFTP_INBOX")
                     .build();
         } else {
-            // Refresh identity from the newly uploaded file too — otherwise a stale name
-            // from whichever CV first claimed this email lingers on every later match
-            // (matches the existing-candidate update pattern in SourcingAgentService).
-            if (name != null) candidate.setFullName(name);
+            // Same person: keep the CV on file current, but never rename them. Their name was set by
+            // whoever created the record (often the candidate themselves) and may be correct where a
+            // guess from the CV text is not.
             candidate.setResumeText(resumeText);
             candidate.setResumeFilename(fileName);
         }
@@ -253,44 +248,54 @@ public class CvInboxProcessingService {
         return considered;
     }
 
-    /** Upserts a SourcingMatch + ScreeningResult + PipelineStage for one role — called only
-     *  for the best-matching role, never for every open role.
-     *  @return the resulting pipeline stage name, for the per-role breakdown. */
+    /** An existing candidate with this email who is the same person (same words in the name), else null.
+     *  Two different people who share an address (a shared mailbox, a referee's address) stay separate. */
+    private Candidate findExistingCandidate(String email, String name) {
+        if (email == null) return null;
+        List<Candidate> sameEmail = candidateRepository.findAllByEmailIgnoreCaseOrderByIdAsc(email);
+        if (sameEmail.isEmpty()) return null;
+        if (name == null) return sameEmail.get(0);   // nothing to tell them apart by: assume the earliest record
+        return sameEmail.stream().filter(c -> LetterFingerprint.sameName(c.getFullName(), name)).findFirst().orElse(null);
+    }
+
+    /**
+     * Creates a SourcingMatch + ScreeningResult + PipelineStage for the best-matching role, but only
+     * where none exists yet. A candidate who is already matched, screened, reviewed or further along
+     * keeps exactly what they have: a keyword score must never overwrite an AI or human decision, and a
+     * re-uploaded CV must never move someone backwards in the pipeline.
+     *  @return the candidate's pipeline stage for this role, for the per-role breakdown. */
     private String recordBestRoleMatch(Candidate candidate, JobRequisition role, RoleScore score) {
-        SourcingMatch match = sourcingMatchRepository
-                .findByCandidateIdAndRequisitionId(candidate.getId(), role.getId())
-                .orElse(SourcingMatch.builder().candidateId(candidate.getId()).requisitionId(role.getId()).build());
-        match.setMatchScore(score.getOverallScore());
-        match.setMatchRationale(score.getRationale());
-        match.setIsProactive(true);
-        if (match.getStatus() == null) match.setStatus("NEW");
-        sourcingMatchRepository.save(match);
+        if (sourcingMatchRepository.findByCandidateIdAndRequisitionId(candidate.getId(), role.getId()).isEmpty()) {
+            sourcingMatchRepository.save(SourcingMatch.builder()
+                    .candidateId(candidate.getId()).requisitionId(role.getId())
+                    .matchScore(score.getOverallScore()).matchRationale(score.getRationale())
+                    .isProactive(true).status("NEW").build());
+        }
 
         String recommendation = score.getOverallScore().compareTo(SourcingAgentService.HIGH_FIT_THRESHOLD) >= 0
                 ? "ADVANCE"
                 : score.getOverallScore().compareTo(BigDecimal.valueOf(40)) < 0 ? "REJECT" : "REVIEW";
 
-        ScreeningResult result = screeningResultRepository
-                .findByCandidateIdAndRequisitionId(candidate.getId(), role.getId())
-                .orElse(ScreeningResult.builder().candidateId(candidate.getId()).requisitionId(role.getId()).build());
-        result.setOverallScore(score.getOverallScore());
-        result.setSkillsScore(score.getSkillsScore());
-        result.setExperienceScore(score.getExperienceScore());
-        result.setStrengths(score.getStrengths());
-        result.setGaps(score.getGaps());
-        result.setRationale(score.getRationale());
-        result.setRecommendation(recommendation);
-        result.setIsEdgeCase("REVIEW".equals(recommendation));
-        screeningResultRepository.save(result);
+        if (screeningResultRepository.findByCandidateIdAndRequisitionId(candidate.getId(), role.getId()).isEmpty()) {
+            screeningResultRepository.save(ScreeningResult.builder()
+                    .candidateId(candidate.getId()).requisitionId(role.getId())
+                    .overallScore(score.getOverallScore()).skillsScore(score.getSkillsScore())
+                    .experienceScore(score.getExperienceScore())
+                    .strengths(score.getStrengths()).gaps(score.getGaps()).rationale(score.getRationale())
+                    .recommendation(recommendation).isEdgeCase("REVIEW".equals(recommendation))
+                    .build());
+        }
 
         PipelineStage stage = pipelineStageRepository
                 .findByCandidateIdAndRequisitionId(candidate.getId(), role.getId())
-                .orElse(PipelineStage.builder().candidateId(candidate.getId()).requisitionId(role.getId()).build());
-        stage.setStage("SCREENED");
-        stage.setUpdatedByAgent("SCREENING");
-        stage.setNotes("CV Inbox keyword match — recommendation: " + recommendation + " (score: " + score.getOverallScore() + ")");
-        pipelineStageRepository.save(stage);
-
+                .orElse(null);
+        if (stage == null) {
+            stage = pipelineStageRepository.save(PipelineStage.builder()
+                    .candidateId(candidate.getId()).requisitionId(role.getId())
+                    .stage("SCREENED").updatedByAgent("SCREENING")
+                    .notes("CV Inbox keyword match — recommendation: " + recommendation + " (score: " + score.getOverallScore() + ")")
+                    .build());
+        }
         return stage.getStage();
     }
 
@@ -315,29 +320,6 @@ public class CvInboxProcessingService {
         } catch (IOException e) {
             log.error("Failed to move processed file {} to {}", file.getFileName(), targetDir.getFileName(), e);
         }
-    }
-
-    private String extractEmail(String resumeText) {
-        Matcher m = EMAIL_PATTERN.matcher(resumeText);
-        return m.find() ? m.group() : null;
-    }
-
-    /** First non-blank line that looks like a person's name (2-5 title-cased words). */
-    private String extractHeuristicName(String resumeText) {
-        for (String line : resumeText.split("\\r?\\n")) {
-            String trimmed = line.trim();
-            if (trimmed.isBlank()) continue;
-            String[] words = trimmed.split("\\s+");
-            if (words.length >= 2 && words.length <= 5 && trimmed.matches("[A-Za-z .'-]+")) {
-                StringBuilder sb = new StringBuilder();
-                for (String word : words) {
-                    if (sb.length() > 0) sb.append(" ");
-                    sb.append(Character.toUpperCase(word.charAt(0))).append(word.substring(1).toLowerCase());
-                }
-                return sb.toString();
-            }
-        }
-        return null;
     }
 
     private String toJson(Object value) {

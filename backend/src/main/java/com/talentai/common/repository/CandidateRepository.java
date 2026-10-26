@@ -9,5 +9,6 @@ import java.util.Optional;
 public interface CandidateRepository extends JpaRepository<Candidate, Long> {
     Optional<Candidate> findByEmail(String email);
     Optional<Candidate> findFirstByEmailOrderByIdAsc(String email);
+    List<Candidate> findAllByEmailIgnoreCaseOrderByIdAsc(String email);
     List<Candidate> findBySourceChannel(String sourceChannel);
 }
