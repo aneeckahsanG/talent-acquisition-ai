@@ -1829,17 +1829,17 @@ function Dashboard({ setActive }) {
           <div className="flex items-center gap-2 mb-4">
             <TrendingUp size={16} style={{ color: C.accent }} />
             <h2 className="font-semibold text-sm" style={{ color: C.text }}>Talent Market Insights</h2>
-            <span className="ml-2 text-xs px-2 py-0.5 rounded-full font-medium"
-              style={{ backgroundColor: `${C.accent}18`, color: C.accent }}>Problem 5</span>
           </div>
           <div className="grid grid-cols-3 gap-4">
             {/* Overall pass rate */}
             <Card className="p-5">
-              <p className="text-xs font-medium mb-1" style={{ color: C.muted }}>Overall Pass Rate</p>
+              <p className="text-xs font-medium mb-1" style={{ color: C.muted }}>AI Advance Rate</p>
               <p className="text-3xl font-bold font-mono tabular-nums mb-0.5" style={{ color: C.text }}>
                 {insights.overallPassRate}%
               </p>
-              <p className="text-xs" style={{ color: C.muted }}>{insights.totalScreened} candidates screened</p>
+              <p className="text-xs" style={{ color: C.muted }}>
+                of {insights.totalScreened} screened, the share the AI recommended to advance
+              </p>
               <div className="mt-3 flex gap-2 text-xs">
                 {[
                   { label: "Advance", key: "ADVANCE", color: C.success },
@@ -1857,7 +1857,7 @@ function Dashboard({ setActive }) {
 
             {/* Screening by role */}
             <Card className="p-5 col-span-2">
-              <p className="text-xs font-medium mb-3" style={{ color: C.muted }}>Screening Pass Rate by Role</p>
+              <p className="text-xs font-medium mb-3" style={{ color: C.muted }}>AI Advance Rate by Role</p>
               {insights.screeningByRequisition?.length === 0 && (
                 <p className="text-xs text-center py-4" style={{ color: C.muted }}>
                   No screening data yet — run the sourcing &amp; screening agents to populate.

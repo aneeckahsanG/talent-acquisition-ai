@@ -156,7 +156,8 @@ referral page (/refer) for people without a login.
 
 - **Dashboard**: a **Needs your attention** row (edge cases to review, offers awaiting a reply, interviews
   today, waiting to book a time, applicants waiting to be screened), **Needs Your Decision**, **Hiring risks**,
-  the **Agent Activity Feed**, pass rates and top skills.
+  the **Agent Activity Feed**, the **AI Advance Rate** (of the candidates screened, the share the AI recommended
+  to advance; it says nothing about who was interviewed or hired) and top skills.
 - **Intelligence** (Talent Intelligence): early warnings, hiring funnel, pipeline depth by role, skills demand
   against supply, stuck candidates (in the same stage a week or more on a role that is still open), and which
   channels work.
