@@ -129,7 +129,21 @@ const AGENT_META = {
   REFERRAL:     { label: "Referral",     color: "#8B5CF6", bg: "#EDE9FE", icon: UserPlus },
   ADMIN:        { label: "Coordination", color: "#3B82F6", bg: "#DBEAFE", icon: Calendar },
   ORCHESTRATOR: { label: "Orchestrator", color: "#6366F1", bg: "#E0E7FF", icon: LayoutGrid },
+  APPLICATIONS: { label: "Applications", color: "#0EA5E9", bg: "#E0F2FE", icon: Inbox },
+  OUTREACH:     { label: "Outreach",     color: "#0D9488", bg: "#CCFBF1", icon: Mail },
 };
+
+// The Sourcing service also handles careers-page applications and outreach emails, so it logs them as SOURCING.
+// Label each entry by what happened instead, so the Sourcing filter only shows real sourcing.
+const APPLICATION_ACTIONS = ["DIRECT_APPLICATION_RECEIVED", "APPLICANT_SHORTLISTED", "APPLICANT_REJECTED"];
+const OUTREACH_ACTIONS = ["OUTREACH_DRAFTED", "OUTREACH_SENT"];
+function activityAgent(entry) {
+  if (entry.agentName === "SOURCING") {
+    if (APPLICATION_ACTIONS.includes(entry.action)) return "APPLICATIONS";
+    if (OUTREACH_ACTIONS.includes(entry.action)) return "OUTREACH";
+  }
+  return entry.agentName;
+}
 
 const STAGE_LABELS = {
   SOURCED: "Sourced", SCREENED: "Screened", SHORTLISTED: "Shortlisted",
@@ -1756,7 +1770,7 @@ function Dashboard({ setActive }) {
                 : (summary?.recentActivity || []).map((entry) => (
                     <div key={entry.id}
                       className="px-5 py-3.5 flex items-start gap-3 hover:bg-slate-50 transition-colors">
-                      <div className="mt-0.5"><AgentPill agent={entry.agentName} /></div>
+                      <div className="mt-0.5"><AgentPill agent={activityAgent(entry)} /></div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm" style={{ color: C.text }}>
                           <span className="font-semibold">{entry.candidateName || "—"}</span>
@@ -1892,12 +1906,12 @@ function ActivityView({ setActive }) {
   const [agentFilter, setAgentFilter] = useState("ALL");
   const [search, setSearch] = useState("");
   const entries = activity || [];
-  const agents = [...new Set(entries.map(entry => entry.agentName).filter(Boolean))].sort();
+  const agents = [...new Set(entries.map(activityAgent).filter(Boolean))].sort();
   const filtered = entries.filter(entry => {
-    const matchesAgent = agentFilter === "ALL" || entry.agentName === agentFilter;
+    const matchesAgent = agentFilter === "ALL" || activityAgent(entry) === agentFilter;
     const query = search.trim().toLowerCase();
     const matchesSearch = !query || [
-      entry.agentName, entry.candidateName, entry.requisitionTitle, entry.details,
+      activityAgent(entry), AGENT_META[activityAgent(entry)]?.label, entry.candidateName, entry.requisitionTitle, entry.details,
     ].some(value => value?.toLowerCase().includes(query));
     return matchesAgent && matchesSearch;
   });
@@ -1928,7 +1942,7 @@ function ActivityView({ setActive }) {
             className="text-sm px-3 py-2 rounded-xl border bg-white outline-none"
             style={{ borderColor: C.border, color: C.text }}>
             <option value="ALL">All agents</option>
-            {agents.map(agent => <option key={agent} value={agent}>{agent}</option>)}
+            {agents.map(agent => <option key={agent} value={agent}>{AGENT_META[agent]?.label || agent}</option>)}
           </select>
           <input value={search} onChange={e => setSearch(e.target.value)}
             className="flex-1 min-w-52 text-sm px-3 py-2 rounded-xl border outline-none"
@@ -1947,7 +1961,7 @@ function ActivityView({ setActive }) {
           <div className="divide-y" style={{ borderColor: C.border }}>
             {filtered.map(entry => (
               <div key={entry.id} className="px-5 py-4 flex items-start gap-4 hover:bg-slate-50 transition-colors">
-                <AgentPill agent={entry.agentName} />
+                <AgentPill agent={activityAgent(entry)} />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm" style={{ color: C.text }}>
                     <span className="font-semibold">{entry.candidateName || "—"}</span>
