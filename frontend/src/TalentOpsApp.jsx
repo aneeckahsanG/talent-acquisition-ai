@@ -200,6 +200,165 @@ const joinRejectReason = form => form.preset + (form.note.trim() ? ` — ${form.
 const VERDICT_LABELS = { STRONG_YES: "Strong yes", YES: "Yes", NO: "No", STRONG_NO: "Strong no" };
 const verdictColor = v => (v === "STRONG_YES" || v === "YES" ? C.success : C.danger);
 
+const DEBRIEF_REC = {
+  ADVANCE_TO_OFFER:    { label: "Ready for offer",   color: C.success },
+  ADD_ROUND:           { label: "Add another round", color: C.accent },
+  HOLD_FOR_DISCUSSION: { label: "Discuss as a team", color: C.warning },
+  DO_NOT_PROCEED:      { label: "Do not proceed",    color: C.danger },
+};
+const DEBRIEF_CONFIDENCE = { HIGH: "High confidence", MEDIUM: "Medium confidence", LOW: "Low confidence" };
+
+function DebriefButton({ onClick }) {
+  return (
+    <button onClick={onClick}
+      className="w-full text-[10px] font-semibold py-1 rounded-lg flex items-center justify-center gap-1"
+      style={{ color: C.accent, border: `1px solid ${C.accent}55`, background: `${C.accent}0D` }}>
+      <Sparkles size={10} /> AI Debrief
+    </button>
+  );
+}
+
+function DebriefList({ title, items, color }) {
+  if (!items?.length) return null;
+  return (
+    <div>
+      <p className="text-[11px] font-bold uppercase tracking-wide mb-1.5" style={{ color }}>{title}</p>
+      <ul className="space-y-1">
+        {items.map((t, i) => (
+          <li key={i} className="text-xs leading-relaxed flex gap-2" style={{ color: C.text }}>
+            <span style={{ color }}>•</span><span>{t}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+// AI debrief of a candidate's interview scorecards for one role. Advisory only: it never moves the candidate.
+function DebriefModal({ requisitionId, candidateId, candidateName, onClose }) {
+  const path = `/orchestrator/pipeline/${requisitionId}/candidates/${candidateId}/debrief`;
+  const { data, loading, error, reload } = useApi(path, [requisitionId, candidateId]);
+  const [fresh, setFresh] = useState(null);
+  const [generating, setGenerating] = useState(false);
+  const [genError, setGenError] = useState(null);
+  const d = fresh || data;
+  const rec = d?.generated ? DEBRIEF_REC[d.recommendation] : null;
+
+  async function generate() {
+    setGenerating(true); setGenError(null);
+    try {
+      setFresh(await apiFetch(path, { method: "POST" }));
+    } catch (e) {
+      setGenError(e.message);
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ backgroundColor: "rgba(15,23,42,0.5)", backdropFilter: "blur(4px)" }}>
+      <Card className="w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="font-bold text-base flex items-center gap-1.5" style={{ color: C.text }}>
+              <Sparkles size={15} style={{ color: C.accent }} /> AI Debrief · {candidateName}
+            </h2>
+            <p className="text-xs mt-1" style={{ color: C.muted }}>
+              Combines the interview scorecards into one view. The AI advises; the decision is yours.
+            </p>
+          </div>
+          <button onClick={onClose} className="shrink-0 p-1 rounded-lg hover:bg-slate-100" aria-label="Close">
+            <XCircle size={18} style={{ color: C.muted }} />
+          </button>
+        </div>
+
+        <div className="mt-4 space-y-4">
+          {loading && !d && <LoadingCard rows={3} />}
+          {error && !d && <ErrorBanner message={error} onRetry={reload} />}
+
+          {d && !d.available && (
+            <p className="text-sm leading-relaxed" style={{ color: C.muted }}>
+              {d.completedRounds > 0
+                ? `${d.completedRounds} interview round${d.completedRounds === 1 ? " was" : "s were"} completed without a scorecard, so there is nothing for the AI to read. A debrief is built from scorecards, which are submitted when an upcoming round is marked Done.`
+                : "There is nothing to debrief yet. Complete an interview round and submit its scorecard first."}
+            </p>
+          )}
+
+          {d && d.available && !d.generated && (
+            <div className="rounded-xl border p-4" style={{ borderColor: C.border, backgroundColor: "#F8FAFC" }}>
+              <p className="text-sm" style={{ color: C.text }}>
+                {d.scorecardCount} scorecard{d.scorecardCount === 1 ? "" : "s"} ready to review.
+              </p>
+              <p className="text-xs mt-1" style={{ color: C.muted }}>
+                Interview rounds completed: {d.completedRounds} of {d.requiredRounds} required for an offer.
+              </p>
+            </div>
+          )}
+
+          {rec && (
+            <>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-sm font-bold px-3 py-1 rounded-full"
+                  style={{ color: rec.color, backgroundColor: `${rec.color}1A`, border: `1px solid ${rec.color}55` }}>
+                  {rec.label}
+                </span>
+                <span className="text-xs" style={{ color: C.muted }}>{DEBRIEF_CONFIDENCE[d.confidence] || d.confidence}</span>
+                <span className="text-xs" style={{ color: C.muted }}>
+                  · {d.scorecardCount} scorecard{d.scorecardCount === 1 ? "" : "s"} · {d.completedRounds} of {d.requiredRounds} rounds
+                </span>
+              </div>
+
+              {d.stale && (
+                <div className="p-3 rounded-xl border text-xs flex items-start gap-2"
+                  style={{ backgroundColor: "#FFFBEB", borderColor: "#FDE68A", color: "#92400E" }}>
+                  <AlertCircle size={14} className="mt-0.5 shrink-0" />
+                  <span>The scorecards have changed since this debrief was generated. Regenerate it before relying on it.</span>
+                </div>
+              )}
+
+              <p className="text-sm leading-relaxed" style={{ color: C.text }}>{d.summary}</p>
+
+              <DebriefList title="Where interviewers agree" items={d.agreements} color={C.success} />
+              <DebriefList title="Where they differ" items={d.disagreements} color={C.warning} />
+              <DebriefList title="Concerns to weigh" items={d.concerns} color={C.danger} />
+
+              {d.suggestedNextStep && (
+                <div className="rounded-xl border p-3" style={{ borderColor: `${rec.color}55`, backgroundColor: `${rec.color}0D` }}>
+                  <p className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: rec.color }}>Suggested next step</p>
+                  <p className="text-xs leading-relaxed" style={{ color: C.text }}>{d.suggestedNextStep}</p>
+                </div>
+              )}
+
+              {d.guardrailNote && (
+                <p className="text-xs leading-relaxed p-3 rounded-xl" style={{ backgroundColor: "#F1F5F9", color: C.muted }}>
+                  <span className="font-semibold" style={{ color: C.text }}>Adjusted by a rule: </span>{d.guardrailNote}
+                </p>
+              )}
+
+              <p className="text-[11px]" style={{ color: C.muted }}>
+                AI-generated from the scorecards only, {formatFullDateTime(d.generatedAt)}{d.generatedBy ? ` by ${d.generatedBy}` : ""}.
+                It does not change the candidate's stage.
+              </p>
+            </>
+          )}
+
+          {genError && <p className="text-xs" style={{ color: C.danger }}>{genError}</p>}
+        </div>
+
+        <div className="flex justify-end gap-2 mt-5">
+          <Btn variant="secondary" onClick={onClose}>Close</Btn>
+          {d?.available && (
+            <Btn onClick={generate} disabled={generating}>
+              {generating ? "Generating…" : d.generated ? "Regenerate" : "Generate AI debrief"}
+            </Btn>
+          )}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 function ScorecardModal({ title, criteria, isPhone, form, setForm, onSubmit, onCancel, submitting, error }) {
   const complete = criteria.length > 0 && criteria.every(([k]) => form.ratings[k] > 0) && form.verdict;
   return (
@@ -3497,6 +3656,7 @@ function PipelineView() {
   const { data: scorecardCriteria } = useApi("/orchestrator/scorecard-criteria");
   const emptyScorecard = { ratings: {}, verdict: "", notes: "", noticePeriod: "", expectedSalary: "" };
   const [scorecardModal, setScorecardModal] = useState(null); // { interviewId, title }
+  const [debriefModal, setDebriefModal] = useState(null); // { candidateId, candidateName, requisitionId }
   const [scorecardForm, setScorecardForm] = useState(emptyScorecard);
   const [scorecardSaving, setScorecardSaving] = useState(false);
   const [scorecardError, setScorecardError] = useState(null);
@@ -3944,6 +4104,13 @@ function PipelineView() {
                           </div>
                         )}
 
+                        {/* The Interview-stage card carries its own button; later stages keep the debrief reachable */}
+                        {["OFFER", "HIRED", "REJECTED", "NO_SHOW"].includes(stage) && c.interviewRounds?.some(r => r.status === "COMPLETED") && (
+                          <div className="mt-2">
+                            <DebriefButton onClick={() => setDebriefModal({ candidateId: c.candidateId, candidateName: c.candidateName, requisitionId: c.requisitionId })} />
+                          </div>
+                        )}
+
                         {/* Interview history summary — shown on OFFER and closed (rejected / no-show) cards */}
                         {(stage === "OFFER" || stage === "REJECTED" || stage === "NO_SHOW") && c.interviewRounds?.length > 0 && (
                           <div className="mt-2 p-2 rounded-lg space-y-1" style={{ background: `${C.accent}08`, border: `1px solid ${C.border}` }}>
@@ -4277,6 +4444,9 @@ function PipelineView() {
 
                               {/* Action buttons */}
                               <div className="space-y-1">
+                                {rounds.some(r => r.status === "COMPLETED") && (
+                                  <DebriefButton onClick={() => setDebriefModal({ candidateId: c.candidateId, candidateName: c.candidateName, requisitionId: c.requisitionId })} />
+                                )}
                                 {/* Schedule next round — only if there's a round type left and no active round, OR no rounds yet */}
                                 {(!activeRound || rounds.length === 0) && !allCompleted && (
                                   <button
@@ -5023,6 +5193,10 @@ function PipelineView() {
           form={scorecardForm} setForm={setScorecardForm}
           onSubmit={submitScorecard} onCancel={() => setScorecardModal(null)}
           submitting={scorecardSaving} error={scorecardError} />
+      )}
+
+      {debriefModal && (
+        <DebriefModal {...debriefModal} onClose={() => setDebriefModal(null)} />
       )}
 
       {rejectModal && (
@@ -7930,6 +8104,7 @@ function CandidateProfileView({ candidateId, onBack, onOpenCandidate }) {
   const { data: history } = useApi(`/candidates/${candidateId}/history`, [candidateId]);
   const [showCv, setShowCv] = useState(false);
   const [openEmail, setOpenEmail] = useState(null);
+  const [debrief, setDebrief] = useState(null); // { requisitionId, candidateName }
 
   const back = (
     <button onClick={onBack} className="inline-flex items-center gap-1 text-xs font-semibold mb-4 hover:underline"
@@ -8003,6 +8178,13 @@ function CandidateProfileView({ candidateId, onBack, onOpenCandidate }) {
                   <Badge color={a.stage === "REJECTED" ? C.danger : a.stage === "HIRED" ? C.success : C.accent}>
                     {STAGE_LABELS[a.stage] || a.stage}
                   </Badge>
+                  {p.interviews.some(i => i.requisitionId === a.requisitionId && i.status === "COMPLETED") && (
+                    <button onClick={() => setDebrief({ requisitionId: a.requisitionId })}
+                      className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-lg"
+                      style={{ color: C.accent, border: `1px solid ${C.accent}55`, background: `${C.accent}0D` }}>
+                      <Sparkles size={11} /> AI Debrief
+                    </button>
+                  )}
                 </div>
                 <p className="text-xs mt-1" style={{ color: C.muted }}>In this stage since {formatFullDateTime(a.stageEnteredAt)}</p>
                 {a.reviewerDecision && (
@@ -8154,6 +8336,10 @@ function CandidateProfileView({ candidateId, onBack, onOpenCandidate }) {
           </ProfileSection>
         )}
       </div>
+      {debrief && (
+        <DebriefModal requisitionId={debrief.requisitionId} candidateId={p.id} candidateName={p.fullName}
+          onClose={() => setDebrief(null)} />
+      )}
     </div>
   );
 }
