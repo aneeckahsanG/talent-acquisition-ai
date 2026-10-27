@@ -61,6 +61,15 @@ app:
   demo-mode: true   # skips email uniqueness check on candidate lookup
   demo-user-mailbox: ${DEMO_USER_MAILBOX:ahsanhabib19902021@gmail.com}   # demo users get me+<username>@gmail.com so their emails arrive here
   hr-notification-email: ${HR_NOTIFICATION_EMAIL:ahsanhabib19902021@gmail.com}
+  interview-automation:    # reminders and chasers sent by the interview coordinator
+    enabled: true
+    interval-minutes: 15
+    first-chase-hours: 48        # candidate has not booked
+    second-chase-hours: 120
+    stalled-hours: 168           # alert HR instead of chasing again
+    reminder-hours-before: 24    # reminder to candidate and interviewer
+    scorecard-nudge-hours: 24    # after the interview ends
+    scorecard-escalate-hours: 72
   jwt:
     secret: ${JWT_SECRET:change-this-to-a-long-random-secret-in-production-min-256-bits}
     expirationMs: 86400000
