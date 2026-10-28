@@ -253,9 +253,14 @@ public class SourcingAgentService {
         }
     }
 
-    private SourcingMatchResponse matchCandidateToRequisition(Candidate candidate, JobRequisition requisition, boolean autoScreen) {
-        ClaudeMatchResponse parsed = scoreCandidateAgainstRequisition(candidate, requisition);
-
+    /**
+     * Persists a SourcingMatch (and a SOURCED pipeline entry when high-fit) for one role using
+     * an already-computed score. Split out of {@link #matchCandidateToRequisition} so a caller
+     * that scores several roles for ranking purposes (e.g. CV Inbox) can persist only the
+     * role(s) it actually wants in Sourcing/Pipeline, without re-running the AI call.
+     */
+    @Transactional
+    public SourcingMatchResponse persistMatch(Candidate candidate, JobRequisition requisition, ClaudeMatchResponse scoreResult) {
         final SourcingMatch match = sourcingMatchRepository
                 .findByCandidateIdAndRequisitionId(candidate.getId(), requisition.getId())
                 .orElse(SourcingMatch.builder()
@@ -263,8 +268,8 @@ public class SourcingAgentService {
                         .requisitionId(requisition.getId())
                         .build());
 
-        match.setMatchScore(parsed.getMatchScore() != null ? parsed.getMatchScore() : BigDecimal.ZERO);
-        match.setMatchRationale(parsed.getRationale());
+        match.setMatchScore(scoreResult.getMatchScore() != null ? scoreResult.getMatchScore() : BigDecimal.ZERO);
+        match.setMatchRationale(scoreResult.getRationale());
         match.setIsProactive(true);
         if (match.getStatus() == null) match.setStatus("NEW");
 
@@ -291,17 +296,30 @@ public class SourcingAgentService {
                         + (match.getMatchScore().compareTo(HIGH_FIT_THRESHOLD) >= 0 ? " [HIGH FIT]" : ""))
                 .build());
 
+        return toResponse(match, candidate, requisition);
+    }
+
+    private SourcingMatchResponse matchCandidateToRequisition(Candidate candidate, JobRequisition requisition, boolean autoScreen) {
+        ClaudeMatchResponse parsed = scoreCandidateAgainstRequisition(candidate, requisition);
+        SourcingMatchResponse response = persistMatch(candidate, requisition, parsed);
+
         // Auto-screen only when a real resume was provided (not just a LinkedIn profile summary)
         if (autoScreen && candidate.getResumeText() != null && !candidate.getResumeText().isBlank()) {
             try {
                 screeningAgentService.runScreeningInternal(candidate, requisition);
+                // Screening may have changed the pipeline stage / added a ScreeningResult —
+                // re-fetch so the response reflects the post-screening state.
+                SourcingMatch refreshed = sourcingMatchRepository
+                        .findByCandidateIdAndRequisitionId(candidate.getId(), requisition.getId())
+                        .orElseThrow();
+                response = toResponse(refreshed, candidate, requisition);
             } catch (Exception e) {
                 log.warn("Auto-screening failed for candidate {} / requisition {}: {}",
                         candidate.getId(), requisition.getId(), e.getMessage());
             }
         }
 
-        return toResponse(match, candidate, requisition);
+        return response;
     }
 
 
