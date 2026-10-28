@@ -13,12 +13,12 @@ the application handles it, suggest the page where it most likely lives, and do 
 The "Current application area" you receive is an internal id. Map it like this:
 dashboard = Dashboard, intelligence = Intelligence, roles = Open Roles, pipeline = Pipeline,
 screening = Screening, screeningQuality = Screening Quality, calendar = Calendar, referrals = Referral,
-integrations = Integrations, cvInbox = Resume Inbox, activity = Agent Activity, candidate = a candidate profile.
+integrations = Integrations, cvInbox = Resume Drop Zone, activity = Agent Activity, candidate = a candidate profile.
 
 ## Navigation and people
 
 - Left sidebar: Dashboard, Intelligence, Open Roles, Pipeline, Screening, Screening Quality, Calendar,
-  Referral, Integrations, Resume Inbox.
+  Referral, Integrations, Resume Drop Zone.
 - Top bar, on every page: a **candidate search box**, the **AI Assistance** button (this assistant), the
   notification bell and the account menu (sign out).
 - Roles: ADMIN, RECRUITER and HIRING_MANAGER. Only an admin can change AI spending limits, change the Resume
@@ -171,15 +171,19 @@ relationship notes. Choose a role, or **Let agent decide best fit** and it is ma
 open roles. Matched referrals continue through Screening like any other candidate. There is also a public
 referral page (/refer) for people without a login.
 
-## Integrations and Resume Inbox
+## Integrations and Resume Drop Zone
 
 - **Integrations > Resume Sources**: add a job-board URL and the app imports candidates from it.
-- **Resume Inbox**: HR drops resume files into an SFTP folder (the page shows the SFTP address and username).
-  **Process now** reads whatever is in the folder, scores each resume against every open role, and files it as
-  **Considered** or **Excluded**. This scoring uses plain keyword matching, **not the AI**. Only the single
-  best-matching role gets a pipeline entry for that candidate. An existing candidate with the same email is
-  not overwritten. Processing is manual (there is no background schedule). The settings dialog (SFTP
-  connection) can be changed by admins only.
+- **Resume Drop Zone**: HR drops resume files (PDF, Word or text) into a folder, which is either an SFTP folder (the
+  page shows the SFTP address and username) or a **Google Drive** folder (the page shows the folder and the
+  service account email it must be shared with). **Process now** reads whatever is in the folder, and the AI
+  scores each resume against every open role. A resume whose best role scores 70 or more is **Considered**,
+  otherwise **Excluded**, and the file moves into a `.CONSIDERED` or `.REJECTED` sub-folder. Only the single
+  best-matching role gets a pipeline entry and a Screening Agent evaluation for that candidate. An existing
+  candidate with the same email is updated, not duplicated. Nothing is emailed to the candidate. Each resume
+  uses AI budget. Processing is manual (there is no background schedule). In the settings dialog, admins pick
+  the source: the embedded SFTP server, an external SFTP server, or Google Drive (upload the service account
+  key, share the folder with that account as Editor, paste the folder link, then Test Connection).
 
 ## Dashboard, Intelligence and reports
 

@@ -68,6 +68,11 @@ public class CvInboxDtos {
         private String host;
         private int port;
         private String username;
+        /** EMBEDDED, EXTERNAL or GOOGLE_DRIVE: tells the UI which of the fields below apply. */
+        private String mode;
+        private String googleFolderId;
+        /** The address the Drive folder must be shared with. */
+        private String googleServiceAccountEmail;
     }
 
     /** Request body for archiving one or more items (individual select or "select all"). */
@@ -96,6 +101,9 @@ public class CvInboxDtos {
         private boolean proxyEnabled;
         private String proxyHost;
         private Integer proxyPort;
+        private String googleFolderId;
+        private String googleServiceAccountEmail;
+        private boolean googleKeySet;
     }
 
     /** Save request. A blank password field means "leave the stored password unchanged". */
@@ -115,6 +123,9 @@ public class CvInboxDtos {
         private boolean proxyEnabled;
         private String proxyHost;
         private Integer proxyPort;
+        private String googleFolderId;
+        /** A blank key means "keep the stored key". */
+        private String googleServiceAccountJson;
     }
 
     /** Test-connection request — mirrors whatever the settings form currently holds, saved or not. */
@@ -133,6 +144,8 @@ public class CvInboxDtos {
         private boolean proxyEnabled;
         private String proxyHost;
         private Integer proxyPort;
+        private String googleFolderId;
+        private String googleServiceAccountJson;
     }
 
     @Data

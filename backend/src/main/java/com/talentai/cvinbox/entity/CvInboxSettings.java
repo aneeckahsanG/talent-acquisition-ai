@@ -18,7 +18,7 @@ public class CvInboxSettings {
     private Long id;
 
     @Column(nullable = false)
-    private String mode; // EMBEDDED, EXTERNAL
+    private String mode; // EMBEDDED, EXTERNAL, GOOGLE_DRIVE
 
     @Column(name = "embedded_port")
     private Integer embeddedPort;
@@ -52,6 +52,13 @@ public class CvInboxSettings {
 
     @Column(name = "proxy_port")
     private Integer proxyPort;
+
+    @Column(name = "google_folder_id")
+    private String googleFolderId;
+
+    /** The service account key file, as downloaded from Google Cloud. Never returned by the API. */
+    @Column(name = "google_service_account_json")
+    private String googleServiceAccountJson;
 
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;

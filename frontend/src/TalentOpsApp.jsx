@@ -762,7 +762,7 @@ function AssistantMessage({ content }) {
 const ASSISTANT_PAGE_NAMES = {
   dashboard: "the Dashboard", intelligence: "Intelligence", activity: "Agent Activity", roles: "Open Roles",
   pipeline: "the Pipeline", screening: "Screening", screeningQuality: "Screening Quality", calendar: "the Calendar",
-  referrals: "Referrals", integrations: "Integrations", cvInbox: "the Resume Inbox", candidate: "a candidate profile",
+  referrals: "Referrals", integrations: "Integrations", cvInbox: "the Resume Drop Zone", candidate: "a candidate profile",
 };
 
 function AssistantPanel({ active, open, onClose }) {
@@ -1838,7 +1838,7 @@ function Sidebar({ active, setActive, user }) {
     { id: "calendar",     label: "Calendar",           icon: Calendar   },
     { id: "referrals",    label: "Referral",           icon: UserPlus   },
     { id: "integrations", label: "Integrations",       icon: Globe      },
-    { id: "cvInbox",      label: "Resume Inbox",       icon: Inbox      },
+    { id: "cvInbox",      label: "Resume Drop Zone", icon: Inbox      },
   ];
 
   return (
@@ -7605,7 +7605,7 @@ function PublicReferralPage() {
 }
 
 // ============================================================
-// CV INBOX (SFTP drop-folder AI pre-screening dashboard)
+// RESUME DROP ZONE (SFTP / Google Drive folder AI pre-screening dashboard)
 // ============================================================
 function CvInboxView() {
   const [tab, setTab] = useState("considered");
@@ -7679,7 +7679,7 @@ function CvInboxView() {
 
   return (
     <div>
-      <TopBar title="Resume Inbox" subtitle="AI pre-screens resumes dropped via SFTP before they reach your pipeline"
+      <TopBar title="Resume Drop Zone" subtitle="AI pre-screens resumes dropped via SFTP or a Google Drive folder before they reach your pipeline"
         action={
           <div className="flex gap-2">
             <Btn variant="secondary" onClick={() => setSettingsOpen(true)}>
@@ -7696,12 +7696,23 @@ function CvInboxView() {
       {connInfo && (
         <Card className="p-4 mb-5 flex items-center gap-3">
           <Globe size={16} style={{ color: C.accent }} />
-          <div>
-            <p className="text-xs font-bold uppercase tracking-wide" style={{ color: C.muted }}>SFTP Connection</p>
-            <p className="text-sm" style={{ color: C.text }}>
-              sftp://{connInfo.host}:{connInfo.port} &nbsp;·&nbsp; user: {connInfo.username}
-            </p>
-          </div>
+          {connInfo.mode === "GOOGLE_DRIVE" ? (
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide" style={{ color: C.muted }}>Google Drive Folder</p>
+              <p className="text-sm" style={{ color: C.text }}>
+                {connInfo.googleFolderId
+                  ? <>folder {connInfo.googleFolderId} &nbsp;·&nbsp; shared with {connInfo.googleServiceAccountEmail || "no service account key yet"}</>
+                  : "Not set up yet. Open Settings to add the folder and service account key."}
+              </p>
+            </div>
+          ) : (
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide" style={{ color: C.muted }}>SFTP Connection</p>
+              <p className="text-sm" style={{ color: C.text }}>
+                sftp://{connInfo.host}:{connInfo.port} &nbsp;·&nbsp; user: {connInfo.username}
+              </p>
+            </div>
+          )}
         </Card>
       )}
 
@@ -7864,9 +7875,14 @@ function CvInboxSettingsDrawer({ onClose, onSaved }) {
     embeddedPort: 2222, embeddedUsername: "hr", embeddedPassword: "",
     externalHost: "", externalPort: 22, externalUsername: "", externalPassword: "", externalRootPath: "",
     proxyEnabled: false, proxyHost: "", proxyPort: 80,
+    googleFolderId: "", googleServiceAccountJson: "",
   });
   const [embeddedPasswordSet, setEmbeddedPasswordSet] = useState(false);
   const [externalPasswordSet, setExternalPasswordSet] = useState(false);
+  const [googleKeySet, setGoogleKeySet] = useState(false);
+  const [googleEmail, setGoogleEmail] = useState(""); // the address the Drive folder must be shared with
+  const [keyFileName, setKeyFileName] = useState("");
+  const [keyError, setKeyError] = useState("");
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -7887,9 +7903,12 @@ function CvInboxSettingsDrawer({ onClose, onSaved }) {
           proxyEnabled: !!s.proxyEnabled,
           proxyHost: s.proxyHost || "",
           proxyPort: s.proxyPort ?? f.proxyPort,
+          googleFolderId: s.googleFolderId || "",
         }));
         setEmbeddedPasswordSet(!!s.embeddedPasswordSet);
         setExternalPasswordSet(!!s.externalPasswordSet);
+        setGoogleKeySet(!!s.googleKeySet);
+        setGoogleEmail(s.googleServiceAccountEmail || "");
       } finally {
         setLoading(false);
       }
@@ -7899,6 +7918,22 @@ function CvInboxSettingsDrawer({ onClose, onSaved }) {
   function set(field, value) {
     setForm(f => ({ ...f, [field]: value }));
     setTestResult(null);
+  }
+
+  // The key never leaves this machine except to be saved; read it here so the folder-sharing address can be shown straight away.
+  async function handleKeyFile(file) {
+    setKeyError("");
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      if (!parsed.client_email || !parsed.private_key) throw new Error("not a service account key");
+      set("googleServiceAccountJson", text);
+      setGoogleEmail(parsed.client_email);
+      setKeyFileName(file.name);
+    } catch {
+      setKeyError("That file is not a Google service account key (JSON). Download it from Google Cloud: Service Accounts, Keys, Add key, JSON.");
+    }
   }
 
   async function handleTestConnection() {
@@ -7934,7 +7969,7 @@ function CvInboxSettingsDrawer({ onClose, onSaved }) {
       <div className="absolute inset-y-0 right-0 w-full max-w-md bg-white shadow-2xl overflow-y-auto">
         <div className="px-6 py-5 border-b flex items-center justify-between sticky top-0 bg-white z-10"
           style={{ borderColor: C.border }}>
-          <h2 className="text-lg font-bold" style={{ color: C.text }}>SFTP Settings</h2>
+          <h2 className="text-lg font-bold" style={{ color: C.text }}>Resume Drop Zone Settings</h2>
           <button onClick={onClose} className="w-8 h-8 rounded-xl flex items-center justify-center hover:bg-slate-100">
             <X size={16} />
           </button>
@@ -7947,7 +7982,7 @@ function CvInboxSettingsDrawer({ onClose, onSaved }) {
             <div>
               <label className="text-xs font-semibold block mb-1.5" style={{ color: C.muted }}>Source</label>
               <div className="flex gap-1 p-1 rounded-xl w-fit" style={{ backgroundColor: C.surface }}>
-                {[["EMBEDDED", "Embedded Server"], ["EXTERNAL", "External SFTP"]].map(([id, label]) => (
+                {[["EMBEDDED", "Embedded Server"], ["EXTERNAL", "External SFTP"], ["GOOGLE_DRIVE", "Google Drive"]].map(([id, label]) => (
                   <button key={id} onClick={() => set("mode", id)}
                     className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors"
                     style={{ backgroundColor: form.mode === id ? C.accent : "transparent", color: form.mode === id ? "#fff" : C.muted }}>
@@ -7979,7 +8014,7 @@ function CvInboxSettingsDrawer({ onClose, onSaved }) {
                     value={form.embeddedPassword} onChange={e => set("embeddedPassword", e.target.value)} />
                 </div>
               </div>
-            ) : (
+            ) : form.mode === "EXTERNAL" ? (
               <div className="space-y-3">
                 <p className="text-xs" style={{ color: C.muted }}>
                   Connect out to an SFTP server HR already has. The embedded server is stopped while this mode is active.
@@ -8031,6 +8066,40 @@ function CvInboxSettingsDrawer({ onClose, onSaved }) {
                       </div>
                     </div>
                   </div>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-xs" style={{ color: C.muted }}>
+                  Drop CVs (PDF, Word or text) into a Google Drive folder and click Process now. Each one is screened;
+                  processed files move into .CONSIDERED or .REJECTED inside the folder. The embedded SFTP server is stopped while this mode is active.
+                </p>
+                <ol className="text-xs space-y-1 list-decimal pl-4" style={{ color: C.muted }}>
+                  <li>In Google Cloud, enable the <b>Google Drive API</b> and create a <b>service account</b>.</li>
+                  <li>On the service account, add a key (<b>Keys, Add key, JSON</b>) and upload that file below.</li>
+                  <li>Share your Drive folder with the service account's email as <b>Editor</b>.</li>
+                  <li>Paste the folder link below, then Test Connection.</li>
+                </ol>
+                <div>
+                  <label className="text-xs font-semibold block mb-1" style={{ color: C.muted }}>Service account key (JSON)</label>
+                  <input type="file" accept=".json,application/json" className={inputStyle} style={inputColors}
+                    onChange={e => handleKeyFile(e.target.files?.[0])} />
+                  {keyFileName && <p className="text-xs mt-1" style={{ color: C.success }}>✓ {keyFileName} ready to save</p>}
+                  {!keyFileName && googleKeySet && (
+                    <p className="text-xs mt-1" style={{ color: C.muted }}>A key is saved. Upload a new file only to replace it.</p>
+                  )}
+                  {keyError && <p className="text-xs mt-1" style={{ color: C.danger }}>{keyError}</p>}
+                </div>
+                {googleEmail && (
+                  <div className="p-3 rounded-xl text-xs" style={{ backgroundColor: C.surface, color: C.text }}>
+                    Share the Drive folder with this address (Editor):
+                    <p className="font-semibold mt-1 break-all select-all">{googleEmail}</p>
+                  </div>
+                )}
+                <div>
+                  <label className="text-xs font-semibold block mb-1" style={{ color: C.muted }}>Drive folder link or ID</label>
+                  <input className={inputStyle} style={inputColors} placeholder="https://drive.google.com/drive/folders/..."
+                    value={form.googleFolderId} onChange={e => set("googleFolderId", e.target.value)} />
                 </div>
               </div>
             )}

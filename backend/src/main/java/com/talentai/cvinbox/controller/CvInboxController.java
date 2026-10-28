@@ -19,6 +19,7 @@ import com.talentai.cvinbox.repository.CvInboxSettingsRepository;
 import com.talentai.cvinbox.service.CvInboxProcessingService;
 import com.talentai.cvinbox.service.ExternalSftpClientService;
 import com.talentai.cvinbox.service.ExternalSftpClientService.TestConnectionResult;
+import com.talentai.cvinbox.service.GoogleDriveClientService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -38,6 +39,7 @@ public class CvInboxController {
     private final CvInboxSettingsRepository cvInboxSettingsRepository;
     private final CvInboxProcessingService processingService;
     private final ExternalSftpClientService externalSftpClientService;
+    private final GoogleDriveClientService googleDriveClientService;
     private final SftpServerConfig sftpServerConfig;
     private final ObjectMapper objectMapper;
     private final com.talentai.screening.repository.ScreeningResultRepository screeningResultRepository;
@@ -76,14 +78,23 @@ public class CvInboxController {
     @GetMapping("/connection-info")
     public ResponseEntity<SftpConnectionInfo> connectionInfo() {
         CvInboxSettings settings = currentSettings();
+        if ("GOOGLE_DRIVE".equals(settings.getMode())) {
+            return ResponseEntity.ok(SftpConnectionInfo.builder()
+                    .mode("GOOGLE_DRIVE")
+                    .googleFolderId(settings.getGoogleFolderId())
+                    .googleServiceAccountEmail(googleDriveClientService.serviceAccountEmail(settings.getGoogleServiceAccountJson()))
+                    .build());
+        }
         if ("EXTERNAL".equals(settings.getMode())) {
             return ResponseEntity.ok(SftpConnectionInfo.builder()
+                    .mode("EXTERNAL")
                     .host(settings.getExternalHost())
                     .port(settings.getExternalPort() != null ? settings.getExternalPort() : 0)
                     .username(settings.getExternalUsername())
                     .build());
         }
         return ResponseEntity.ok(SftpConnectionInfo.builder()
+                .mode("EMBEDDED")
                 .host("localhost")
                 .port(settings.getEmbeddedPort() != null ? settings.getEmbeddedPort() : 0)
                 .username(settings.getEmbeddedUsername())
@@ -106,6 +117,9 @@ public class CvInboxController {
                 .proxyEnabled(Boolean.TRUE.equals(s.getProxyEnabled()))
                 .proxyHost(s.getProxyHost())
                 .proxyPort(s.getProxyPort())
+                .googleFolderId(s.getGoogleFolderId())
+                .googleServiceAccountEmail(googleDriveClientService.serviceAccountEmail(s.getGoogleServiceAccountJson()))
+                .googleKeySet(s.getGoogleServiceAccountJson() != null && !s.getGoogleServiceAccountJson().isBlank())
                 .build());
     }
 
@@ -134,9 +148,17 @@ public class CvInboxController {
         s.setProxyEnabled(request.isProxyEnabled());
         if (request.getProxyHost() != null) s.setProxyHost(request.getProxyHost());
         if (request.getProxyPort() != null) s.setProxyPort(request.getProxyPort());
+        if (request.getGoogleFolderId() != null) {
+            s.setGoogleFolderId(GoogleDriveClientService.extractFolderId(request.getGoogleFolderId()));
+        }
+        if (request.getGoogleServiceAccountJson() != null && !request.getGoogleServiceAccountJson().isBlank()) {
+            googleDriveClientService.validateKey(request.getGoogleServiceAccountJson());
+            s.setGoogleServiceAccountJson(request.getGoogleServiceAccountJson());
+        }
         s = cvInboxSettingsRepository.save(s);
 
-        if ("EXTERNAL".equals(s.getMode())) {
+        // Only the embedded mode hosts an SFTP server; the other two pull from somewhere else.
+        if (!"EMBEDDED".equals(s.getMode())) {
             sftpServerConfig.stop();
         } else {
             sftpServerConfig.restart(s);
@@ -152,6 +174,15 @@ public class CvInboxController {
     @PostMapping("/settings/test-connection")
     public ResponseEntity<TestConnectionResponse> testConnection(@RequestBody TestConnectionRequest request) {
         CvInboxSettings stored = currentSettings();
+
+        if ("GOOGLE_DRIVE".equals(request.getMode())) {
+            String key = (request.getGoogleServiceAccountJson() != null && !request.getGoogleServiceAccountJson().isBlank())
+                    ? request.getGoogleServiceAccountJson() : stored.getGoogleServiceAccountJson();
+            var result = googleDriveClientService.testConnection(key,
+                    GoogleDriveClientService.extractFolderId(request.getGoogleFolderId()));
+            return ResponseEntity.ok(TestConnectionResponse.builder()
+                    .success(result.isSuccess()).message(result.getMessage()).build());
+        }
 
         if ("EXTERNAL".equals(request.getMode())) {
             String password = (request.getExternalPassword() != null && !request.getExternalPassword().isBlank())

@@ -14,6 +14,7 @@ import com.talentai.cvinbox.entity.CvInboxSettings;
 import com.talentai.cvinbox.repository.CvInboxItemRepository;
 import com.talentai.cvinbox.repository.CvInboxSettingsRepository;
 import com.talentai.cvinbox.service.ExternalSftpClientService.RemoteCv;
+import com.talentai.cvinbox.service.GoogleDriveClientService.DriveCv;
 import com.talentai.screening.service.ScreeningAgentService;
 import com.talentai.sourcing.dto.SourcingDtos.ClaudeMatchResponse;
 import com.talentai.sourcing.service.SourcingAgentService;
@@ -61,6 +62,7 @@ public class CvInboxProcessingService {
     private final CvInboxItemRepository cvInboxItemRepository;
     private final CvInboxSettingsRepository cvInboxSettingsRepository;
     private final ExternalSftpClientService externalSftpClientService;
+    private final GoogleDriveClientService googleDriveClientService;
     private final PdfTextExtractor pdfTextExtractor;
     private final ObjectMapper objectMapper;
 
@@ -69,6 +71,9 @@ public class CvInboxProcessingService {
 
     public ProcessNowResponse processNow() {
         CvInboxSettings settings = cvInboxSettingsRepository.findById(1L).orElse(null);
+        if (settings != null && "GOOGLE_DRIVE".equals(settings.getMode())) {
+            return processGoogleDrive(settings);
+        }
         if (settings != null && "EXTERNAL".equals(settings.getMode())) {
             return processExternal(settings);
         }
@@ -147,6 +152,44 @@ public class CvInboxProcessingService {
         }
 
         log.info("CV Inbox processNow (external): {} files found, {} considered, {} excluded, {} failed",
+                files.size(), considered, excluded, failed);
+
+        return ProcessNowResponse.builder()
+                .filesFound(files.size())
+                .processed(considered + excluded)
+                .considered(considered)
+                .excluded(excluded)
+                .failed(failed)
+                .build();
+    }
+
+    private ProcessNowResponse processGoogleDrive(CvInboxSettings settings) {
+        String keyJson = settings.getGoogleServiceAccountJson();
+        String folderId = settings.getGoogleFolderId();
+        List<DriveCv> files;
+        try {
+            files = googleDriveClientService.listAndFetch(keyJson, folderId);
+        } catch (Exception e) {
+            log.error("Failed to list/fetch files from Google Drive folder {}", folderId, e);
+            return ProcessNowResponse.builder().filesFound(0).processed(0).considered(0).excluded(0).failed(0).build();
+        }
+
+        int considered = 0, excluded = 0, failed = 0;
+        for (DriveCv file : files) {
+            boolean wasConsidered = false;
+            try {
+                wasConsidered = processOne(file.getFileName(), file.getContent());
+                if (wasConsidered) considered++; else excluded++;
+            } catch (Exception e) {
+                log.error("Failed to process Google Drive CV {}", file.getFileName(), e);
+                recordFailure(file.getFileName(), e.getMessage());
+                failed++;
+            } finally {
+                googleDriveClientService.moveFile(keyJson, folderId, file.getFileId(), wasConsidered);
+            }
+        }
+
+        log.info("CV Inbox processNow (Google Drive): {} files found, {} considered, {} excluded, {} failed",
                 files.size(), considered, excluded, failed);
 
         return ProcessNowResponse.builder()
