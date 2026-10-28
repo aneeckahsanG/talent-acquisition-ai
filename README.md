@@ -92,6 +92,20 @@ Frontend starts on **http://localhost:5173** and proxies `/api` requests to the 
 
 Open **http://localhost:5173** in your browser to use the app.
 
+### Resetting demo data
+
+To clear every candidate and their history (applications, screenings, interviews, scorecards, offers, Resume Drop
+Zone items, agent history) while keeping users, job requisitions, settings and AI usage:
+
+```bat
+scripts\stop.bat
+scripts\cleanup-db.bat /dry-run
+scripts\cleanup-db.bat
+```
+
+`/dry-run` only shows row counts. The script asks you to type `YES`, saves a copy of the database to
+`backend\data\backups` first, and refuses to run while the backend is up. Add `/y` to skip the question.
+
 ---
 
 ## Key Endpoints
