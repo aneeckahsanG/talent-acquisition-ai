@@ -59,6 +59,9 @@ public class ScreeningAgentService {
 
     public record ParsedNameEmail(String name, String email) {}
 
+    @org.springframework.beans.factory.annotation.Value("${app.demo-mode:false}")
+    private boolean demoMode;
+
     /**
      * Screens a candidate (provided via resume text) against a requisition.
      * Creates/updates the Candidate record, persists the screening result,
@@ -199,8 +202,10 @@ public class ScreeningAgentService {
 
     private Candidate findOrCreateCandidate(String name, String email, String resumeText, String filename, String sourceChannel) {
         Candidate candidate = null;
-        if (email != null && !email.isBlank()) {
-            candidate = candidateRepository.findByEmail(email).orElse(null);
+        // Several records can share an email, so take the earliest; in demo mode skip the lookup so
+        // shared placeholder emails stay separate people (same rule as SourcingAgentService).
+        if (email != null && !email.isBlank() && !demoMode) {
+            candidate = candidateRepository.findFirstByEmailOrderByIdAsc(email).orElse(null);
         }
 
         if (candidate == null) {

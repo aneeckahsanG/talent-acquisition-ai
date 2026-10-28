@@ -87,9 +87,10 @@ public class SourcingAgentService {
      */
     @Transactional
     public List<SourcingMatchResponse> addCandidateAndMatch(AddTalentPoolCandidateRequest request) {
-        // Reuse existing candidate record if same email already exists
-        Candidate existing = (request.getEmail() != null && !request.getEmail().isBlank())
-                ? candidateRepository.findByEmail(request.getEmail()).orElse(null)
+        // Reuse the earliest candidate record with the same email, unless demo mode is on (shared
+        // placeholder emails are separate people there). Never a single-result lookup: duplicates exist.
+        Candidate existing = (!demoMode && request.getEmail() != null && !request.getEmail().isBlank())
+                ? candidateRepository.findFirstByEmailOrderByIdAsc(request.getEmail()).orElse(null)
                 : null;
 
         if (existing != null) {

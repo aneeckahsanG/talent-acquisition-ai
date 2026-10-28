@@ -56,11 +56,20 @@ public class ReferralAgentService {
     private final AppUserRepository appUserRepository;
     private final ScreeningAgentService screeningAgentService;
 
+    @org.springframework.beans.factory.annotation.Value("${app.demo-mode:false}")
+    private boolean demoMode;
+
+    /** The earliest candidate with this email, or null. Several records can share an email, so this is
+     *  never a single-result lookup; in demo mode it is skipped so shared emails stay separate people. */
+    private Candidate findExistingCandidate(String email) {
+        if (demoMode || email == null || email.isBlank()) return null;
+        return candidateRepository.findFirstByEmailOrderByIdAsc(email).orElse(null);
+    }
 
     /** Public submission — no portal account required. Referrer identity comes from form fields. */
     @Transactional
     public ReferralResponse submitPublicReferral(SubmitReferralRequest request) {
-        Candidate candidate = candidateRepository.findByEmail(request.getCandidateEmail()).orElse(null);
+        Candidate candidate = findExistingCandidate(request.getCandidateEmail());
         if (candidate == null) {
             candidate = Candidate.builder()
                     .fullName(request.getCandidateName())
@@ -104,7 +113,7 @@ public class ReferralAgentService {
         AppUser referrer = appUserRepository.findByUsername(referrerUsername)
                 .orElseThrow(() -> new IllegalStateException("Referring user not found"));
 
-        Candidate candidate = candidateRepository.findByEmail(request.getCandidateEmail()).orElse(null);
+        Candidate candidate = findExistingCandidate(request.getCandidateEmail());
         if (candidate == null) {
             candidate = Candidate.builder()
                     .fullName(request.getCandidateName())

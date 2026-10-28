@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.Optional;
 
 public interface CandidateRepository extends JpaRepository<Candidate, Long> {
-    Optional<Candidate> findByEmail(String email);
+    /** Several records can share an email (demo mode allows it), so look up the earliest, never a single result. */
     Optional<Candidate> findFirstByEmailOrderByIdAsc(String email);
     List<Candidate> findAllByEmailIgnoreCaseOrderByIdAsc(String email);
     List<Candidate> findBySourceChannel(String sourceChannel);

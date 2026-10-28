@@ -69,6 +69,9 @@ public class CvInboxProcessingService {
     @Value("${app.cv-inbox.root-path}")
     private String rootPath;
 
+    @Value("${app.demo-mode:false}")
+    private boolean demoMode;
+
     public ProcessNowResponse processNow() {
         CvInboxSettings settings = cvInboxSettingsRepository.findById(1L).orElse(null);
         if (settings != null && "GOOGLE_DRIVE".equals(settings.getMode())) {
@@ -215,7 +218,11 @@ public class CvInboxProcessingService {
         String email = !parsedIdentity.email().isBlank() ? parsedIdentity.email() : null;
         String name = !parsedIdentity.name().isBlank() ? parsedIdentity.name() : null;
 
-        Candidate candidate = (email != null) ? candidateRepository.findByEmail(email).orElse(null) : null;
+        // Several candidate records can share one email (demo mode allows it, and older data has it),
+        // so the lookup must tolerate more than one match; in demo mode it is skipped altogether so a
+        // shared placeholder email never merges two different people (same rule as SourcingAgentService).
+        Candidate candidate = (email != null && !demoMode)
+                ? candidateRepository.findFirstByEmailOrderByIdAsc(email).orElse(null) : null;
         if (candidate == null) {
             candidate = Candidate.builder()
                     .fullName(name != null ? name : fileName)
