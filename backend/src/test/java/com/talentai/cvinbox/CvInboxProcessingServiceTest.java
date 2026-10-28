@@ -15,6 +15,8 @@ import com.talentai.cvinbox.service.CvInboxProcessingService;
 import com.talentai.cvinbox.service.ExternalSftpClientService;
 import com.talentai.cvinbox.service.GoogleDriveClientService;
 import com.talentai.cvinbox.service.GoogleDriveClientService.DriveCv;
+import com.talentai.cvinbox.service.SharePointClientService;
+import com.talentai.cvinbox.source.CvSourceFactory;
 import com.talentai.screening.service.ScreeningAgentService;
 import com.talentai.screening.service.ScreeningAgentService.ParsedNameEmail;
 import com.talentai.sourcing.service.SourcingAgentService;
@@ -48,10 +50,9 @@ class CvInboxProcessingServiceTest {
 
     @BeforeEach
     void setUp() throws Exception {
+        CvSourceFactory sources = new CvSourceFactory(mock(ExternalSftpClientService.class), drive, mock(SharePointClientService.class), "./unused");
         service = new CvInboxProcessingService(candidates, requisitions, mock(PipelineStageRepository.class),
-                mock(SourcingAgentService.class), screening, items, settingsRepo,
-                mock(ExternalSftpClientService.class), drive, extractor, new ObjectMapper());
-        ReflectionTestUtils.setField(service, "rootPath", "./unused");
+                mock(SourcingAgentService.class), screening, items, settingsRepo, sources, extractor, new ObjectMapper());
 
         CvInboxSettings settings = CvInboxSettings.builder().id(1L).mode("GOOGLE_DRIVE")
                 .googleFolderId("folder-1").googleServiceAccountJson("{}").build();
@@ -95,6 +96,48 @@ class CvInboxProcessingServiceTest {
         verify(candidates).save(saved.capture());
         assertEquals(1L, saved.getValue().getId());
         assertEquals("Arjun Pillai", saved.getValue().getFullName(), "identity refreshed from the new CV");
+    }
+
+    @Test
+    void aFileThatCouldNotBeReadIsRecordedAsFailedAndStillFiledAway() {
+        java.util.List<String> filedAway = new java.util.ArrayList<>();
+        CvSourceFactory stub = mock(CvSourceFactory.class);
+        when(stub.forSettings(any())).thenReturn(new com.talentai.cvinbox.source.CvSource() {
+            public String label() { return "stub"; }
+            public java.util.List<com.talentai.cvinbox.source.InboxFile> fetchAll() {
+                return java.util.List.of(new com.talentai.cvinbox.source.InboxFile("ref-1", "locked.pdf", null));
+            }
+            public void fileAway(com.talentai.cvinbox.source.InboxFile f, boolean considered) { filedAway.add(f.ref() + ":" + considered); }
+        });
+        CvInboxProcessingService svc = new CvInboxProcessingService(candidates, requisitions, mock(PipelineStageRepository.class),
+                mock(SourcingAgentService.class), screening, items, settingsRepo, stub, extractor, new ObjectMapper());
+
+        ProcessNowResponse result = svc.processNow();
+
+        assertEquals(1, result.getFailed());
+        assertEquals(List.of("ref-1:false"), filedAway);
+        ArgumentCaptor<CvInboxItem> item = ArgumentCaptor.forClass(CvInboxItem.class);
+        verify(items).save(item.capture());
+        assertEquals("FAILED", item.getValue().getStatus());
+        assertEquals("locked.pdf", item.getValue().getFileName());
+    }
+
+    @Test
+    void anInboxThatCannotBeListedProcessesNothingInsteadOfFailing() {
+        CvSourceFactory stub = mock(CvSourceFactory.class);
+        when(stub.forSettings(any())).thenReturn(new com.talentai.cvinbox.source.CvSource() {
+            public String label() { return "stub"; }
+            public java.util.List<com.talentai.cvinbox.source.InboxFile> fetchAll() throws Exception { throw new java.io.IOException("unreachable"); }
+            public void fileAway(com.talentai.cvinbox.source.InboxFile f, boolean considered) { fail("nothing to file away"); }
+        });
+        CvInboxProcessingService svc = new CvInboxProcessingService(candidates, requisitions, mock(PipelineStageRepository.class),
+                mock(SourcingAgentService.class), screening, items, settingsRepo, stub, extractor, new ObjectMapper());
+
+        ProcessNowResponse result = svc.processNow();
+
+        assertEquals(0, result.getFilesFound());
+        assertEquals(0, result.getFailed());
+        verify(items, never()).save(any());
     }
 
     @Test

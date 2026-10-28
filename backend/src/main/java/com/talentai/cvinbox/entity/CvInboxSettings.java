@@ -18,7 +18,7 @@ public class CvInboxSettings {
     private Long id;
 
     @Column(nullable = false)
-    private String mode; // EMBEDDED, EXTERNAL, GOOGLE_DRIVE
+    private String mode; // EMBEDDED, EXTERNAL, GOOGLE_DRIVE, SHAREPOINT
 
     @Column(name = "embedded_port")
     private Integer embeddedPort;
@@ -59,6 +59,19 @@ public class CvInboxSettings {
     /** The service account key file, as downloaded from Google Cloud. Never returned by the API. */
     @Column(name = "google_service_account_json")
     private String googleServiceAccountJson;
+
+    @Column(name = "sharepoint_tenant_id")
+    private String sharepointTenantId;
+
+    @Column(name = "sharepoint_client_id")
+    private String sharepointClientId;
+
+    /** The Entra ID app registration's client secret. Never returned by the API. */
+    @Column(name = "sharepoint_client_secret")
+    private String sharepointClientSecret;
+
+    @Column(name = "sharepoint_folder_link")
+    private String sharepointFolderLink;
 
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;

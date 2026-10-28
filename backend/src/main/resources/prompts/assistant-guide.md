@@ -13,16 +13,29 @@ the application handles it, suggest the page where it most likely lives, and do 
 The "Current application area" you receive is an internal id. Map it like this:
 dashboard = Dashboard, intelligence = Intelligence, roles = Open Roles, pipeline = Pipeline,
 screening = Screening, screeningQuality = Screening Quality, calendar = Calendar, referrals = Referral,
-integrations = Integrations, cvInbox = Resume Drop Zone, activity = Agent Activity, candidate = a candidate profile.
+integrations = Integrations, cvInbox = Resume Drop Zone, users = Users, myInterviews = My Interviews,
+activity = Agent Activity, candidate = a candidate profile.
 
 ## Navigation and people
 
 - Left sidebar: Dashboard, Intelligence, Open Roles, Pipeline, Screening, Screening Quality, Calendar,
-  Referral, Integrations, Resume Drop Zone.
+  Referral, Integrations, Resume Drop Zone, and Users (admins only).
 - Top bar, on every page: a **candidate search box**, the **AI Assistance** button (this assistant), the
-  notification bell and the account menu (sign out).
-- Roles: ADMIN, RECRUITER and HIRING_MANAGER. Only an admin can change AI spending limits, change the Resume
-  Inbox SFTP settings, or see who has viewed a candidate profile.
+  notification bell and the account menu (change password, sign out).
+- Roles: ADMIN, RECRUITER, HIRING_MANAGER and INTERVIEWER. Only an admin can change AI spending limits, change the
+  Resume Drop Zone settings, manage users, or see who has viewed a candidate profile.
+- **Users** (admins only, last item in the sidebar): add a person with a name, username, email and role, and the app
+  generates a temporary password that is shown once (an admin can also set one). From the same page an admin can edit
+  someone's name, email or role, reset their password, or disable and re-enable the account. A disabled person is
+  signed out at once and cannot sign in. An admin cannot disable or change their own role, and the last active admin
+  cannot be removed. There is no self-registration. Anyone can change their own password from the account menu.
+- **Interviewer accounts**: an INTERVIEWER sees only **My Interviews**, with no search box, AI Assistance, pipeline,
+  candidates, offers or other recruiting pages. It lists the interviews assigned to them (ready, waiting for the
+  candidate to pick a time, completed). Opening one shows the role, the candidate's headline, skills and CV, and a
+  **Write scorecard** button once the interview is booked. They do not see the candidate's email or phone, screening
+  score, AI debrief or other interviewers' scorecards, so their view is their own. Submitting the scorecard completes
+  the round, exactly as when a recruiter does it. To assign someone as an interviewer, choose them when scheduling;
+  the list shows every active user, whatever their role.
 
 ## Finding a candidate
 
@@ -174,16 +187,22 @@ referral page (/refer) for people without a login.
 ## Integrations and Resume Drop Zone
 
 - **Integrations > Resume Sources**: add a job-board URL and the app imports candidates from it.
-- **Resume Drop Zone**: HR drops resume files (PDF, Word or text) into a folder, which is either an SFTP folder (the
-  page shows the SFTP address and username) or a **Google Drive** folder (the page shows the folder and the
-  service account email it must be shared with). **Process now** reads whatever is in the folder, and the AI
-  scores each resume against every open role. A resume whose best role scores 70 or more is **Considered**,
-  otherwise **Excluded**, and the file moves into a `.CONSIDERED` or `.REJECTED` sub-folder. Only the single
-  best-matching role gets a pipeline entry and a Screening Agent evaluation for that candidate. An existing
-  candidate with the same email is updated, not duplicated. Nothing is emailed to the candidate. Each resume
-  uses AI budget. Processing is manual (there is no background schedule). In the settings dialog, admins pick
-  the source: the embedded SFTP server, an external SFTP server, or Google Drive (upload the service account
-  key, share the folder with that account as Editor, paste the folder link, then Test Connection).
+- **Resume Drop Zone**: HR drops resume files (PDF, Word or text) into a folder, which is an SFTP folder (the
+  page shows the SFTP address and username), a **Google Drive** folder (the page shows the folder and the
+  service account email it must be shared with) or a **SharePoint** folder (the page shows the folder link).
+  **Process now** reads whatever is in the folder, and the AI scores each resume against every open role. A
+  resume whose best role scores 70 or more is **Considered**, otherwise **Excluded**, and the file moves into a
+  sub-folder: `.CONSIDERED` or `.REJECTED` for SFTP and Google Drive, **Considered** or **Rejected** for
+  SharePoint (SharePoint is stricter about folder names). Only the single best-matching role gets a pipeline
+  entry and a Screening Agent evaluation for that candidate. Normally a candidate with the same email is updated,
+  not duplicated; when the app runs in demo mode every CV becomes a separate candidate. Nothing is emailed to the
+  candidate. Each resume uses AI budget. Processing is manual (there is no background schedule). In the
+  settings dialog, admins pick the source: the embedded SFTP server, an external SFTP server, Google Drive
+  (upload the service account key, share the folder with that account as Editor, paste the folder link) or
+  SharePoint (register an app in Microsoft Entra ID, add a client secret, give it the Sites.Selected or
+  Sites.ReadWrite.All Graph permission with admin consent, then enter the tenant ID, client ID, secret and the
+  folder link). Test Connection checks the settings and reports how many CVs are waiting. Switching source
+  leaves the other sources' saved settings in place.
 
 ## Dashboard, Intelligence and reports
 
@@ -222,4 +241,5 @@ page, opened from the email) and /interview-book (the candidate's interview book
 
 Merging duplicate candidates, deleting or exporting a candidate's data, recording an offer response on the
 candidate's behalf, bulk emailing, and changing the fixed interview lengths or the offer letter template from
-the screen.
+the screen. Users cannot be deleted (only disabled), and a new user is not forced to change the temporary
+password at first sign-in.

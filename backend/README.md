@@ -80,6 +80,7 @@ The API will be available at `http://localhost:8080`.
 | admin        | password123 | ADMIN          |
 | recruiter1   | password123 | RECRUITER      |
 | hiringmgr1   | password123 | HIRING_MANAGER |
+| interviewer1 | password123 | INTERVIEWER    |
 
 > **IMPORTANT**: The seeded password hash is a placeholder. Before running for
 > the first time, generate a real BCrypt hash for "password123" (or your own
@@ -87,13 +88,28 @@ The API will be available at `http://localhost:8080`.
 > ```java
 > new BCryptPasswordEncoder().encode("password123")
 > ```
-> Or register new users via `POST /api/auth/register`.
+> There is no self-registration. An administrator creates further accounts on the **Users** page
+> (or `POST /api/users`).
 
 ## API Overview
 
 ### Auth
 - `POST /api/auth/login` - `{ username, password }` -> JWT
-- `POST /api/auth/register` - create a new user
+- `GET /api/auth/me` - the signed-in user's name and role
+- `POST /api/auth/change-password` - `{ currentPassword, newPassword }`
+
+### Users (administrators only)
+- `GET /api/users` - list accounts
+- `POST /api/users` - create (`role`: ADMIN, RECRUITER, HIRING_MANAGER or INTERVIEWER; a temporary password is generated if none is given and returned once)
+- `PATCH /api/users/{id}` - change name, email, role or `active`
+- `POST /api/users/{id}/reset-password` - issue a new temporary password
+
+### Interviewer portal
+- `GET /api/interviewer/interviews` - interviews assigned to the signed-in user
+- `GET /api/interviewer/interviews/{id}` - role, CV and scorecard criteria for one of them
+- `POST /api/interviewer/interviews/{id}/scorecard` - submit the scorecard
+
+An `INTERVIEWER` account can use only these endpoints and its own account endpoints; everything else returns 403.
 
 ### Requisitions
 - `GET /api/requisitions` - list (optional `?status=OPEN`)

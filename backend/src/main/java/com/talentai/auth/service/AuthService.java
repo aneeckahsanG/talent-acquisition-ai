@@ -41,35 +41,19 @@ public class AuthService {
                 .build();
     }
 
-    public AuthResponse register(RegisterRequest request) {
-        if (appUserRepository.existsByUsername(request.getUsername())) {
-            throw new IllegalArgumentException("Username already exists");
+    public MeResponse me(String username) {
+        AppUser user = appUserRepository.findByUsername(username)
+                .orElseThrow(() -> new IllegalStateException("User not found"));
+        return MeResponse.builder().username(user.getUsername()).fullName(user.getFullName()).role(user.getRole()).build();
+    }
+
+    public void changePassword(String username, ChangePasswordRequest request) {
+        AppUser user = appUserRepository.findByUsername(username)
+                .orElseThrow(() -> new IllegalStateException("User not found"));
+        if (!passwordEncoder.matches(request.getCurrentPassword(), user.getPasswordHash())) {
+            throw new IllegalArgumentException("The current password is not correct.");
         }
-        if (appUserRepository.existsByEmail(request.getEmail())) {
-            throw new IllegalArgumentException("Email already exists");
-        }
-
-        String role = (request.getRole() == null || request.getRole().isBlank())
-                ? "RECRUITER" : request.getRole().toUpperCase();
-
-        AppUser user = AppUser.builder()
-                .username(request.getUsername())
-                .email(request.getEmail())
-                .passwordHash(passwordEncoder.encode(request.getPassword()))
-                .fullName(request.getFullName())
-                .role(role)
-                .build();
-
+        user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
         appUserRepository.save(user);
-
-        UserDetails userDetails = userDetailsService.loadUserByUsername(user.getUsername());
-        String token = jwtService.generateToken(userDetails);
-
-        return AuthResponse.builder()
-                .token(token)
-                .username(user.getUsername())
-                .fullName(user.getFullName())
-                .role(user.getRole())
-                .build();
     }
 }

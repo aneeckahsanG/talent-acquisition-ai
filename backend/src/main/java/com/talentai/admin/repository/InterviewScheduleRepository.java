@@ -11,6 +11,7 @@ public interface InterviewScheduleRepository extends JpaRepository<InterviewSche
     List<InterviewSchedule> findByCandidateId(Long candidateId);
     List<InterviewSchedule> findByCandidateIdAndRequisitionIdOrderByCreatedAtAsc(Long candidateId, Long requisitionId);
     List<InterviewSchedule> findByStatus(String status);
+    List<InterviewSchedule> findByInterviewerId(Long interviewerId);
 
     @Query("SELECT COUNT(i) FROM InterviewSchedule i WHERE i.status IN ('PROPOSED', 'CONFIRMED')")
     long countActiveInterviews();

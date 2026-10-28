@@ -13,8 +13,9 @@ import com.talentai.cvinbox.entity.CvInboxItem;
 import com.talentai.cvinbox.entity.CvInboxSettings;
 import com.talentai.cvinbox.repository.CvInboxItemRepository;
 import com.talentai.cvinbox.repository.CvInboxSettingsRepository;
-import com.talentai.cvinbox.service.ExternalSftpClientService.RemoteCv;
-import com.talentai.cvinbox.service.GoogleDriveClientService.DriveCv;
+import com.talentai.cvinbox.source.CvSource;
+import com.talentai.cvinbox.source.CvSourceFactory;
+import com.talentai.cvinbox.source.InboxFile;
 import com.talentai.screening.service.ScreeningAgentService;
 import com.talentai.sourcing.dto.SourcingDtos.ClaudeMatchResponse;
 import com.talentai.sourcing.service.SourcingAgentService;
@@ -24,14 +25,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
-import java.util.stream.Stream;
 
 /**
  * Reads whatever CVs are sitting in the SFTP inbox, scores each one against every open
@@ -61,139 +57,46 @@ public class CvInboxProcessingService {
     private final ScreeningAgentService screeningAgentService;
     private final CvInboxItemRepository cvInboxItemRepository;
     private final CvInboxSettingsRepository cvInboxSettingsRepository;
-    private final ExternalSftpClientService externalSftpClientService;
-    private final GoogleDriveClientService googleDriveClientService;
+    private final CvSourceFactory cvSourceFactory;
     private final PdfTextExtractor pdfTextExtractor;
     private final ObjectMapper objectMapper;
-
-    @Value("${app.cv-inbox.root-path}")
-    private String rootPath;
 
     @Value("${app.demo-mode:false}")
     private boolean demoMode;
 
     public ProcessNowResponse processNow() {
         CvInboxSettings settings = cvInboxSettingsRepository.findById(1L).orElse(null);
-        if (settings != null && "GOOGLE_DRIVE".equals(settings.getMode())) {
-            return processGoogleDrive(settings);
-        }
-        if (settings != null && "EXTERNAL".equals(settings.getMode())) {
-            return processExternal(settings);
-        }
-        return processEmbedded();
+        return processFrom(cvSourceFactory.forSettings(settings));
     }
 
-    private ProcessNowResponse processEmbedded() {
-        Path root = Paths.get(rootPath).toAbsolutePath().normalize();
-        Path consideredDir = root.resolve(".CONSIDERED");
-        Path rejectedDir = root.resolve(".REJECTED");
-
-        List<Path> files;
+    /** One loop for every source: fetch what is waiting, process each file, file it away. */
+    private ProcessNowResponse processFrom(CvSource source) {
+        List<InboxFile> files;
         try {
-            Files.createDirectories(root);
-            Files.createDirectories(consideredDir);
-            Files.createDirectories(rejectedDir);
-            try (Stream<Path> stream = Files.list(root)) {
-                files = stream.filter(Files::isRegularFile).toList();
-            }
-        } catch (IOException e) {
-            log.error("Failed to list CV inbox folder {}", rootPath, e);
-            return ProcessNowResponse.builder().filesFound(0).processed(0).considered(0).excluded(0).failed(0).build();
-        }
-
-        int considered = 0, excluded = 0, failed = 0;
-        for (Path file : files) {
-            String fileName = file.getFileName().toString();
-            boolean wasConsidered = false;
-            try {
-                byte[] content = Files.readAllBytes(file);
-                wasConsidered = processOne(fileName, content);
-                if (wasConsidered) considered++; else excluded++;
-            } catch (Exception e) {
-                log.error("Failed to process CV inbox file {}", fileName, e);
-                recordFailure(fileName, e.getMessage());
-                failed++;
-            } finally {
-                moveProcessedFile(file, wasConsidered ? consideredDir : rejectedDir);
-            }
-        }
-
-        log.info("CV Inbox processNow (embedded): {} files found, {} considered, {} excluded, {} failed",
-                files.size(), considered, excluded, failed);
-
-        return ProcessNowResponse.builder()
-                .filesFound(files.size())
-                .processed(considered + excluded)
-                .considered(considered)
-                .excluded(excluded)
-                .failed(failed)
-                .build();
-    }
-
-    private ProcessNowResponse processExternal(CvInboxSettings settings) {
-        List<RemoteCv> files;
-        try {
-            files = externalSftpClientService.listAndFetch(settings);
+            files = source.fetchAll();
         } catch (Exception e) {
-            log.error("Failed to list/fetch files from external SFTP {}:{}", settings.getExternalHost(), settings.getExternalPort(), e);
+            log.error("Failed to list/fetch files from {}", source.label(), e);
             return ProcessNowResponse.builder().filesFound(0).processed(0).considered(0).excluded(0).failed(0).build();
         }
 
         int considered = 0, excluded = 0, failed = 0;
-        for (RemoteCv file : files) {
+        for (InboxFile file : files) {
             boolean wasConsidered = false;
             try {
-                wasConsidered = processOne(file.getFileName(), file.getContent());
+                if (file.content() == null) throw new IOException("Could not read the file.");
+                wasConsidered = processOne(file.fileName(), file.content());
                 if (wasConsidered) considered++; else excluded++;
             } catch (Exception e) {
-                log.error("Failed to process external CV inbox file {}", file.getFileName(), e);
-                recordFailure(file.getFileName(), e.getMessage());
+                log.error("Failed to process CV inbox file {} from {}", file.fileName(), source.label(), e);
+                recordFailure(file.fileName(), e.getMessage());
                 failed++;
             } finally {
-                externalSftpClientService.moveRemoteFile(settings, file.getFileName(), wasConsidered);
+                source.fileAway(file, wasConsidered);
             }
         }
 
-        log.info("CV Inbox processNow (external): {} files found, {} considered, {} excluded, {} failed",
-                files.size(), considered, excluded, failed);
-
-        return ProcessNowResponse.builder()
-                .filesFound(files.size())
-                .processed(considered + excluded)
-                .considered(considered)
-                .excluded(excluded)
-                .failed(failed)
-                .build();
-    }
-
-    private ProcessNowResponse processGoogleDrive(CvInboxSettings settings) {
-        String keyJson = settings.getGoogleServiceAccountJson();
-        String folderId = settings.getGoogleFolderId();
-        List<DriveCv> files;
-        try {
-            files = googleDriveClientService.listAndFetch(keyJson, folderId);
-        } catch (Exception e) {
-            log.error("Failed to list/fetch files from Google Drive folder {}", folderId, e);
-            return ProcessNowResponse.builder().filesFound(0).processed(0).considered(0).excluded(0).failed(0).build();
-        }
-
-        int considered = 0, excluded = 0, failed = 0;
-        for (DriveCv file : files) {
-            boolean wasConsidered = false;
-            try {
-                wasConsidered = processOne(file.getFileName(), file.getContent());
-                if (wasConsidered) considered++; else excluded++;
-            } catch (Exception e) {
-                log.error("Failed to process Google Drive CV {}", file.getFileName(), e);
-                recordFailure(file.getFileName(), e.getMessage());
-                failed++;
-            } finally {
-                googleDriveClientService.moveFile(keyJson, folderId, file.getFileId(), wasConsidered);
-            }
-        }
-
-        log.info("CV Inbox processNow (Google Drive): {} files found, {} considered, {} excluded, {} failed",
-                files.size(), considered, excluded, failed);
+        log.info("CV Inbox processNow ({}): {} files found, {} considered, {} excluded, {} failed",
+                source.label(), files.size(), considered, excluded, failed);
 
         return ProcessNowResponse.builder()
                 .filesFound(files.size())
@@ -320,19 +223,6 @@ public class CvInboxProcessingService {
                 .errorMessage(errorMessage != null ? errorMessage : "Unknown processing error")
                 .processedAt(LocalDateTime.now())
                 .build());
-    }
-
-    private void moveProcessedFile(Path file, Path targetDir) {
-        try {
-            Path target = targetDir.resolve(file.getFileName());
-            if (Files.exists(target)) {
-                // Don't clobber an identically-named file processed on a previous run
-                target = targetDir.resolve(System.currentTimeMillis() + "_" + file.getFileName());
-            }
-            Files.move(file, target, StandardCopyOption.REPLACE_EXISTING);
-        } catch (IOException e) {
-            log.error("Failed to move processed file {} to {}", file.getFileName(), targetDir.getFileName(), e);
-        }
     }
 
     private String toJson(Object value) {

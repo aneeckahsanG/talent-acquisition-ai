@@ -49,9 +49,6 @@ public class GoogleDriveClientService {
     private static final String DEFAULT_TOKEN_URI = "https://oauth2.googleapis.com/token";
     private static final String FOLDER_MIME = "application/vnd.google-apps.folder";
     private static final String GOOGLE_DOC_MIME = "application/vnd.google-apps.document";
-    private static final String PDF_MIME = "application/pdf";
-    private static final String DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-    private static final long MAX_FILE_BYTES = 10L * 1024 * 1024;
     private static final String CONSIDERED_FOLDER = ".CONSIDERED";
     private static final String REJECTED_FOLDER = ".REJECTED";
     private static final Pattern FOLDER_URL_ID = Pattern.compile("/folders/([A-Za-z0-9_-]+)");
@@ -170,7 +167,7 @@ public class GoogleDriveClientService {
                 continue;
             }
             if (!isProcessable(f)) {
-                log.warn("Drive CV inbox: skipping '{}' — larger than {} MB", name, MAX_FILE_BYTES / (1024 * 1024));
+                log.warn("Drive CV inbox: skipping '{}' — larger than {} MB", name, CvFileRules.MAX_FILE_BYTES / (1024 * 1024));
                 continue;
             }
             byte[] content = GOOGLE_DOC_MIME.equals(mime)
@@ -329,7 +326,7 @@ public class GoogleDriveClientService {
 
     /** A file the inbox will actually read: a supported type, within the size cap. */
     private static boolean isProcessable(JsonNode f) {
-        return isSupported(f) && f.path("size").asLong(0) <= MAX_FILE_BYTES;
+        return isSupported(f) && CvFileRules.withinSizeLimit(f.path("size").asLong(0));
     }
 
     private static boolean isSupported(JsonNode f) {
@@ -337,18 +334,12 @@ public class GoogleDriveClientService {
     }
 
     private static boolean isSupported(String name, String mime) {
-        String n = name.toLowerCase();
-        return GOOGLE_DOC_MIME.equals(mime) || PDF_MIME.equals(mime) || DOCX_MIME.equals(mime)
-                || mime.startsWith("text/")
-                || n.endsWith(".pdf") || n.endsWith(".docx") || n.endsWith(".txt") || n.endsWith(".md");
+        return GOOGLE_DOC_MIME.equals(mime) || CvFileRules.isSupported(name, mime);
     }
 
     private static String withExtension(String name, String mime) {
-        String n = name.toLowerCase();
-        if (GOOGLE_DOC_MIME.equals(mime) && !n.endsWith(".txt")) return name + ".txt";
-        if (PDF_MIME.equals(mime) && !n.endsWith(".pdf")) return name + ".pdf";
-        if (DOCX_MIME.equals(mime) && !n.endsWith(".docx")) return name + ".docx";
-        return name;
+        if (GOOGLE_DOC_MIME.equals(mime)) return name.toLowerCase().endsWith(".txt") ? name : name + ".txt";
+        return CvFileRules.withExtension(name, mime);
     }
 
     private static String b64(byte[] bytes) {

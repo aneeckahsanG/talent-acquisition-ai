@@ -73,6 +73,7 @@ public class CvInboxDtos {
         private String googleFolderId;
         /** The address the Drive folder must be shared with. */
         private String googleServiceAccountEmail;
+        private String sharepointFolderLink;
     }
 
     /** Request body for archiving one or more items (individual select or "select all"). */
@@ -104,6 +105,10 @@ public class CvInboxDtos {
         private String googleFolderId;
         private String googleServiceAccountEmail;
         private boolean googleKeySet;
+        private String sharepointTenantId;
+        private String sharepointClientId;
+        private boolean sharepointSecretSet;
+        private String sharepointFolderLink;
     }
 
     /** Save request. A blank password field means "leave the stored password unchanged". */
@@ -126,6 +131,11 @@ public class CvInboxDtos {
         private String googleFolderId;
         /** A blank key means "keep the stored key". */
         private String googleServiceAccountJson;
+        private String sharepointTenantId;
+        private String sharepointClientId;
+        /** A blank secret means "keep the stored secret". */
+        private String sharepointClientSecret;
+        private String sharepointFolderLink;
     }
 
     /** Test-connection request — mirrors whatever the settings form currently holds, saved or not. */
@@ -146,6 +156,10 @@ public class CvInboxDtos {
         private Integer proxyPort;
         private String googleFolderId;
         private String googleServiceAccountJson;
+        private String sharepointTenantId;
+        private String sharepointClientId;
+        private String sharepointClientSecret;
+        private String sharepointFolderLink;
     }
 
     @Data

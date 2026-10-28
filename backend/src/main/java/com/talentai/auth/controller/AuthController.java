@@ -19,8 +19,16 @@ public class AuthController {
         return ResponseEntity.ok(authService.login(request));
     }
 
-    @PostMapping("/register")
-    public ResponseEntity<AuthResponse> register(@Valid @RequestBody RegisterRequest request) {
-        return ResponseEntity.ok(authService.register(request));
+    /** Accounts are created by an administrator (see UserAdminController); there is no self-registration. */
+    @GetMapping("/me")
+    public ResponseEntity<MeResponse> me(java.security.Principal principal) {
+        return ResponseEntity.ok(authService.me(principal.getName()));
+    }
+
+    @PostMapping("/change-password")
+    public ResponseEntity<Void> changePassword(@Valid @RequestBody ChangePasswordRequest request,
+                                               java.security.Principal principal) {
+        authService.changePassword(principal.getName(), request);
+        return ResponseEntity.noContent().build();
     }
 }

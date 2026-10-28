@@ -20,6 +20,7 @@ import com.talentai.cvinbox.service.CvInboxProcessingService;
 import com.talentai.cvinbox.service.ExternalSftpClientService;
 import com.talentai.cvinbox.service.ExternalSftpClientService.TestConnectionResult;
 import com.talentai.cvinbox.service.GoogleDriveClientService;
+import com.talentai.cvinbox.service.SharePointClientService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -40,6 +41,7 @@ public class CvInboxController {
     private final CvInboxProcessingService processingService;
     private final ExternalSftpClientService externalSftpClientService;
     private final GoogleDriveClientService googleDriveClientService;
+    private final SharePointClientService sharePointClientService;
     private final SftpServerConfig sftpServerConfig;
     private final ObjectMapper objectMapper;
     private final com.talentai.screening.repository.ScreeningResultRepository screeningResultRepository;
@@ -78,6 +80,12 @@ public class CvInboxController {
     @GetMapping("/connection-info")
     public ResponseEntity<SftpConnectionInfo> connectionInfo() {
         CvInboxSettings settings = currentSettings();
+        if ("SHAREPOINT".equals(settings.getMode())) {
+            return ResponseEntity.ok(SftpConnectionInfo.builder()
+                    .mode("SHAREPOINT")
+                    .sharepointFolderLink(settings.getSharepointFolderLink())
+                    .build());
+        }
         if ("GOOGLE_DRIVE".equals(settings.getMode())) {
             return ResponseEntity.ok(SftpConnectionInfo.builder()
                     .mode("GOOGLE_DRIVE")
@@ -120,6 +128,10 @@ public class CvInboxController {
                 .googleFolderId(s.getGoogleFolderId())
                 .googleServiceAccountEmail(googleDriveClientService.serviceAccountEmail(s.getGoogleServiceAccountJson()))
                 .googleKeySet(s.getGoogleServiceAccountJson() != null && !s.getGoogleServiceAccountJson().isBlank())
+                .sharepointTenantId(s.getSharepointTenantId())
+                .sharepointClientId(s.getSharepointClientId())
+                .sharepointSecretSet(s.getSharepointClientSecret() != null && !s.getSharepointClientSecret().isBlank())
+                .sharepointFolderLink(s.getSharepointFolderLink())
                 .build());
     }
 
@@ -155,6 +167,15 @@ public class CvInboxController {
             googleDriveClientService.validateKey(request.getGoogleServiceAccountJson());
             s.setGoogleServiceAccountJson(request.getGoogleServiceAccountJson());
         }
+        if (request.getSharepointTenantId() != null) s.setSharepointTenantId(request.getSharepointTenantId().trim());
+        if (request.getSharepointClientId() != null) s.setSharepointClientId(request.getSharepointClientId().trim());
+        if (request.getSharepointClientSecret() != null && !request.getSharepointClientSecret().isBlank()) {
+            s.setSharepointClientSecret(request.getSharepointClientSecret().trim());
+        }
+        if (request.getSharepointFolderLink() != null) {
+            if (!request.getSharepointFolderLink().isBlank()) SharePointClientService.parseLink(request.getSharepointFolderLink());
+            s.setSharepointFolderLink(request.getSharepointFolderLink().trim());
+        }
         s = cvInboxSettingsRepository.save(s);
 
         // Only the embedded mode hosts an SFTP server; the other two pull from somewhere else.
@@ -174,6 +195,15 @@ public class CvInboxController {
     @PostMapping("/settings/test-connection")
     public ResponseEntity<TestConnectionResponse> testConnection(@RequestBody TestConnectionRequest request) {
         CvInboxSettings stored = currentSettings();
+
+        if ("SHAREPOINT".equals(request.getMode())) {
+            String secret = (request.getSharepointClientSecret() != null && !request.getSharepointClientSecret().isBlank())
+                    ? request.getSharepointClientSecret().trim() : stored.getSharepointClientSecret();
+            var result = sharePointClientService.testConnection(request.getSharepointTenantId(),
+                    request.getSharepointClientId(), secret, request.getSharepointFolderLink());
+            return ResponseEntity.ok(TestConnectionResponse.builder()
+                    .success(result.isSuccess()).message(result.getMessage()).build());
+        }
 
         if ("GOOGLE_DRIVE".equals(request.getMode())) {
             String key = (request.getGoogleServiceAccountJson() != null && !request.getGoogleServiceAccountJson().isBlank())

@@ -33,7 +33,12 @@ public class AppUser {
     private String fullName;
 
     @Column(nullable = false)
-    private String role; // RECRUITER, ADMIN, HIRING_MANAGER
+    private String role; // ADMIN, RECRUITER, HIRING_MANAGER, INTERVIEWER
+
+    /** A disabled account cannot sign in, and a token it already holds stops working at once. */
+    @Column(nullable = false)
+    @Builder.Default
+    private boolean active = true;
 
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;

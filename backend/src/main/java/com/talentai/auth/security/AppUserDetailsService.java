@@ -23,9 +23,11 @@ public class AppUserDetailsService implements UserDetailsService {
         AppUser user = appUserRepository.findByUsername(username)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found: " + username));
 
+        // enabled=false makes the login fail with "disabled" and (via the JWT filter) cuts off live tokens.
         return new User(
                 user.getUsername(),
                 user.getPasswordHash(),
+                user.isActive(), true, true, true,
                 List.of(new SimpleGrantedAuthority("ROLE_" + user.getRole()))
         );
     }

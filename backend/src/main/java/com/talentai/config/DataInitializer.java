@@ -44,7 +44,8 @@ public class DataInitializer implements ApplicationRunner {
         List<UserSeed> users = List.of(
                 new UserSeed("admin",      "admin@talentai.demo",      "System Admin",  "ADMIN"),
                 new UserSeed("recruiter1", "recruiter1@talentai.demo", "Aisha Rahman",  "RECRUITER"),
-                new UserSeed("hiringmgr1", "hiringmgr1@talentai.demo", "Daniel Lim",   "HIRING_MANAGER")
+                new UserSeed("hiringmgr1", "hiringmgr1@talentai.demo", "Daniel Lim",   "HIRING_MANAGER"),
+                new UserSeed("interviewer1", "interviewer1@talentai.demo", "Priya Nair",  "INTERVIEWER")
         );
 
         String encodedPassword = passwordEncoder.encode("password123");

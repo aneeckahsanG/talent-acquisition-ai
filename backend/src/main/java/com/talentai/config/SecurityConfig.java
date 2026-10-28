@@ -8,8 +8,12 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
+import org.springframework.security.authorization.AuthorizationDecision;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.web.access.intercept.RequestAuthorizationContext;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -24,6 +28,7 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.util.List;
+import java.util.function.Supplier;
 
 @Configuration
 @EnableWebSecurity
@@ -45,7 +50,9 @@ public class SecurityConfig {
 				.cors(cors -> cors.configurationSource(corsConfigurationSource()))
 				.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 				.authorizeHttpRequests(auth -> auth
-						.requestMatchers("/api/auth/**").permitAll()
+						.requestMatchers("/api/auth/login").permitAll()
+						// Any signed-in user, interviewers included, may see who they are and change their password.
+						.requestMatchers("/api/auth/me", "/api/auth/change-password").authenticated()
 						.requestMatchers("/api/admin/**").permitAll()
 						.requestMatchers("/api/public/**").permitAll()
 						.requestMatchers("/api/public/offer-respond/**").permitAll()
@@ -57,7 +64,12 @@ public class SecurityConfig {
 						.requestMatchers("/api/referrals/public").permitAll()
 						.requestMatchers("/actuator/health").permitAll()
 						.requestMatchers("/h2-console/**").permitAll()
-						.anyRequest().authenticated()
+						// Account management is for administrators only.
+						.requestMatchers("/api/users/**").hasRole("ADMIN")
+						// Returns only the interviews assigned to the caller, so any signed-in user may call it.
+						.requestMatchers("/api/interviewer/**").authenticated()
+						// Everything else is the full recruiting app: any signed-in user except an interviewer.
+						.anyRequest().access(SecurityConfig::notAnInterviewer)
 				)
 				// Unauthenticated requests (missing/expired token) → 401 so the
 				// frontend can redirect to login (Spring's default is 403)
@@ -70,6 +82,15 @@ public class SecurityConfig {
 				.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
 		return http.build();
+	}
+
+	/** Signed in, and not an INTERVIEWER. Interviewers are limited to /api/interviewer/** and their own account. */
+	private static AuthorizationDecision notAnInterviewer(Supplier<Authentication> authentication, RequestAuthorizationContext context) {
+		Authentication auth = authentication.get();
+		boolean signedIn = auth != null && auth.isAuthenticated() && !(auth instanceof AnonymousAuthenticationToken);
+		boolean interviewer = signedIn && auth.getAuthorities().stream()
+				.anyMatch(a -> "ROLE_INTERVIEWER".equals(a.getAuthority()));
+		return new AuthorizationDecision(signedIn && !interviewer);
 	}
 
 	@Bean

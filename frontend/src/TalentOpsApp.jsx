@@ -6,6 +6,7 @@ import {
   ChevronRight, ChevronUp, ChevronDown, Sparkles, CheckCircle2, XCircle, AlertCircle, Clock,
   Briefcase, Mail, X, ArrowRight, Bell, LogOut, Loader2, UploadCloud,
   RefreshCw, Plus, Globe, List, ArrowUp, ArrowDown, ArrowUpDown, TrendingUp, Pencil, Inbox, Settings,History, FileText, Trash2, Maximize2,
+  Users, ClipboardCheck, KeyRound, Copy,
 } from "lucide-react";
 
 // ============================================================
@@ -1828,7 +1829,7 @@ function ScreeningQualityView() {
 // SIDEBAR
 // ============================================================
 function Sidebar({ active, setActive, user }) {
-  const nav = [
+  const fullNav = [
     { id: "dashboard",    label: "Dashboard",         icon: LayoutGrid },
     { id: "intelligence", label: "Intelligence",      icon: TrendingUp },
     { id: "roles",        label: "Open Roles",         icon: Briefcase  },
@@ -1840,6 +1841,12 @@ function Sidebar({ active, setActive, user }) {
     { id: "integrations", label: "Integrations",       icon: Globe      },
     { id: "cvInbox",      label: "Resume Drop Zone", icon: Inbox      },
   ];
+  // An interviewer sees one screen; an administrator also manages users.
+  const nav = user?.role === "INTERVIEWER"
+    ? [{ id: "myInterviews", label: "My Interviews", icon: ClipboardCheck }]
+    : user?.role === "ADMIN"
+      ? [...fullNav, { id: "users", label: "Users", icon: Users }]
+      : fullNav;
 
   return (
     <aside className="w-64 shrink-0 flex flex-col" style={{ backgroundColor: C.sidebar }}>
@@ -7679,7 +7686,7 @@ function CvInboxView() {
 
   return (
     <div>
-      <TopBar title="Resume Drop Zone" subtitle="AI pre-screens resumes dropped via SFTP or a Google Drive folder before they reach your pipeline"
+      <TopBar title="Resume Drop Zone" subtitle="AI pre-screens resumes dropped via SFTP, a Google Drive folder or a SharePoint folder before they reach your pipeline"
         action={
           <div className="flex gap-2">
             <Btn variant="secondary" onClick={() => setSettingsOpen(true)}>
@@ -7696,7 +7703,14 @@ function CvInboxView() {
       {connInfo && (
         <Card className="p-4 mb-5 flex items-center gap-3">
           <Globe size={16} style={{ color: C.accent }} />
-          {connInfo.mode === "GOOGLE_DRIVE" ? (
+          {connInfo.mode === "SHAREPOINT" ? (
+            <div className="min-w-0">
+              <p className="text-xs font-bold uppercase tracking-wide" style={{ color: C.muted }}>SharePoint Folder</p>
+              <p className="text-sm break-all" style={{ color: C.text }}>
+                {connInfo.sharepointFolderLink || "Not set up yet. Open Settings to add the app registration and the folder link."}
+              </p>
+            </div>
+          ) : connInfo.mode === "GOOGLE_DRIVE" ? (
             <div>
               <p className="text-xs font-bold uppercase tracking-wide" style={{ color: C.muted }}>Google Drive Folder</p>
               <p className="text-sm" style={{ color: C.text }}>
@@ -7876,10 +7890,12 @@ function CvInboxSettingsDrawer({ onClose, onSaved }) {
     externalHost: "", externalPort: 22, externalUsername: "", externalPassword: "", externalRootPath: "",
     proxyEnabled: false, proxyHost: "", proxyPort: 80,
     googleFolderId: "", googleServiceAccountJson: "",
+    sharepointTenantId: "", sharepointClientId: "", sharepointClientSecret: "", sharepointFolderLink: "",
   });
   const [embeddedPasswordSet, setEmbeddedPasswordSet] = useState(false);
   const [externalPasswordSet, setExternalPasswordSet] = useState(false);
   const [googleKeySet, setGoogleKeySet] = useState(false);
+  const [sharepointSecretSet, setSharepointSecretSet] = useState(false);
   const [googleEmail, setGoogleEmail] = useState(""); // the address the Drive folder must be shared with
   const [keyFileName, setKeyFileName] = useState("");
   const [keyError, setKeyError] = useState("");
@@ -7904,10 +7920,14 @@ function CvInboxSettingsDrawer({ onClose, onSaved }) {
           proxyHost: s.proxyHost || "",
           proxyPort: s.proxyPort ?? f.proxyPort,
           googleFolderId: s.googleFolderId || "",
+          sharepointTenantId: s.sharepointTenantId || "",
+          sharepointClientId: s.sharepointClientId || "",
+          sharepointFolderLink: s.sharepointFolderLink || "",
         }));
         setEmbeddedPasswordSet(!!s.embeddedPasswordSet);
         setExternalPasswordSet(!!s.externalPasswordSet);
         setGoogleKeySet(!!s.googleKeySet);
+        setSharepointSecretSet(!!s.sharepointSecretSet);
         setGoogleEmail(s.googleServiceAccountEmail || "");
       } finally {
         setLoading(false);
@@ -7981,10 +8001,10 @@ function CvInboxSettingsDrawer({ onClose, onSaved }) {
           <div className="p-6 space-y-5">
             <div>
               <label className="text-xs font-semibold block mb-1.5" style={{ color: C.muted }}>Source</label>
-              <div className="flex gap-1 p-1 rounded-xl w-fit" style={{ backgroundColor: C.surface }}>
-                {[["EMBEDDED", "Embedded Server"], ["EXTERNAL", "External SFTP"], ["GOOGLE_DRIVE", "Google Drive"]].map(([id, label]) => (
+              <div className="flex flex-wrap gap-1 p-1 rounded-xl w-fit" style={{ backgroundColor: C.surface }}>
+                {[["EMBEDDED", "Embedded Server"], ["EXTERNAL", "External SFTP"], ["GOOGLE_DRIVE", "Google Drive"], ["SHAREPOINT", "SharePoint"]].map(([id, label]) => (
                   <button key={id} onClick={() => set("mode", id)}
-                    className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors"
+                    className="px-2 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap"
                     style={{ backgroundColor: form.mode === id ? C.accent : "transparent", color: form.mode === id ? "#fff" : C.muted }}>
                     {label}
                   </button>
@@ -8068,7 +8088,7 @@ function CvInboxSettingsDrawer({ onClose, onSaved }) {
                   </div>
                 </div>
               </div>
-            ) : (
+            ) : form.mode === "GOOGLE_DRIVE" ? (
               <div className="space-y-3">
                 <p className="text-xs" style={{ color: C.muted }}>
                   Drop CVs (PDF, Word or text) into a Google Drive folder and click Process now. Each one is screened;
@@ -8100,6 +8120,41 @@ function CvInboxSettingsDrawer({ onClose, onSaved }) {
                   <label className="text-xs font-semibold block mb-1" style={{ color: C.muted }}>Drive folder link or ID</label>
                   <input className={inputStyle} style={inputColors} placeholder="https://drive.google.com/drive/folders/..."
                     value={form.googleFolderId} onChange={e => set("googleFolderId", e.target.value)} />
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-xs" style={{ color: C.muted }}>
+                  Drop CVs (PDF, Word or text) into a SharePoint folder and click Process now. Each one is screened;
+                  processed files move into Considered or Rejected folders inside it. The embedded SFTP server is stopped while this mode is active.
+                </p>
+                <ol className="text-xs space-y-1 list-decimal pl-4" style={{ color: C.muted }}>
+                  <li>In the Azure portal, open <b>Microsoft Entra ID, App registrations</b> and register an application.</li>
+                  <li>Under <b>Certificates &amp; secrets</b>, add a client secret and copy its <b>Value</b>.</li>
+                  <li>Under <b>API permissions</b>, add the Microsoft Graph <b>application</b> permission <b>Sites.Selected</b> (or <b>Sites.ReadWrite.All</b>) and have an admin <b>grant consent</b>. With Sites.Selected, also grant the app access to the site.</li>
+                  <li>Paste the tenant ID, the application (client) ID, the secret and the folder link below, then Test Connection.</li>
+                </ol>
+                <div>
+                  <label className="text-xs font-semibold block mb-1" style={{ color: C.muted }}>Tenant ID (or domain)</label>
+                  <input className={inputStyle} style={inputColors} placeholder="00000000-0000-0000-0000-000000000000"
+                    value={form.sharepointTenantId} onChange={e => set("sharepointTenantId", e.target.value)} />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold block mb-1" style={{ color: C.muted }}>Application (client) ID</label>
+                  <input className={inputStyle} style={inputColors} placeholder="00000000-0000-0000-0000-000000000000"
+                    value={form.sharepointClientId} onChange={e => set("sharepointClientId", e.target.value)} />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold block mb-1" style={{ color: C.muted }}>Client secret (Value)</label>
+                  <input type="password" className={inputStyle} style={inputColors} autoComplete="off"
+                    placeholder={sharepointSecretSet ? "Leave blank to keep unchanged" : ""}
+                    value={form.sharepointClientSecret} onChange={e => set("sharepointClientSecret", e.target.value)} />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold block mb-1" style={{ color: C.muted }}>SharePoint folder link</label>
+                  <input className={inputStyle} style={inputColors} placeholder="https://yourcompany.sharepoint.com/sites/HR/Shared Documents/CV Inbox"
+                    value={form.sharepointFolderLink} onChange={e => set("sharepointFolderLink", e.target.value)} />
+                  <p className="text-xs mt-1.5" style={{ color: C.muted }}>Open the folder in SharePoint and copy the address from the browser, or use Copy link.</p>
                 </div>
               </div>
             )}
@@ -8503,6 +8558,470 @@ function CandidateProfileView({ candidateId, onBack, onOpenCandidate }) {
 }
 
 // ============================================================
+// USERS — administrators create accounts, change roles, disable, reset passwords
+// ============================================================
+const USER_ROLES = [
+  ["ADMIN", "Administrator", "Everything, plus managing users"],
+  ["RECRUITER", "Recruiter", "The full recruiting app"],
+  ["HIRING_MANAGER", "Hiring manager", "The full recruiting app"],
+  ["INTERVIEWER", "Interviewer", "Only their own interviews and scorecards"],
+];
+const USER_ROLE_COLORS = { ADMIN: "#8B5CF6", RECRUITER: C.accent, HIRING_MANAGER: "#0EA5E9", INTERVIEWER: "#10B981" };
+const userRoleLabel = r => USER_ROLES.find(x => x[0] === r)?.[1] || r;
+
+function CopyButton({ text, label = "Copy" }) {
+  const [copied, setCopied] = useState(false);
+  async function copy() {
+    try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1500); }
+    catch { /* the text is selectable, so it can still be copied by hand */ }
+  }
+  return (
+    <button onClick={copy} className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-lg border"
+      style={{ borderColor: C.border, color: C.accent }}>
+      <Copy size={12} /> {copied ? "Copied" : label}
+    </button>
+  );
+}
+
+// Shown once, right after an account is created or its password is reset.
+function TemporaryPasswordNotice({ notice, onClose }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ backgroundColor: "rgba(15,23,42,0.5)", backdropFilter: "blur(4px)" }}>
+      <Card className="w-full max-w-md p-6">
+        <h2 className="font-bold text-base flex items-center gap-2" style={{ color: C.text }}>
+          <KeyRound size={16} style={{ color: C.accent }} /> {notice.title}
+        </h2>
+        <div className="mt-4 rounded-xl p-4 space-y-3" style={{ backgroundColor: C.surface }}>
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>Username</p>
+              <p className="text-sm font-semibold select-all truncate" style={{ color: C.text }}>{notice.username}</p>
+            </div>
+            <CopyButton text={notice.username} />
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>Temporary password</p>
+              <p className="text-base font-mono font-semibold select-all" style={{ color: C.text }}>{notice.password}</p>
+            </div>
+            <CopyButton text={notice.password} />
+          </div>
+        </div>
+        <p className="text-xs mt-3 leading-relaxed" style={{ color: C.muted }}>
+          This is the only time the password is shown. Pass it to {notice.name} through a secure channel, and ask them
+          to change it from the account menu after signing in.
+        </p>
+        <div className="flex justify-end mt-5"><Btn onClick={onClose}>Done</Btn></div>
+      </Card>
+    </div>
+  );
+}
+
+function UserFormModal({ user, onClose, onSaved }) {
+  const editing = !!user;
+  const [form, setForm] = useState({
+    fullName: user?.fullName || "", username: user?.username || "", email: user?.email || "",
+    role: user?.role || "INTERVIEWER", password: "",
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const roleHint = USER_ROLES.find(r => r[0] === form.role)?.[2];
+  const ready = form.fullName.trim() && form.email.trim() && (editing || form.username.trim().length >= 3);
+
+  async function save() {
+    setSaving(true); setError(null);
+    try {
+      const result = editing
+        ? await apiFetch(`/users/${user.id}`, { method: "PATCH", body: JSON.stringify({ fullName: form.fullName, email: form.email, role: form.role }) })
+        : await apiFetch("/users", { method: "POST", body: JSON.stringify(form) });
+      onSaved(result);
+    } catch (e) { setError(e.message); }
+    finally { setSaving(false); }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ backgroundColor: "rgba(15,23,42,0.5)", backdropFilter: "blur(4px)" }}>
+      <Card className="w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
+        <h2 className="font-bold text-lg" style={{ color: C.text }}>{editing ? `Edit ${user.fullName}` : "Add user"}</h2>
+        <div className="mt-4 space-y-3">
+          <Input label="Full name" value={form.fullName} onChange={e => set("fullName", e.target.value)} placeholder="Priya Nair" autoFocus />
+          {!editing && (
+            <Input label="Username" value={form.username} onChange={e => set("username", e.target.value)} placeholder="priya.nair" />
+          )}
+          <Input label="Email" type="email" value={form.email} onChange={e => set("email", e.target.value)} placeholder="priya@company.com" />
+          <div>
+            <label className="text-xs font-semibold block mb-1.5" style={{ color: C.muted }}>Role</label>
+            <Select value={form.role} onChange={e => set("role", e.target.value)}>
+              {USER_ROLES.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+            </Select>
+            {roleHint && <p className="text-xs mt-1.5" style={{ color: C.muted }}>{roleHint}</p>}
+          </div>
+          {!editing && (
+            <div>
+              <Input label="Password (optional)" type="text" value={form.password} onChange={e => set("password", e.target.value)}
+                placeholder="Leave blank to generate one" autoComplete="off" />
+              <p className="text-xs mt-1.5" style={{ color: C.muted }}>At least 8 characters. Interview invitations are emailed to this address, so use a mailbox they read.</p>
+            </div>
+          )}
+        </div>
+        {error && <p className="text-xs mt-3" style={{ color: C.danger }}>{error}</p>}
+        <div className="flex gap-2 mt-5">
+          <Btn onClick={save} disabled={!ready || saving}>{saving ? "Saving…" : editing ? "Save changes" : "Create user"}</Btn>
+          <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function UsersView({ currentUsername }) {
+  const { data, loading, error, reload } = useApi("/users");
+  const [formUser, setFormUser] = useState(undefined); // undefined = closed, null = adding, object = editing
+  const [notice, setNotice] = useState(null);
+  const [busyId, setBusyId] = useState(null);
+  const [actionError, setActionError] = useState(null);
+
+  async function run(id, fn) {
+    setBusyId(id); setActionError(null);
+    try { await fn(); reload(); }
+    catch (e) { setActionError(e.message); }
+    finally { setBusyId(null); }
+  }
+  const toggleActive = u => run(u.id, async () => {
+    if (u.active && !window.confirm(`Disable ${u.fullName}? They will be signed out and unable to sign in until you enable the account again.`)) return;
+    await apiFetch(`/users/${u.id}`, { method: "PATCH", body: JSON.stringify({ active: !u.active }) });
+  });
+  const resetPassword = u => run(u.id, async () => {
+    if (!window.confirm(`Reset the password for ${u.fullName}? Their current password stops working.`)) return;
+    const r = await apiFetch(`/users/${u.id}/reset-password`, { method: "POST" });
+    setNotice({ title: "Password reset", name: u.fullName, username: u.username, password: r.temporaryPassword });
+  });
+
+  function saved(result) {
+    const wasAdding = formUser === null;
+    setFormUser(undefined);
+    reload();
+    if (wasAdding && result.temporaryPassword) {
+      setNotice({ title: "User created", name: result.user.fullName, username: result.user.username, password: result.temporaryPassword });
+    }
+  }
+
+  return (
+    <div>
+      <TopBar title="Users" subtitle="Create accounts and decide what each person can see"
+        action={<Btn onClick={() => setFormUser(null)}><Plus size={14} /> Add user</Btn>} />
+
+      {error && <ErrorBanner message={error} onRetry={reload} />}
+      {actionError && <p className="text-sm mb-3" style={{ color: C.danger }}>{actionError}</p>}
+      {loading && <LoadingCard rows={4} />}
+
+      {data && (
+        <Card className="overflow-hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b" style={{ borderColor: C.border }}>
+                {["User", "Email", "Role", "Status", ""].map(h => (
+                  <th key={h} className="text-left px-4 py-3 font-semibold" style={{ color: C.muted }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {data.map(u => {
+                const me = u.username === currentUsername;
+                const busy = busyId === u.id;
+                return (
+                  <tr key={u.id} className="border-b" style={{ borderColor: C.border, opacity: u.active ? 1 : 0.6 }}>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2.5">
+                        <Avatar name={u.fullName} size={32} />
+                        <div className="min-w-0">
+                          <p className="font-semibold truncate" style={{ color: C.text }}>
+                            {u.fullName} {me && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md ml-1" style={{ backgroundColor: C.surface, color: C.muted }}>You</span>}
+                          </p>
+                          <p className="text-xs truncate" style={{ color: C.muted }}>@{u.username}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-xs" style={{ color: C.muted }}>{u.email}</td>
+                    <td className="px-4 py-3"><Badge color={USER_ROLE_COLORS[u.role] || C.muted}>{userRoleLabel(u.role)}</Badge></td>
+                    <td className="px-4 py-3"><Badge color={u.active ? C.success : C.muted}>{u.active ? "Active" : "Disabled"}</Badge></td>
+                    <td className="px-4 py-3">
+                      <div className="flex justify-end gap-1.5">
+                        <button disabled={busy} onClick={() => setFormUser(u)} className="text-xs font-semibold px-2.5 py-1 rounded-lg border"
+                          style={{ borderColor: C.border, color: C.text }}>Edit</button>
+                        <button disabled={busy} onClick={() => resetPassword(u)} className="text-xs font-semibold px-2.5 py-1 rounded-lg border"
+                          style={{ borderColor: C.border, color: C.text }}>Reset password</button>
+                        {!me && (
+                          <button disabled={busy} onClick={() => toggleActive(u)} className="text-xs font-semibold px-2.5 py-1 rounded-lg border"
+                            style={{ borderColor: u.active ? "#FECACA" : "#A7F3D0", color: u.active ? C.danger : C.success }}>
+                            {u.active ? "Disable" : "Enable"}
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </Card>
+      )}
+
+      {formUser !== undefined && <UserFormModal user={formUser} onClose={() => setFormUser(undefined)} onSaved={saved} />}
+      {notice && <TemporaryPasswordNotice notice={notice} onClose={() => setNotice(null)} />}
+    </div>
+  );
+}
+
+// Any signed-in user can change their own password from the account menu.
+function ChangePasswordModal({ onClose }) {
+  const [form, setForm] = useState({ current: "", next: "", again: "" });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+  const [done, setDone] = useState(false);
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const mismatch = form.again && form.next !== form.again;
+  const ready = form.current && form.next.length >= 8 && form.next === form.again;
+
+  async function save() {
+    setSaving(true); setError(null);
+    try {
+      await apiFetch("/auth/change-password", { method: "POST", body: JSON.stringify({ currentPassword: form.current, newPassword: form.next }) });
+      setDone(true);
+    } catch (e) { setError(e.message); }
+    finally { setSaving(false); }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ backgroundColor: "rgba(15,23,42,0.5)", backdropFilter: "blur(4px)" }}>
+      <Card className="w-full max-w-sm p-6">
+        <h2 className="font-bold text-lg" style={{ color: C.text }}>Change password</h2>
+        {done ? (
+          <>
+            <p className="text-sm mt-3" style={{ color: C.success }}>Your password has been changed.</p>
+            <div className="flex justify-end mt-5"><Btn onClick={onClose}>Close</Btn></div>
+          </>
+        ) : (
+          <>
+            <div className="mt-4 space-y-3">
+              <Input label="Current password" type="password" value={form.current} onChange={e => set("current", e.target.value)} autoFocus />
+              <Input label="New password (at least 8 characters)" type="password" value={form.next} onChange={e => set("next", e.target.value)} />
+              <Input label="Repeat new password" type="password" value={form.again} onChange={e => set("again", e.target.value)} />
+              {mismatch && <p className="text-xs" style={{ color: C.danger }}>The two new passwords do not match.</p>}
+            </div>
+            {error && <p className="text-xs mt-3" style={{ color: C.danger }}>{error}</p>}
+            <div className="flex gap-2 mt-5">
+              <Btn onClick={save} disabled={!ready || saving}>{saving ? "Saving…" : "Change password"}</Btn>
+              <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
+            </div>
+          </>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+// ============================================================
+// INTERVIEWER HOME — the only screen an Interviewer account sees
+// ============================================================
+function ScorecardReadOnly({ scorecard, criteria }) {
+  const label = k => criteria.find(c => c.key === k)?.label || k;
+  return (
+    <div className="rounded-xl border p-4 space-y-2" style={{ borderColor: C.border }}>
+      <div className="flex items-center gap-2 flex-wrap">
+        <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>Your scorecard</p>
+        <Badge color={verdictColor(scorecard.verdict)}>{VERDICT_LABELS[scorecard.verdict] || scorecard.verdict}</Badge>
+        <span className="text-xs" style={{ color: C.muted }}>average {scorecard.averageRating}/5</span>
+      </div>
+      <ul className="text-xs space-y-1">
+        {Object.entries(scorecard.ratings || {})
+          .sort(([a], [b]) => criteria.findIndex(c => c.key === a) - criteria.findIndex(c => c.key === b))
+          .map(([k, v]) => (
+          <li key={k} className="flex justify-between gap-3" style={{ color: C.text }}><span>{label(k)}</span><span className="font-semibold">{v}/5</span></li>
+        ))}
+      </ul>
+      {(scorecard.noticePeriod || scorecard.expectedSalary) && (
+        <p className="text-xs" style={{ color: C.muted }}>
+          {scorecard.noticePeriod && <>Notice period: {scorecard.noticePeriod}. </>}
+          {scorecard.expectedSalary && <>Expected salary: {scorecard.expectedSalary}.</>}
+        </p>
+      )}
+      {scorecard.notes && <p className="text-xs leading-relaxed whitespace-pre-wrap" style={{ color: C.text }}>{scorecard.notes}</p>}
+    </div>
+  );
+}
+
+function InterviewPrepModal({ interviewId, onClose, onChanged }) {
+  const path = `/interviewer/interviews/${interviewId}`;
+  const { data: d, loading, error, reload } = useApi(path, [interviewId]);
+  const emptyScorecard = { ratings: {}, verdict: "", notes: "", noticePeriod: "", expectedSalary: "" };
+  const [writing, setWriting] = useState(false);
+  const [form, setForm] = useState(emptyScorecard);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState(null);
+
+  async function submit() {
+    setSaving(true); setSaveError(null);
+    try {
+      await apiFetch(`${path}/scorecard`, { method: "POST", body: JSON.stringify(form) });
+      setWriting(false);
+      reload();
+      onChanged();
+    } catch (e) { setSaveError(e.message); }
+    finally { setSaving(false); }
+  }
+
+  const field = (label, value) => value ? (
+    <div>
+      <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>{label}</p>
+      <p className="text-sm leading-relaxed" style={{ color: C.text }}>{value}</p>
+    </div>
+  ) : null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ backgroundColor: "rgba(15,23,42,0.5)", backdropFilter: "blur(4px)" }}>
+      <Card className="w-full max-w-3xl p-6 max-h-[92vh] overflow-y-auto">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="font-bold text-lg" style={{ color: C.text }}>{d ? d.candidateName : "Interview"}</h2>
+            {d && (
+              <p className="text-sm mt-0.5" style={{ color: C.muted }}>
+                {d.roleTitle} · Round {d.roundNumber} {ROUND_LABELS[d.interviewType] || d.interviewType}
+                {d.confirmedSlot && <> · {formatFullDateTime(d.confirmedSlot)}</>}
+              </p>
+            )}
+          </div>
+          <button onClick={onClose} className="shrink-0 p-1 rounded-lg hover:bg-slate-100" aria-label="Close"><X size={18} style={{ color: C.muted }} /></button>
+        </div>
+
+        {loading && !d && <div className="mt-4"><LoadingCard rows={3} /></div>}
+        {error && !d && <div className="mt-4"><ErrorBanner message={error} onRetry={reload} /></div>}
+
+        {d && (
+          <div className="mt-5 space-y-5">
+            <div className="grid md:grid-cols-2 gap-5">
+              <div className="space-y-3">
+                <p className="text-xs font-bold uppercase tracking-wide" style={{ color: C.accent }}>The role</p>
+                {field("Title", d.roleTitle)}
+                {field("Department and location", [d.department, d.location].filter(Boolean).join(" · "))}
+                {field("Level", d.experienceLevel)}
+                {field("Required skills", d.requiredSkills)}
+                {field("Description", d.roleDescription)}
+              </div>
+              <div className="space-y-3">
+                <p className="text-xs font-bold uppercase tracking-wide" style={{ color: C.accent }}>The candidate</p>
+                {field("Headline", d.candidateHeadline)}
+                {field("Skills", d.candidateSkills)}
+                {field("Years of experience", d.candidateYearsExperience != null ? String(d.candidateYearsExperience) : null)}
+                {!d.candidateHeadline && !d.candidateSkills && d.candidateYearsExperience == null && (
+                  <p className="text-sm" style={{ color: C.muted }}>No profile summary on file. See the CV below.</p>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide mb-1.5" style={{ color: C.accent }}>CV</p>
+              <div className="rounded-xl p-4 text-xs leading-relaxed whitespace-pre-wrap max-h-72 overflow-y-auto"
+                style={{ backgroundColor: C.surface, color: C.text }}>
+                {d.resumeText || "No CV text on file for this candidate."}
+              </div>
+            </div>
+
+            {d.submittedScorecard && <ScorecardReadOnly scorecard={d.submittedScorecard} criteria={d.criteria} />}
+
+            {!d.submittedScorecard && d.status === "CONFIRMED" && (
+              <div className="rounded-xl border p-4 flex items-center justify-between gap-3" style={{ borderColor: `${C.accent}55`, backgroundColor: `${C.accent}0D` }}>
+                <p className="text-sm" style={{ color: C.text }}>After the interview, record your ratings and verdict. Your scorecard goes to the recruiting team.</p>
+                <Btn onClick={() => { setForm(emptyScorecard); setSaveError(null); setWriting(true); }}>Write scorecard</Btn>
+              </div>
+            )}
+            {!d.submittedScorecard && d.status === "PROPOSED" && (
+              <p className="text-sm" style={{ color: C.muted }}>The candidate has not chosen a time yet. You can write your scorecard once the interview is booked.</p>
+            )}
+          </div>
+        )}
+      </Card>
+
+      {writing && d && (
+        <ScorecardModal title={`Scorecard · ${ROUND_LABELS[d.interviewType] || d.interviewType} — ${d.candidateName}`}
+          criteria={d.criteria.map(c => [c.key, c.label])}
+          isPhone={d.interviewType === "PHONE_SCREEN"}
+          form={form} setForm={setForm}
+          onSubmit={submit} onCancel={() => setWriting(false)}
+          submitting={saving} error={saveError} />
+      )}
+    </div>
+  );
+}
+
+function InterviewerHome() {
+  const { data, loading, error, reload } = useApi("/interviewer/interviews");
+  const [openId, setOpenId] = useState(null);
+
+  const byStatus = s => (data || []).filter(i => i.status === s);
+  const todo = byStatus("CONFIRMED");
+  const waiting = byStatus("PROPOSED");
+  const done = byStatus("COMPLETED").sort((a, b) => new Date(b.confirmedSlot || 0) - new Date(a.confirmedSlot || 0));
+
+  const row = i => (
+    <button key={i.id} onClick={() => setOpenId(i.id)}
+      className="w-full text-left flex items-center gap-3 px-4 py-3 border-b last:border-b-0 hover:bg-slate-50 transition-colors"
+      style={{ borderColor: C.border }}>
+      <Avatar name={i.candidateName} size={36} />
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-semibold truncate" style={{ color: C.text }}>{i.candidateName}</p>
+        <p className="text-xs truncate" style={{ color: C.muted }}>
+          {i.roleTitle} · Round {i.roundNumber} {ROUND_LABELS[i.interviewType] || i.interviewType}
+        </p>
+      </div>
+      <div className="text-right shrink-0">
+        <p className="text-xs font-semibold" style={{ color: C.text }}>{i.confirmedSlot ? formatFullDateTime(i.confirmedSlot) : "Time not chosen yet"}</p>
+        {i.status === "COMPLETED"
+          ? <span className="text-[11px] font-semibold" style={{ color: C.success }}>Scorecard submitted</span>
+          : i.status === "CONFIRMED"
+            ? <span className="text-[11px] font-semibold" style={{ color: C.warning }}>Scorecard needed</span>
+            : <span className="text-[11px]" style={{ color: C.muted }}>Waiting for the candidate</span>}
+      </div>
+      <ChevronRight size={16} style={{ color: C.muted }} />
+    </button>
+  );
+
+  const section = (title, hint, items) => items.length > 0 && (
+    <div className="mb-6">
+      <div className="flex items-baseline gap-2 mb-2">
+        <h2 className="text-sm font-bold" style={{ color: C.text }}>{title}</h2>
+        <span className="text-xs" style={{ color: C.muted }}>{items.length} · {hint}</span>
+      </div>
+      <Card className="overflow-hidden">{items.map(row)}</Card>
+    </div>
+  );
+
+  return (
+    <div>
+      <TopBar title="My Interviews" subtitle="Interviews assigned to you. Review the candidate, then submit your scorecard." />
+      {error && <ErrorBanner message={error} onRetry={reload} />}
+      {loading && !data && <LoadingCard rows={3} />}
+      {data && data.length === 0 && (
+        <Card className="p-12 text-center">
+          <ClipboardCheck size={28} className="mx-auto mb-3" style={{ color: C.muted }} />
+          <p className="text-sm font-semibold" style={{ color: C.text }}>No interviews assigned to you yet</p>
+          <p className="text-xs mt-1" style={{ color: C.muted }}>When the recruiting team books an interview with you, it will appear here.</p>
+        </Card>
+      )}
+      {section("Ready for you", "booked, scorecard needed after the interview", todo)}
+      {section("Waiting for the candidate", "the candidate has not picked a time", waiting)}
+      {section("Completed", "your submitted scorecards", done)}
+      {openId && <InterviewPrepModal interviewId={openId} onClose={() => setOpenId(null)} onChanged={reload} />}
+    </div>
+  );
+}
+
+// ============================================================
 // APP SHELL
 // ============================================================
 export default function App() {
@@ -8525,6 +9044,7 @@ export default function App() {
   const [cameFrom, setCameFrom] = useState("dashboard");
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [passwordModalOpen, setPasswordModalOpen] = useState(false);
   const accountMenuRef = useRef(null);
 
   useEffect(() => {
@@ -8538,6 +9058,14 @@ export default function App() {
     return () => document.removeEventListener("mousedown", closeAccountMenu);
   }, []);
 
+  // After a page reload only the token survives, so ask the server who this is (name and role).
+  useEffect(() => {
+    if (user && !userMeta) {
+      apiFetch("/auth/me").then(setUserMeta)
+        .catch(() => setUserMeta({ username: user.username, fullName: user.username, role: "" }));
+    }
+  }, [user, userMeta]);
+
   function handleLogin(userData) {
     setUserMeta(userData);
     setUser({ username: userData.username });
@@ -8550,8 +9078,16 @@ export default function App() {
   }
 
   if (!user) return <LoginScreen onLogin={handleLogin} />;
+  // Do not draw the full app for a moment before we know whether this is an interviewer.
+  if (!userMeta) return (
+    <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: C.bg }}><Spinner size={24} /></div>
+  );
 
-  const displayUser = userMeta || { fullName: user.username, role: "" };
+  const displayUser = userMeta;
+  const isInterviewer = displayUser.role === "INTERVIEWER";
+  const isAdmin = displayUser.role === "ADMIN";
+  // An interviewer only ever sees their own screen; the Users page is for administrators.
+  const page = isInterviewer ? "myInterviews" : (active === "users" && !isAdmin ? "dashboard" : active);
 
   function openCandidate(id) {
     if (active !== "candidate") setCameFrom(active);
@@ -8577,6 +9113,8 @@ export default function App() {
       </div>
     ),
     cvInbox: <CvInboxView />,
+    myInterviews: <InterviewerHome />,
+    users: isAdmin ? <UsersView currentUsername={displayUser.username} /> : null,
     candidate: candidateId && (
       <CandidateProfileView candidateId={candidateId} onBack={() => setActive(cameFrom)} onOpenCandidate={openCandidate} />
     ),
@@ -8585,25 +9123,27 @@ export default function App() {
   return (
     <div className="flex h-screen overflow-hidden"
       style={{ backgroundColor: C.bg, fontFamily: "'Inter',ui-sans-serif,system-ui,sans-serif" }}>
-      <Sidebar active={active} setActive={setActive} user={displayUser} />
+      <Sidebar active={page} setActive={setActive} user={displayUser} />
       <div className="flex-1 flex flex-col overflow-hidden">
         <div className="h-14 shrink-0 flex items-center px-8 border-b bg-white gap-3"
           style={{ borderColor: C.border }}>
-          <CandidateSearchBox onOpen={openCandidate} />
+          {!isInterviewer && <CandidateSearchBox onOpen={openCandidate} />}
           <div className="flex-1" />
-          <button
-            onClick={() => setAssistantOpen(open => !open)}
-            className="h-8 px-3 rounded-xl flex items-center gap-1.5 hover:bg-indigo-50 transition-colors"
-            style={{
-              color: assistantOpen ? "#1479A8" : C.accent,
-              backgroundColor: assistantOpen ? "#DDF3FC" : "#EFF9FE",
-            }}
-            title="AI assistance"
-            aria-label="Open AI assistance"
-          >
-            <Sparkles size={16} />
-            <span className="text-xs font-semibold">AI Assistance</span>
-          </button>
+          {!isInterviewer && (
+            <button
+              onClick={() => setAssistantOpen(open => !open)}
+              className="h-8 px-3 rounded-xl flex items-center gap-1.5 hover:bg-indigo-50 transition-colors"
+              style={{
+                color: assistantOpen ? "#1479A8" : C.accent,
+                backgroundColor: assistantOpen ? "#DDF3FC" : "#EFF9FE",
+              }}
+              title="AI assistance"
+              aria-label="Open AI assistance"
+            >
+              <Sparkles size={16} />
+              <span className="text-xs font-semibold">AI Assistance</span>
+            </button>
+          )}
           <button className="w-8 h-8 rounded-xl flex items-center justify-center hover:bg-slate-100 transition-colors relative">
             <Bell size={16} style={{ color: C.muted }} />
             <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full"
@@ -8625,6 +9165,13 @@ export default function App() {
                   <p className="text-xs truncate" style={{ color: C.muted }}>{displayUser.role}</p>
                 </div>
                 <button
+                  onClick={() => { setAccountMenuOpen(false); setPasswordModalOpen(true); }}
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-left hover:bg-slate-50"
+                  style={{ color: C.text }}
+                >
+                  <KeyRound size={14} /> Change password
+                </button>
+                <button
                   onClick={handleLogout}
                   className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-left hover:bg-red-50"
                   style={{ color: C.danger }}
@@ -8636,14 +9183,15 @@ export default function App() {
           </div>
         </div>
         <div className="flex-1 flex min-h-0 overflow-hidden">
-          <main className="flex-1 overflow-y-auto min-w-0" style={{ padding: active === "pipeline" ? "1.5rem" : "2rem" }}>
-            <div className={active === "pipeline" ? "" : "max-w-6xl mx-auto"}>
-              {views[active]}
+          <main className="flex-1 overflow-y-auto min-w-0" style={{ padding: page === "pipeline" ? "1.5rem" : "2rem" }}>
+            <div className={page === "pipeline" ? "" : "max-w-6xl mx-auto"}>
+              {views[page]}
             </div>
           </main>
-          <AssistantPanel active={active} open={assistantOpen} onClose={() => setAssistantOpen(false)} />
+          {!isInterviewer && <AssistantPanel active={page} open={assistantOpen} onClose={() => setAssistantOpen(false)} />}
         </div>
       </div>
+      {passwordModalOpen && <ChangePasswordModal onClose={() => setPasswordModalOpen(false)} />}
     </div>
   );
 }

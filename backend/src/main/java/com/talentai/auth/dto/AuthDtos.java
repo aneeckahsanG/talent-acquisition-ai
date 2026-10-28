@@ -1,6 +1,5 @@
 package com.talentai.auth.dto;
 
-import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
@@ -24,23 +23,23 @@ public class AuthDtos {
     @Data
     @NoArgsConstructor
     @AllArgsConstructor
-    public static class RegisterRequest {
+    public static class ChangePasswordRequest {
         @NotBlank
-        @Size(min = 3, max = 100)
+        private String currentPassword;
+
+        @NotBlank
+        @Size(min = 8, message = "The new password must be at least 8 characters")
+        private String newPassword;
+    }
+
+    /** Who the current token belongs to; lets the UI recover the name and role after a page reload. */
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class MeResponse {
         private String username;
-
-        @NotBlank
-        @Email
-        private String email;
-
-        @NotBlank
-        @Size(min = 8)
-        private String password;
-
-        @NotBlank
         private String fullName;
-
-        // RECRUITER, ADMIN, HIRING_MANAGER - defaults to RECRUITER if blank
         private String role;
     }
 

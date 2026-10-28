@@ -58,6 +58,7 @@ public class CalendarController {
     @GetMapping("/interviewers")
     public List<Map<String, Object>> interviewers() {
         return appUserRepository.findAll().stream()
+                .filter(com.talentai.common.entity.AppUser::isActive)
                 .map(u -> Map.<String, Object>of("id", u.getId(), "fullName", u.getFullName(), "role", String.valueOf(u.getRole())))
                 .toList();
     }
