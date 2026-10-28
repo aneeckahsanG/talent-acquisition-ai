@@ -5,6 +5,7 @@ import com.talentai.common.entity.Candidate;
 import com.talentai.common.entity.JobRequisition;
 import com.talentai.common.repository.CandidateRepository;
 import com.talentai.common.repository.JobRequisitionRepository;
+import com.talentai.common.repository.PipelineStageRepository;
 import com.talentai.common.util.PdfTextExtractor;
 import com.talentai.cvinbox.dto.CvInboxDtos.ProcessNowResponse;
 import com.talentai.cvinbox.dto.CvInboxDtos.RoleMatchDetail;
@@ -13,6 +14,7 @@ import com.talentai.cvinbox.entity.CvInboxSettings;
 import com.talentai.cvinbox.repository.CvInboxItemRepository;
 import com.talentai.cvinbox.repository.CvInboxSettingsRepository;
 import com.talentai.cvinbox.service.ExternalSftpClientService.RemoteCv;
+import com.talentai.screening.service.ScreeningAgentService;
 import com.talentai.sourcing.dto.SourcingDtos.ClaudeMatchResponse;
 import com.talentai.sourcing.service.SourcingAgentService;
 import lombok.RequiredArgsConstructor;
@@ -36,9 +38,11 @@ import java.util.stream.Stream;
  * Reads whatever CVs are sitting in the SFTP inbox, scores each one against every open
  * requisition using the real Sourcing Agent LLM call ({@link
  * SourcingAgentService#scoreCandidateAgainstRequisition}) — the same prompt/model used for a
- * manual talent-pool upload, just without persisting a SourcingMatch for every role — records
- * the judgment for the dashboard, and moves the file into .CONSIDERED/ or .REJECTED/ depending
- * on the outcome.
+ * manual talent-pool upload — then, for the single best-matching role only, persists a
+ * SourcingMatch and runs the real Screening Agent ({@link
+ * ScreeningAgentService#runScreeningInternal}), exactly like the auto-screen step that follows
+ * a manual match. Records the judgment for the dashboard and moves the file into .CONSIDERED/
+ * or .REJECTED/ depending on the outcome.
  *
  * Only ever invoked by {@code processNow()} — there is no background scheduler. Note:
  * individual repository/service calls below each manage their own transaction boundary
@@ -56,7 +60,9 @@ public class CvInboxProcessingService {
 
     private final CandidateRepository candidateRepository;
     private final JobRequisitionRepository jobRequisitionRepository;
+    private final PipelineStageRepository pipelineStageRepository;
     private final SourcingAgentService sourcingAgentService;
+    private final ScreeningAgentService screeningAgentService;
     private final CvInboxItemRepository cvInboxItemRepository;
     private final CvInboxSettingsRepository cvInboxSettingsRepository;
     private final ExternalSftpClientService externalSftpClientService;
@@ -209,14 +215,28 @@ public class CvInboxProcessingService {
         boolean considered = best != null
                 && best.score().getMatchScore().compareTo(SourcingAgentService.HIGH_FIT_THRESHOLD) >= 0;
 
-        // Only the single best-matching role gets an actual SourcingMatch/PipelineStage entry —
-        // the other roles' scores still show in the breakdown below for transparency, they just
-        // don't clutter Sourcing/Pipeline with every role compared.
-        String bestPipelineStage = (best != null)
-                ? sourcingAgentService.persistMatch(finalCandidate, best.role(), best.score()).getPipelineStage()
-                : null;
+        // Only the single best-matching role gets an actual SourcingMatch/ScreeningResult/
+        // PipelineStage entry — the other roles' scores still show in the breakdown below for
+        // transparency, they just don't clutter Sourcing/Screening/Pipeline with every role
+        // compared. Screening mirrors the same auto-screen step a manual talent-pool upload
+        // triggers after a match (SourcingAgentService#matchCandidateToRequisition).
+        String bestPipelineStage = null;
+        if (best != null) {
+            sourcingAgentService.persistMatch(finalCandidate, best.role(), best.score());
+            try {
+                screeningAgentService.runScreeningInternal(finalCandidate, best.role());
+            } catch (Exception e) {
+                log.warn("Auto-screening failed for candidate {} / requisition {}: {}",
+                        finalCandidate.getId(), best.role().getId(), e.getMessage());
+            }
+            bestPipelineStage = pipelineStageRepository
+                    .findByCandidateIdAndRequisitionId(finalCandidate.getId(), best.role().getId())
+                    .map(stage -> stage.getStage())
+                    .orElse(null);
+        }
 
         final ScoredRole finalBest = best;
+        final String finalBestPipelineStage = bestPipelineStage;
         List<RoleMatchDetail> details = scored.stream()
                 .map(s -> RoleMatchDetail.builder()
                         .requisitionId(s.role().getId())
@@ -224,7 +244,7 @@ public class CvInboxProcessingService {
                         .matchScore(s.score().getMatchScore())
                         .rationale(s.score().getRationale())
                         .pipelineStage(finalBest != null && s.role().getId().equals(finalBest.role().getId())
-                                ? bestPipelineStage : null)
+                                ? finalBestPipelineStage : null)
                         .build())
                 .toList();
 
