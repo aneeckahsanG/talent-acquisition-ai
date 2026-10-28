@@ -209,12 +209,22 @@ public class CvInboxProcessingService {
         boolean considered = best != null
                 && best.score().getMatchScore().compareTo(SourcingAgentService.HIGH_FIT_THRESHOLD) >= 0;
 
+        // Only the single best-matching role gets an actual SourcingMatch/PipelineStage entry —
+        // the other roles' scores still show in the breakdown below for transparency, they just
+        // don't clutter Sourcing/Pipeline with every role compared.
+        String bestPipelineStage = (best != null)
+                ? sourcingAgentService.persistMatch(finalCandidate, best.role(), best.score()).getPipelineStage()
+                : null;
+
+        final ScoredRole finalBest = best;
         List<RoleMatchDetail> details = scored.stream()
                 .map(s -> RoleMatchDetail.builder()
                         .requisitionId(s.role().getId())
                         .requisitionTitle(s.role().getTitle())
                         .matchScore(s.score().getMatchScore())
                         .rationale(s.score().getRationale())
+                        .pipelineStage(finalBest != null && s.role().getId().equals(finalBest.role().getId())
+                                ? bestPipelineStage : null)
                         .build())
                 .toList();
 
