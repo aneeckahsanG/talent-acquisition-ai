@@ -3,10 +3,8 @@ package com.talentai.cvinbox.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.talentai.common.entity.Candidate;
 import com.talentai.common.entity.JobRequisition;
-import com.talentai.common.entity.PipelineStage;
 import com.talentai.common.repository.CandidateRepository;
 import com.talentai.common.repository.JobRequisitionRepository;
-import com.talentai.common.repository.PipelineStageRepository;
 import com.talentai.common.util.PdfTextExtractor;
 import com.talentai.cvinbox.dto.CvInboxDtos.ProcessNowResponse;
 import com.talentai.cvinbox.dto.CvInboxDtos.RoleMatchDetail;
@@ -15,11 +13,7 @@ import com.talentai.cvinbox.entity.CvInboxSettings;
 import com.talentai.cvinbox.repository.CvInboxItemRepository;
 import com.talentai.cvinbox.repository.CvInboxSettingsRepository;
 import com.talentai.cvinbox.service.ExternalSftpClientService.RemoteCv;
-import com.talentai.cvinbox.service.KeywordMatchScoringService.RoleScore;
-import com.talentai.screening.entity.ScreeningResult;
-import com.talentai.screening.repository.ScreeningResultRepository;
-import com.talentai.sourcing.entity.SourcingMatch;
-import com.talentai.sourcing.repository.SourcingMatchRepository;
+import com.talentai.sourcing.dto.SourcingDtos.ClaudeMatchResponse;
 import com.talentai.sourcing.service.SourcingAgentService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,7 +21,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
-import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -41,17 +34,11 @@ import java.util.stream.Stream;
 
 /**
  * Reads whatever CVs are sitting in the SFTP inbox, scores each one against every open
- * requisition using {@link KeywordMatchScoringService} (plain keyword/string matching — no
- * LLM call, since this feature needs to work without a configured/funded AI provider; swap
- * in a real AI-based scorer later without touching anything else here), records the
- * judgment for the dashboard, and moves the file into .CONSIDERED/ or .REJECTED/ depending
+ * requisition using the real Sourcing Agent LLM call ({@link
+ * SourcingAgentService#scoreCandidateAgainstRequisition}) — the same prompt/model used for a
+ * manual talent-pool upload, just without persisting a SourcingMatch for every role — records
+ * the judgment for the dashboard, and moves the file into .CONSIDERED/ or .REJECTED/ depending
  * on the outcome.
- *
- * Unlike the shared Talent Pool / Sourcing Agent flow (which touches every open role for
- * every candidate), CV Inbox only ever writes a SourcingMatch/ScreeningResult/PipelineStage
- * for the single best-matching role — the other roles' scores are still shown in the
- * dashboard's per-role breakdown, they just don't clutter Pipeline/Screening with entries
- * for roles that aren't actually the candidate's best fit.
  *
  * Only ever invoked by {@code processNow()} — there is no background scheduler. Note:
  * individual repository/service calls below each manage their own transaction boundary
@@ -69,10 +56,7 @@ public class CvInboxProcessingService {
 
     private final CandidateRepository candidateRepository;
     private final JobRequisitionRepository jobRequisitionRepository;
-    private final SourcingMatchRepository sourcingMatchRepository;
-    private final ScreeningResultRepository screeningResultRepository;
-    private final PipelineStageRepository pipelineStageRepository;
-    private final KeywordMatchScoringService keywordMatchScoringService;
+    private final SourcingAgentService sourcingAgentService;
     private final CvInboxItemRepository cvInboxItemRepository;
     private final CvInboxSettingsRepository cvInboxSettingsRepository;
     private final ExternalSftpClientService externalSftpClientService;
@@ -173,7 +157,7 @@ public class CvInboxProcessingService {
                 .build();
     }
 
-    private record ScoredRole(JobRequisition role, RoleScore score) {}
+    private record ScoredRole(JobRequisition role, ClaudeMatchResponse score) {}
 
     /** @return true if the best-matching role cleared the "high fit" bar (CONSIDERED). */
     private boolean processOne(String fileName, byte[] content) throws IOException {
@@ -203,35 +187,34 @@ public class CvInboxProcessingService {
             candidate.setResumeText(resumeText);
             candidate.setResumeFilename(fileName);
         }
-        candidate = candidateRepository.save(candidate);
+        final Candidate finalCandidate = candidateRepository.save(candidate);
 
+        // Score against every open role with the real Sourcing Agent LLM call, purely to rank
+        // and pick the best fit — nothing is persisted here. A role that fails to score (AI
+        // hiccup) is just skipped rather than failing the whole file.
         List<ScoredRole> scored = jobRequisitionRepository.findByStatus("OPEN").stream()
-                .map(role -> new ScoredRole(role, keywordMatchScoringService.score(resumeText, role)))
+                .<ScoredRole>mapMulti((role, consumer) -> {
+                    try {
+                        consumer.accept(new ScoredRole(role, sourcingAgentService.scoreCandidateAgainstRequisition(finalCandidate, role)));
+                    } catch (Exception e) {
+                        log.warn("Skipping role {} for candidate {} — scoring failed: {}", role.getId(), finalCandidate.getId(), e.getMessage());
+                    }
+                })
                 .toList();
 
         ScoredRole best = scored.stream()
-                .max(Comparator.comparing(s -> s.score().getOverallScore()))
+                .max(Comparator.comparing(s -> s.score().getMatchScore()))
                 .orElse(null);
 
         boolean considered = best != null
-                && best.score().getOverallScore().compareTo(SourcingAgentService.HIGH_FIT_THRESHOLD) >= 0;
+                && best.score().getMatchScore().compareTo(SourcingAgentService.HIGH_FIT_THRESHOLD) >= 0;
 
-        // Only the single best-matching role gets an actual SourcingMatch/ScreeningResult/
-        // PipelineStage entry — the other roles' scores still show in the breakdown below for
-        // transparency, they just don't clutter Pipeline/Screening with every role compared.
-        String bestPipelineStage = (best != null)
-                ? recordBestRoleMatch(candidate, best.role(), best.score())
-                : null;
-
-        final ScoredRole finalBest = best;
         List<RoleMatchDetail> details = scored.stream()
                 .map(s -> RoleMatchDetail.builder()
                         .requisitionId(s.role().getId())
                         .requisitionTitle(s.role().getTitle())
-                        .matchScore(s.score().getOverallScore())
+                        .matchScore(s.score().getMatchScore())
                         .rationale(s.score().getRationale())
-                        .pipelineStage(finalBest != null && s.role().getId().equals(finalBest.role().getId())
-                                ? bestPipelineStage : null)
                         .build())
                 .toList();
 
@@ -244,54 +227,13 @@ public class CvInboxProcessingService {
                 .status("PROCESSED")
                 .bestRequisitionId(best != null ? best.role().getId() : null)
                 .bestRequisitionTitle(best != null ? best.role().getTitle() : null)
-                .bestMatchScore(best != null ? best.score().getOverallScore() : null)
+                .bestMatchScore(best != null ? best.score().getMatchScore() : null)
                 .bestRationale(best != null ? best.score().getRationale() : null)
                 .matchDetailsJson(toJson(details))
                 .processedAt(LocalDateTime.now())
                 .build());
 
         return considered;
-    }
-
-    /** Upserts a SourcingMatch + ScreeningResult + PipelineStage for one role — called only
-     *  for the best-matching role, never for every open role.
-     *  @return the resulting pipeline stage name, for the per-role breakdown. */
-    private String recordBestRoleMatch(Candidate candidate, JobRequisition role, RoleScore score) {
-        SourcingMatch match = sourcingMatchRepository
-                .findByCandidateIdAndRequisitionId(candidate.getId(), role.getId())
-                .orElse(SourcingMatch.builder().candidateId(candidate.getId()).requisitionId(role.getId()).build());
-        match.setMatchScore(score.getOverallScore());
-        match.setMatchRationale(score.getRationale());
-        match.setIsProactive(true);
-        if (match.getStatus() == null) match.setStatus("NEW");
-        sourcingMatchRepository.save(match);
-
-        String recommendation = score.getOverallScore().compareTo(SourcingAgentService.HIGH_FIT_THRESHOLD) >= 0
-                ? "ADVANCE"
-                : score.getOverallScore().compareTo(BigDecimal.valueOf(40)) < 0 ? "REJECT" : "REVIEW";
-
-        ScreeningResult result = screeningResultRepository
-                .findByCandidateIdAndRequisitionId(candidate.getId(), role.getId())
-                .orElse(ScreeningResult.builder().candidateId(candidate.getId()).requisitionId(role.getId()).build());
-        result.setOverallScore(score.getOverallScore());
-        result.setSkillsScore(score.getSkillsScore());
-        result.setExperienceScore(score.getExperienceScore());
-        result.setStrengths(score.getStrengths());
-        result.setGaps(score.getGaps());
-        result.setRationale(score.getRationale());
-        result.setRecommendation(recommendation);
-        result.setIsEdgeCase("REVIEW".equals(recommendation));
-        screeningResultRepository.save(result);
-
-        PipelineStage stage = pipelineStageRepository
-                .findByCandidateIdAndRequisitionId(candidate.getId(), role.getId())
-                .orElse(PipelineStage.builder().candidateId(candidate.getId()).requisitionId(role.getId()).build());
-        stage.setStage("SCREENED");
-        stage.setUpdatedByAgent("SCREENING");
-        stage.setNotes("CV Inbox keyword match — recommendation: " + recommendation + " (score: " + score.getOverallScore() + ")");
-        pipelineStageRepository.save(stage);
-
-        return stage.getStage();
     }
 
     private void recordFailure(String fileName, String errorMessage) {

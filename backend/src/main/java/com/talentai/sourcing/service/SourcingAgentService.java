@@ -205,7 +205,13 @@ public class SourcingAgentService {
                 .toList();
     }
 
-    private SourcingMatchResponse matchCandidateToRequisition(Candidate candidate, JobRequisition requisition, boolean autoScreen) {
+    /**
+     * Pure AI fit-scoring call for one candidate/requisition pair — no persistence. Exposed
+     * publicly so callers that need to rank a candidate against several roles before deciding
+     * which one(s) to actually persist (e.g. CV Inbox) can reuse the exact same Sourcing Agent
+     * prompt/model instead of a separate scoring mechanism.
+     */
+    public ClaudeMatchResponse scoreCandidateAgainstRequisition(Candidate candidate, JobRequisition requisition) {
         String userPrompt = """
                 ## Job Requisition
                 Title: %s
@@ -234,9 +240,8 @@ public class SourcingAgentService {
                 nullToDash(candidate.getResumeText())
         );
 
-        ClaudeMatchResponse parsed;
         try {
-            parsed = chatClient.prompt()
+            return chatClient.prompt()
                     .system(promptLoader.load("sourcing-agent"))
                     .user(userPrompt)
                     .call()
@@ -246,6 +251,10 @@ public class SourcingAgentService {
                     candidate.getId(), requisition.getId(), e);
             throw new IllegalStateException("Sourcing Agent returned an unexpected response format.");
         }
+    }
+
+    private SourcingMatchResponse matchCandidateToRequisition(Candidate candidate, JobRequisition requisition, boolean autoScreen) {
+        ClaudeMatchResponse parsed = scoreCandidateAgainstRequisition(candidate, requisition);
 
         final SourcingMatch match = sourcingMatchRepository
                 .findByCandidateIdAndRequisitionId(candidate.getId(), requisition.getId())
