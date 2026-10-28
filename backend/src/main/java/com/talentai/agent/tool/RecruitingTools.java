@@ -31,6 +31,9 @@ import java.util.List;
 @Slf4j
 public class RecruitingTools {
 
+    /** Recorded as the actor on stage moves the agent makes, so the board does not credit them to a recruiter. */
+    private static final String AGENT_ACTOR = "ORCHESTRATOR";
+
     private final ScreeningAgentService screeningAgentService;
     private final SourcingAgentService sourcingAgentService;
     private final AdminAgentService adminAgentService;
@@ -123,8 +126,9 @@ public class RecruitingTools {
         }
     }
 
-    @Tool(description = "Move a candidate to a new pipeline stage. Valid stages: APPLIED, SCREENING, SHORTLISTED, INTERVIEW_SCHEDULED, OFFER, HIRED, REJECTED. "
-            + "Stages OFFER and HIRED require prior human approval — call requestApproval first if approval is not yet granted.")
+    @Tool(description = "Move a candidate to a new pipeline stage. Valid stages: SCREENED, SHORTLISTED, INTERVIEW_SCHEDULED, OFFER, HIRED, REJECTED. "
+            + "Stages OFFER, HIRED and REJECTED require recruiter approval (moving to REJECTED also emails the candidate): "
+            + "the tool queues the move and returns PENDING_APPROVAL, so stop and report that it is waiting.")
     public String moveCandidateStage(Long requisitionId, Long candidateId, String newStage) {
         String actionKey = "moveStage:" + requisitionId + ":" + candidateId + ":" + newStage;
         if (isHighRiskStage(newStage) && !approvalGate.isApproved(actionKey)) {
@@ -135,7 +139,7 @@ public class RecruitingTools {
                     + ". Retry this tool call once the recruiter approves.";
         }
         try {
-            return toJson(orchestratorService.moveStage(requisitionId, candidateId, newStage));
+            return toJson(orchestratorService.moveStage(requisitionId, candidateId, newStage, AGENT_ACTOR));
         } catch (Exception e) {
             return error("moveCandidateStage", e);
         }
@@ -181,7 +185,8 @@ public class RecruitingTools {
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private boolean isHighRiskStage(String stage) {
-        return stage != null && (stage.equalsIgnoreCase("OFFER") || stage.equalsIgnoreCase("HIRED"));
+        return stage != null && (stage.equalsIgnoreCase("OFFER") || stage.equalsIgnoreCase("HIRED")
+                || stage.equalsIgnoreCase("REJECTED"));
     }
 
     private String toJson(Object obj) {

@@ -67,7 +67,7 @@ public class CandidateDirectoryService {
     public record ScorecardView(String verdict, Map<String, Integer> ratings, String notes,
                                 String noticePeriod, String expectedSalary, LocalDateTime submittedAt) {}
 
-    public record InterviewView(Long id, String roleTitle, String interviewType, String status,
+    public record InterviewView(Long id, Long requisitionId, String roleTitle, String interviewType, String status,
                                 String interviewerName, LocalDateTime confirmedSlot, String notes,
                                 ScorecardView scorecard) {}
 
@@ -144,7 +144,7 @@ public class CandidateDirectoryService {
         List<InterviewView> interviews = interviewScheduleRepository.findByCandidateId(id).stream()
                 .sorted(Comparator.comparing(InterviewSchedule::getCreatedAt,
                         Comparator.nullsLast(Comparator.reverseOrder())))
-                .map(i -> new InterviewView(i.getId(), title(roles.get(i.getRequisitionId())), i.getInterviewType(),
+                .map(i -> new InterviewView(i.getId(), i.getRequisitionId(), title(roles.get(i.getRequisitionId())), i.getInterviewType(),
                         i.getStatus(), i.getInterviewerId() != null ? userNames.get(i.getInterviewerId()) : null,
                         i.getConfirmedSlot(), i.getNotes(),
                         scorecardRepository.findByInterviewId(i.getId()).map(this::toScorecard).orElse(null)))

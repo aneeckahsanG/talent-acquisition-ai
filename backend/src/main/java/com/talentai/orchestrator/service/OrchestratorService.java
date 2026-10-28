@@ -81,7 +81,7 @@ public class OrchestratorService {
     private String appBaseUrl;
 
     private static final List<String> INTERVIEW_OR_LATER = List.of(
-            "INTERVIEW_SCHEDULED", "OFFER", "HIRED", "REJECTED"
+            "INTERVIEW_SCHEDULED", "OFFER", "HIRED", "REJECTED", "NO_SHOW"
     );
 
     public PipelineBoardResponse getPipelineBoard(Long requisitionId) {

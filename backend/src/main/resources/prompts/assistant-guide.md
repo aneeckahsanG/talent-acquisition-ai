@@ -31,7 +31,7 @@ Type at least 2 characters in the top-bar search box. It searches email, name, p
 and stage. Pressing Enter opens the first match; clicking opens that candidate. It does not tolerate typos.
 
 The **candidate profile** shows: contact details and skills; one card per application (stage, AI score,
-recommendation, reviewer decision, rejection reason); every interview with its scorecard; offers; every email
+recommendation, reviewer decision, rejection reason); every interview with its scorecard (and the AI Debrief for each role that has one); offers; every email
 sent (click to read it); the timeline; and the resume text. A yellow warning appears when another candidate
 record uses the same email address (it may be a shared mailbox or a duplicate). Every search and profile view
 is logged. The application cannot merge duplicates, delete a candidate or export candidate data.
@@ -55,8 +55,17 @@ is logged. The application cannot merge duplicates, delete a candidate or export
   description. Scores: overall, skills, experience and culture fit, plus strengths, gaps and a rationale.
 - The AI gives one of three recommendations: **Advance**, **Reject** or **Review**. Review means a borderline
   or unusual case (roughly an overall score of 45-65) that a human must decide.
-- A clear Reject moves the candidate to **Rejected** automatically. Advance and Review leave the candidate at
-  **Screened**, waiting for a recruiter. Nothing is shortlisted automatically.
+- The screening itself only scores and recommends. A clear Reject from screening moves the candidate to
+  **Rejected** automatically; Advance and Review leave the candidate at **Screened**, waiting for a recruiter.
+- **AI agent (Orchestrator).** Applications that arrive through the inbound application route (for example a
+  job-board webhook) also start an AI agent run. For a recommendation of Advance with a score of 75 or more,
+  the agent **shortlists the candidate by itself** and drafts an outreach email, which still needs a recruiter's
+  approval before it is sent. For Review it leaves the candidate at Screened for a recruiter. For a clear Reject
+  it queues the rejection and waits: **rejecting, and any move to Offer or Hired, always needs a recruiter's
+  approval**. Open the role in Open Roles and look at its **Agent Activity** panel to see each run, what the
+  agent did, and to approve or deny what it is waiting on. On the Pipeline, a card moved by the agent says
+  "Moved by AI agent"; a recruiter's moves say "Moved by Recruiter" and an accepted offer says "Moved by
+  Candidate". Applications that do not start an agent run stay at Screened until a recruiter acts.
 - Applications from the job board are screened automatically; their rows show "Screening in progress". If the
   AI is unavailable or paused (see AI usage limits), the application is still saved and is screened
   automatically later.
@@ -105,7 +114,25 @@ is logged. The application cannot merge duplicates, delete a candidate or export
    technical skills, problem solving, code/design quality, communication. Final: culture and values fit,
    ownership and leadership, role alignment, commitment. Submitting the scorecard marks the round completed;
    a scorecard can be submitted only once.
-6. Once the rounds are done, the **Advance to Offer** button on the candidate's Interview card moves them to the
+6. **AI Debrief**: once a candidate has at least one scorecard, an **AI Debrief** button appears on their card in the
+   Interview, Offer, Hired, Rejected and No Show columns (and on their profile page, next to the role). It asks the AI to read all of that candidate's scorecards
+   for the role and show one view: a recommendation (**Ready for offer**, **Add another round**, **Discuss as a
+   team** or **Do not proceed**), a confidence level, a short summary, where interviewers agree and differ,
+   concerns to weigh, and a suggested next step. It is advice only: it never moves the candidate, and the
+   recruiter decides. The AI sees the role and the scorecards, not the candidate's name. Fixed rules keep it
+   consistent with the facts: "Ready for offer" is replaced when required rounds are unfinished or an interviewer
+   said No, and "Do not proceed" is replaced when every interviewer was positive or the AI has low confidence
+   (the screen then says "Adjusted by a rule"). The debrief is saved; if a scorecard is added or changed later it
+   is marked out of date, and **Regenerate** makes a new one. Each generation uses AI budget and takes a few
+   seconds.
+7. **Automatic reminders** (the Coordination agent, checked every 15 minutes, each message sent once and shown
+   in Agent Activity): a candidate who has not booked is reminded after 2 days and again after 5 days; after 7
+   days HR is emailed to follow up. If no free times are published, HR is told instead of the candidate being
+   chased. The candidate and the interviewer each get a reminder within 24 hours of a booked interview
+   (rescheduling earns new reminders). If a scorecard is still missing 1 day after the interview the
+   interviewer is nudged, and after 3 days HR is emailed. Nothing is sent for candidates who are Rejected,
+   Hired or No Show.
+8. Once the rounds are done, the **Advance to Offer** button on the candidate's Interview card moves them to the
    Offer column. A candidate **cannot be moved to Offer** until the number of completed rounds reaches the role's
    Interview Rounds Required. The app shows "Cannot advance to OFFER: X of Y required interview rounds
    completed."
@@ -173,7 +200,9 @@ referral page (/refer) for people without a login.
 
 ## Emails the application sends
 
-Interview booking link and reschedule links to candidates; rejection emails (automatic when a candidate is
+Interview booking link and reschedule links to candidates; interview confirmation to the candidate and a booking
+notice (with resume summary) to the interviewer; automatic booking chasers, interview reminders and scorecard
+nudges (see Interviews); rejection emails (automatic when a candidate is
 moved to Rejected on the Pipeline board, or by the Send Rejection Email button on Screening); outreach emails
 (only after a recruiter approves the draft); offer and revised-offer emails; the signed offer copy; HR
 notifications when an offer is accepted, declined or countered; AI budget warnings.
