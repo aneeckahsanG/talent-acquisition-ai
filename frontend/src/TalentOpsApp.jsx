@@ -243,15 +243,13 @@ function DebriefList({ title, items, color }) {
   );
 }
 
-// AI debrief of a candidate's interview scorecards for one role. Advisory only: it never moves the candidate.
-function DebriefModal({ requisitionId, candidateId, candidateName, onClose }) {
+// Loads the stored debrief and lets the caller (re)generate it. Reading never calls the AI; only generate() does.
+function useDebrief(requisitionId, candidateId) {
   const path = `/orchestrator/pipeline/${requisitionId}/candidates/${candidateId}/debrief`;
   const { data, loading, error, reload } = useApi(path, [requisitionId, candidateId]);
   const [fresh, setFresh] = useState(null);
   const [generating, setGenerating] = useState(false);
   const [genError, setGenError] = useState(null);
-  const d = fresh || data;
-  const rec = d?.generated ? DEBRIEF_REC[d.recommendation] : null;
 
   async function generate() {
     setGenerating(true); setGenError(null);
@@ -263,6 +261,75 @@ function DebriefModal({ requisitionId, candidateId, candidateName, onClose }) {
       setGenerating(false);
     }
   }
+
+  return { d: fresh || data, loading, error, reload, generate, generating, genError };
+}
+
+// Compact debrief shown inside the Create Offer dialog, so the scorecards are weighed before the offer goes out.
+// Advisory only: it never blocks the offer.
+function OfferDebriefPanel({ requisitionId, candidateId }) {
+  const { d, loading, error, reload, generate, generating, genError } = useDebrief(requisitionId, candidateId);
+  const rec = d?.generated ? DEBRIEF_REC[d.recommendation] : null;
+  const concerning = rec && d.recommendation !== "ADVANCE_TO_OFFER";
+
+  return (
+    <div className="rounded-xl border p-3 mb-4"
+      style={{ borderColor: concerning ? `${rec.color}66` : C.border, backgroundColor: concerning ? `${rec.color}0D` : "#F8FAFC" }}>
+      <p className="text-[11px] font-bold uppercase tracking-wide flex items-center gap-1 mb-1.5" style={{ color: C.accent }}>
+        <Sparkles size={11} /> AI Debrief before you offer
+      </p>
+
+      {loading && !d && <p className="text-xs" style={{ color: C.muted }}>Loading the scorecard review…</p>}
+      {error && !d && <ErrorBanner message={error} onRetry={reload} />}
+
+      {d && !d.available && (
+        <p className="text-xs leading-relaxed" style={{ color: C.muted }}>
+          No interview scorecards on file, so there is nothing for the AI to review. You can still create the offer.
+        </p>
+      )}
+
+      {d && d.available && !d.generated && (
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-xs" style={{ color: C.muted }}>
+            {d.scorecardCount} scorecard{d.scorecardCount === 1 ? "" : "s"} not yet reviewed by the AI.
+          </p>
+          <Btn onClick={generate} disabled={generating}>{generating ? "Generating…" : "Generate"}</Btn>
+        </div>
+      )}
+
+      {rec && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs font-bold px-2.5 py-0.5 rounded-full"
+              style={{ color: rec.color, backgroundColor: `${rec.color}1A`, border: `1px solid ${rec.color}55` }}>
+              {rec.label}
+            </span>
+            <span className="text-[11px]" style={{ color: C.muted }}>{DEBRIEF_CONFIDENCE[d.confidence] || d.confidence}</span>
+          </div>
+          {d.stale && (
+            <p className="text-[11px]" style={{ color: "#92400E" }}>Scorecards changed since this was generated. Regenerate before relying on it.</p>
+          )}
+          <p className="text-xs leading-relaxed" style={{ color: C.text }}>{d.summary}</p>
+          {concerning && d.suggestedNextStep && (
+            <p className="text-xs leading-relaxed" style={{ color: C.text }}>
+              <span className="font-semibold" style={{ color: rec.color }}>Suggested: </span>{d.suggestedNextStep}
+            </p>
+          )}
+          <button onClick={generate} disabled={generating} className="text-[11px] underline" style={{ color: C.muted }}>
+            {generating ? "Regenerating…" : "Regenerate"}
+          </button>
+        </div>
+      )}
+
+      {genError && <p className="text-xs mt-1" style={{ color: C.danger }}>{genError}</p>}
+    </div>
+  );
+}
+
+// AI debrief of a candidate's interview scorecards for one role. Advisory only: it never moves the candidate.
+function DebriefModal({ requisitionId, candidateId, candidateName, onClose }) {
+  const { d, loading, error, reload, generate, generating, genError } = useDebrief(requisitionId, candidateId);
+  const rec = d?.generated ? DEBRIEF_REC[d.recommendation] : null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
@@ -4113,8 +4180,9 @@ function PipelineView() {
                           </div>
                         )}
 
-                        {/* The Interview-stage card carries its own button; later stages keep the debrief reachable */}
-                        {["OFFER", "HIRED", "REJECTED", "NO_SHOW"].includes(stage) && c.interviewRounds?.some(r => r.status === "COMPLETED") && (
+                        {/* The debrief informs the offer decision: Interview cards carry the button and the Create Offer dialog shows it.
+                            Offer/Hired cards have already made that decision, so only closed-out cards keep it for the record. */}
+                        {["REJECTED", "NO_SHOW"].includes(stage) && c.interviewRounds?.some(r => r.status === "COMPLETED") && (
                           <div className="mt-2">
                             <DebriefButton onClick={() => setDebriefModal({ candidateId: c.candidateId, candidateName: c.candidateName, requisitionId: c.requisitionId })} />
                           </div>
@@ -4951,6 +5019,9 @@ function PipelineView() {
                 <X size={16} style={{ color: C.muted }} />
               </button>
             </div>
+
+            <OfferDebriefPanel key={`${offerModal.requisitionId ?? reqId}-${offerModal.candidateId}`}
+              requisitionId={offerModal.requisitionId ?? reqId} candidateId={offerModal.candidateId} />
 
             <div className="space-y-4">
               {/* Salary */}
@@ -6552,9 +6623,14 @@ function ScreeningView() {
   const allResultsPaths = isAllRoles && reqs ? reqs.map(r => `/screening/requisition/${r.id}`) : null;
   const allResultsApi = useApiMulti(allResultsPaths, [isAllRoles, reqs?.length]);
 
+  // Newest screened first by default, or highest score first; same for one role or all of them.
+  const [sortMode, setSortMode] = useState("newest"); // "newest" | "score"
+  const orderResults = list => !list ? null : [...list].sort(sortMode === "score"
+    ? (a, b) => b.overallScore - a.overallScore || new Date(b.createdAt) - new Date(a.createdAt)
+    : (a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   const results = isAllRoles
-    ? (allResultsApi.data ? allResultsApi.data.flat().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)) : null)
-    : singleResultsApi.data;
+    ? orderResults(allResultsApi.data?.flat())
+    : orderResults(singleResultsApi.data);
   const loading = isAllRoles ? allResultsApi.loading : singleResultsApi.loading;
   const error = isAllRoles ? allResultsApi.error : singleResultsApi.error;
   const reload = isAllRoles ? allResultsApi.reload : singleResultsApi.reload;
@@ -6665,7 +6741,7 @@ function ScreeningView() {
     }
   }
 
-  const sortedResults = [...(results || [])].sort((a, b) => b.overallScore - a.overallScore);
+  const sortedResults = results || [];
 
   return (
     <div>
@@ -6679,6 +6755,10 @@ function ScreeningView() {
                 {reqs.map(r => <option key={r.id} value={r.id}>{r.title}</option>)}
               </Select>
             )}
+            <Select value={sortMode} onChange={e => setSortMode(e.target.value)}>
+              <option value="newest">Newest first</option>
+              <option value="score">Highest score</option>
+            </Select>
             <Btn onClick={() => setShowUpload(true)}>
               <UploadCloud size={14} /> Screen Resume
             </Btn>

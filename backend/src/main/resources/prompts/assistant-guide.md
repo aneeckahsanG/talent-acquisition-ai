@@ -115,7 +115,9 @@ is logged. The application cannot merge duplicates, delete a candidate or export
    ownership and leadership, role alignment, commitment. Submitting the scorecard marks the round completed;
    a scorecard can be submitted only once.
 6. **AI Debrief**: once a candidate has at least one scorecard, an **AI Debrief** button appears on their card in the
-   Interview, Offer, Hired, Rejected and No Show columns (and on their profile page, next to the role). It asks the AI to read all of that candidate's scorecards
+   Interview column (and on Rejected and No Show cards, for the record, and on their profile page, next to the role).
+   It is also shown at the top of the **Create Offer** dialog, so the scorecards are weighed before an offer goes
+   out; it never blocks the offer. Offer and Hired cards do not carry it, since that decision is already made. It asks the AI to read all of that candidate's scorecards
    for the role and show one view: a recommendation (**Ready for offer**, **Add another round**, **Discuss as a
    team** or **Do not proceed**), a confidence level, a short summary, where interviewers agree and differ,
    concerns to weigh, and a suggested next step. It is advice only: it never moves the candidate, and the
