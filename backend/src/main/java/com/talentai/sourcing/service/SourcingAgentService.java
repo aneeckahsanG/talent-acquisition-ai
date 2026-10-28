@@ -241,11 +241,13 @@ public class SourcingAgentService {
         );
 
         try {
-            return chatClient.prompt()
-                    .system(promptLoader.load("sourcing-agent"))
-                    .user(userPrompt)
-                    .call()
-                    .entity(ClaudeMatchResponse.class);
+            return com.talentai.common.util.AiCallRetry.withRetry(
+                    () -> chatClient.prompt()
+                            .system(promptLoader.load("sourcing-agent"))
+                            .user(userPrompt)
+                            .call()
+                            .entity(ClaudeMatchResponse.class),
+                    log, "Sourcing Agent", "candidate " + candidate.getId() + " / requisition " + requisition.getId());
         } catch (Exception e) {
             log.error("Failed to get or parse Sourcing Agent response for candidate {} / requisition {}",
                     candidate.getId(), requisition.getId(), e);

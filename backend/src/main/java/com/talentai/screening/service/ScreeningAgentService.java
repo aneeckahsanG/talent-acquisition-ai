@@ -203,6 +203,13 @@ public class ScreeningAgentService {
             // transaction rollback-only and lose the application. The candidate stays unscreened and is
             // picked up again later.
             log.warn("Screening skipped for candidate {} / requisition {}: {}", candidate.getId(), requisition.getId(), e.getMessage());
+            activityLogRepository.save(AgentActivityLog.builder()
+                    .agentName(AGENT_NAME)
+                    .candidateId(candidate.getId())
+                    .requisitionId(requisition.getId())
+                    .action("SCREENING_FAILED")
+                    .details(e.getMessage())
+                    .build());
         }
     }
 
@@ -215,11 +222,13 @@ public class ScreeningAgentService {
 
         ClaudeScreeningResponse parsed;
         try {
-            parsed = chatClient.prompt()
-                    .system(promptLoader.load("screening-agent"))
-                    .user(userPrompt)
-                    .call()
-                    .entity(ClaudeScreeningResponse.class);
+            parsed = com.talentai.common.util.AiCallRetry.withRetry(
+                    () -> chatClient.prompt()
+                            .system(promptLoader.load("screening-agent"))
+                            .user(userPrompt)
+                            .call()
+                            .entity(ClaudeScreeningResponse.class),
+                    log, "Screening Agent", "candidate " + candidate.getId() + " / requisition " + requisition.getId());
         } catch (Exception e) {
             log.error("Failed to get or parse Screening Agent response for candidate {}", candidate.getId(), e);
             throw new IllegalStateException("Screening Agent returned an unexpected response format.");
