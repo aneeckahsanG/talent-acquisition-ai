@@ -1,0 +1,83 @@
+================================================================================
+ROLE 1: Frontend Engineer (React)
+================================================================================
+Department: Engineering
+Location: Kuala Lumpur (Hybrid)
+Experience: Mid-Level
+
+We are looking for a Frontend Engineer to build the recruiter-facing web
+application used every day by our HR teams. You will turn designs into fast,
+accessible React interfaces, work with backend engineers on REST APIs, and
+keep the codebase well tested.
+
+Required Skills: React, JavaScript, TypeScript, HTML, CSS, REST APIs, Jest,
+Git, Responsive Design
+
+================================================================================
+ROLE 2: Junior QA Automation Engineer
+================================================================================
+Department: Engineering
+Location: Penang
+Experience: Junior (0-2 years)
+
+Join our quality team to automate regression testing for our hiring platform.
+You will write and maintain automated test suites, report defects clearly, and
+learn how to test APIs and user interfaces as part of a delivery team.
+
+Required Skills: Selenium, Java, API Testing, Postman, Test Case Design, Git,
+Agile
+
+================================================================================
+ROLE 3: UX/UI Designer
+================================================================================
+Department: Design
+Location: Remote
+Experience: Mid-Level
+
+Design clear, friendly experiences for recruiters and candidates. You will run
+user research, create wireframes and high-fidelity prototypes, maintain our
+design system, and work closely with product managers and engineers through
+delivery.
+
+Required Skills: Figma, User Research, Prototyping, Design Systems,
+Accessibility, Interaction Design
+
+================================================================================
+ROLE 4: Cybersecurity Analyst
+================================================================================
+Department: Security
+Location: Kuala Lumpur
+Experience: Senior
+
+Protect the personal data we hold about candidates. You will monitor for
+threats, investigate incidents, run vulnerability assessments, and help teams
+meet PDPA and ISO 27001 requirements.
+
+Required Skills: SIEM, Incident Response, Vulnerability Assessment, Network
+Security, ISO 27001, PDPA Compliance, Python
+
+--------------------------------------------------------------------------------
+
+Customer Success Manager - we also need someone in the Customer Success team,
+based in Kuala Lumpur with two days a week in the office. It is a mid-level
+position. They will onboard new corporate clients, run quarterly business
+reviews, and make sure clients get value from the platform so they renew.
+Strong communication, account management, CRM tools such as Salesforce, and
+experience with SaaS renewals and upselling are expected.
+
+--------------------------------------------------------------------------------
+
+From: Head of Engineering
+Subject: New hire request
+
+Hi HR,
+
+Please open a requisition for an Engineering Manager. This is a lead-level role
+in the Engineering department, based in Kuala Lumpur, and it would manage two
+teams of about six engineers each. They need to be a hands-on leader who can
+coach engineers, plan delivery with product, and run hiring. We want strong
+people management, Agile delivery, system design, and stakeholder management,
+ideally with a Java or cloud background.
+
+Thanks,
+Head of Engineering
