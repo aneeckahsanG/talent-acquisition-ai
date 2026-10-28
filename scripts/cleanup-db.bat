@@ -1,14 +1,22 @@
 @echo off
-REM Clears candidate data from the local H2 database (candidates, applications, screenings, interviews,
-REM scorecards, offers, Resume Drop Zone items, agent history) and keeps users, job requisitions,
-REM settings and AI usage. See cleanup-db.sql for the exact list.
+REM Clears data from the local H2 database.
 REM
-REM   cleanup-db.bat              show what would go, ask for confirmation, back up, then clean
-REM   cleanup-db.bat /dry-run     only show row counts; change nothing
+REM   cleanup-db.bat              candidate data only: candidates, applications, screenings, interviews,
+REM                               scorecards, offers, Resume Drop Zone items, agent history. Keeps users,
+REM                               job requisitions, settings and AI usage. (cleanup-db.sql)
+REM   cleanup-db.bat /all         a full reset: the above plus users, job requisitions, resume sources,
+REM                               mock job-board roles, interviewer availability, AI usage and limits,
+REM                               Resume Drop Zone settings (reset to defaults) and the CV files in
+REM                               backend\data\cv-inbox. (cleanup-db-all.sql)
+REM   cleanup-db.bat /dry-run     only show what would go; change nothing (combine with /all)
 REM   cleanup-db.bat /y           skip the confirmation question
 REM
+REM After /all the backend recreates the four demo users (password123) and three demo job requisitions
+REM the next time it starts.
+REM
 REM The backend must be stopped first (stop.bat): H2 allows one process on the database file.
-REM A copy of the database is saved to a "backups" folder next to it before anything is removed.
+REM A copy of the database is saved to a "backups" folder next to it before anything is removed
+REM (CV files deleted by /all are not backed up).
 REM Set DB_PATH (without the .mv.db extension) to clean a different database file.
 
 setlocal
@@ -21,10 +29,12 @@ set H2_JAR=%USERPROFILE%\.m2\repository\com\h2database\h2\%H2_VERSION%\h2-%H2_VE
 
 set DRYRUN=
 set ASSUMEYES=
+set ALL=
 :PARSE
 if "%~1"=="" goto PARSED
 if /i "%~1"=="/dry-run" set DRYRUN=1
 if /i "%~1"=="/y" set ASSUMEYES=1
+if /i "%~1"=="/all" set ALL=1
 shift
 goto PARSE
 :PARSED
@@ -37,6 +47,8 @@ if not defined DB_PATH (
 for %%I in ("%DB_PATH%") do set DB_PATH=%%~fI
 set DB_FILE=%DB_PATH%.mv.db
 set DB_URL=jdbc:h2:file:%DB_PATH:\=/%;MODE=PostgreSQL
+for %%I in ("%DB_FILE%") do set DATA_DIR=%%~dpI
+set CV_DIR=%DATA_DIR%cv-inbox
 
 where java >nul 2>&1
 if errorlevel 1 (
@@ -64,14 +76,16 @@ if defined DEFAULT_DB (
 )
 
 echo Database: %DB_FILE%
+if defined ALL (echo Mode: FULL RESET ^(/all^)) else (echo Mode: candidate data only ^(use /all for a full reset^))
 echo.
-REM RunScript echoes the SQL it runs; keep only the result rows (they start with "-->").
-java -cp "%H2_JAR%" org.h2.tools.RunScript -url "%DB_URL%" -user sa -script "%SCRIPTDIR%count-rows.sql" -showResults | findstr /B /C:"-->"
+call :COUNTS
 if errorlevel 1 (
     echo.
     echo ERROR: could not open the database. If the backend is running, stop it first.
     exit /b 1
 )
+call :COUNTFILES
+if defined ALL echo --^> REMOVED files_in_cv-inbox_folder %FILECOUNT%
 
 if defined DRYRUN (
     echo.
@@ -80,12 +94,14 @@ if defined DRYRUN (
 )
 
 REM No parenthesised block here on purpose: inside one, %CONFIRM% would be read before the question is asked.
+set WORD=YES
+if defined ALL set WORD=RESET
 if defined ASSUMEYES goto CONFIRMED
 echo.
 set CONFIRM=
-set /p CONFIRM=Remove everything marked REMOVED above? Type YES to continue:
+set /p CONFIRM=Remove everything marked REMOVED above? Type %WORD% to continue:
 set CONFIRM=%CONFIRM: =%
-if /i "%CONFIRM%"=="YES" goto CONFIRMED
+if /i "%CONFIRM%"=="%WORD%" goto CONFIRMED
 echo Cancelled. Nothing was changed.
 exit /b 0
 :CONFIRMED
@@ -107,13 +123,39 @@ if errorlevel 1 (
 echo Backup saved: %BACKUP_DIR%\talentai-%STAMP%.mv.db
 
 java -cp "%H2_JAR%" org.h2.tools.RunScript -url "%DB_URL%" -user sa -script "%SCRIPTDIR%cleanup-db.sql"
-if errorlevel 1 (
-    echo.
-    echo ERROR: the clean-up failed. The backup above is untouched; restore it by copying it back over %DB_FILE%.
-    exit /b 1
-)
+if errorlevel 1 goto FAILED
+if defined ALL java -cp "%H2_JAR%" org.h2.tools.RunScript -url "%DB_URL%" -user sa -script "%SCRIPTDIR%cleanup-db-all.sql"
+if errorlevel 1 goto FAILED
+
+REM The CV files only: the folders stay, and so does the SFTP host key one level up.
+if defined ALL if exist "%CV_DIR%" for /r "%CV_DIR%" %%F in (*) do del /q /f "%%F"
 
 echo.
 echo Done. Counts now:
+call :COUNTS
+if defined ALL echo.
+if defined ALL echo Start the backend again: it recreates the demo users ^(password123^) and demo job requisitions.
+exit /b 0
+
+:FAILED
+echo.
+echo ERROR: the clean-up failed. The backup above is untouched; restore it by copying it back over %DB_FILE%.
+exit /b 1
+
+REM ---- helpers -------------------------------------------------------------------------------------------------
+:COUNTS
+REM RunScript echoes the SQL it runs; keep only the result rows (they start with "-->").
 java -cp "%H2_JAR%" org.h2.tools.RunScript -url "%DB_URL%" -user sa -script "%SCRIPTDIR%count-rows.sql" -showResults | findstr /B /C:"-->"
+if errorlevel 1 exit /b 1
+if defined ALL (
+    java -cp "%H2_JAR%" org.h2.tools.RunScript -url "%DB_URL%" -user sa -script "%SCRIPTDIR%count-rows-all.sql" -showResults | findstr /B /C:"-->"
+) else (
+    java -cp "%H2_JAR%" org.h2.tools.RunScript -url "%DB_URL%" -user sa -script "%SCRIPTDIR%count-rows-kept.sql" -showResults | findstr /B /C:"-->"
+)
+exit /b %errorlevel%
+
+:COUNTFILES
+set FILECOUNT=0
+REM A plain loop, not "find": a find.exe from Git or another toolkit earlier on PATH behaves differently.
+if exist "%CV_DIR%" for /r "%CV_DIR%" %%F in (*) do set /a FILECOUNT+=1
 exit /b 0

@@ -1,4 +1,4 @@
--- Row counts for what cleanup-db.sql removes (first block) and what it keeps (second block).
+-- Row counts for the candidate data that cleanup-db.sql removes.
 SELECT 'REMOVED' AS action, 'candidate' AS tbl, COUNT(*) AS row_count FROM candidate
 UNION ALL SELECT 'REMOVED', 'pipeline_stage', COUNT(*) FROM pipeline_stage
 UNION ALL SELECT 'REMOVED', 'screening_result', COUNT(*) FROM screening_result
@@ -21,10 +21,4 @@ UNION ALL SELECT 'REMOVED', 'notification_log', COUNT(*) FROM notification_log
 UNION ALL SELECT 'REMOVED', 'candidate_status_update', COUNT(*) FROM candidate_status_update
 UNION ALL SELECT 'REMOVED', 'candidate_access_log', COUNT(*) FROM candidate_access_log
 UNION ALL SELECT 'REMOVED', 'mock_application', COUNT(*) FROM mock_application
-UNION ALL SELECT 'KEPT', 'app_user', COUNT(*) FROM app_user
-UNION ALL SELECT 'KEPT', 'job_requisition', COUNT(*) FROM job_requisition
-UNION ALL SELECT 'KEPT', 'resume_source', COUNT(*) FROM resume_source
-UNION ALL SELECT 'KEPT', 'mock_job_role', COUNT(*) FROM mock_job_role
-UNION ALL SELECT 'KEPT', 'availability_window', COUNT(*) FROM availability_window
-UNION ALL SELECT 'KEPT', 'ai_usage_log', COUNT(*) FROM ai_usage_log
-ORDER BY 1 DESC, 2;
+ORDER BY 2;

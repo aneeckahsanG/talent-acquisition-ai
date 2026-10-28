@@ -94,17 +94,21 @@ Open **http://localhost:5173** in your browser to use the app.
 
 ### Resetting demo data
 
-To clear every candidate and their history (applications, screenings, interviews, scorecards, offers, Resume Drop
-Zone items, agent history) while keeping users, job requisitions, settings and AI usage:
+Stop the backend first (`scripts\stop.bat`), then run one of:
 
 ```bat
-scripts\stop.bat
-scripts\cleanup-db.bat /dry-run
-scripts\cleanup-db.bat
+scripts\cleanup-db.bat          candidate data only
+scripts\cleanup-db.bat /all     a full reset
 ```
 
-`/dry-run` only shows row counts. The script asks you to type `YES`, saves a copy of the database to
-`backend\data\backups` first, and refuses to run while the backend is up. Add `/y` to skip the question.
+- **Default** clears every candidate and their history (applications, screenings, interviews, scorecards, offers,
+  Resume Drop Zone items, agent history) and keeps users, job requisitions, settings and AI usage.
+- **`/all`** also removes users, job requisitions, resume sources, mock job-board roles, interviewer availability,
+  AI usage and limits, resets the Resume Drop Zone settings to their defaults, and deletes the CV files in
+  `backend\data\cv-inbox`. On the next start the backend recreates the four demo users (password `password123`)
+  and three demo job requisitions.
+- `/dry-run` only shows what would go. The script asks you to type `YES` (`RESET` for `/all`), saves a copy of the
+  database to `backend\data\backups` first, and refuses to run while the backend is up. Add `/y` to skip the question.
 
 ---
 
