@@ -168,6 +168,11 @@ function mergePipelineBoards(boards) {
       stages[s].push(...list);
     }
   }
+  // Each role's list already comes back newest-first; merging roles in role order would
+  // interleave them out of date order, so re-sort by enteredAt once combined.
+  for (const s of PIPELINE_STAGES) {
+    stages[s].sort((a, b) => new Date(b.enteredAt || 0) - new Date(a.enteredAt || 0));
+  }
   return { requisitionId: null, requisitionTitle: "All Roles", stages };
 }
 

@@ -57,7 +57,7 @@ public class ScreeningAgentService {
     private final com.talentai.common.repository.NotificationLogRepository notificationLogRepository;
     private final com.talentai.sourcing.repository.SourcingMatchRepository sourcingMatchRepository;
 
-    private record ParsedNameEmail(String name, String email) {}
+    public record ParsedNameEmail(String name, String email) {}
 
     /**
      * Screens a candidate (provided via resume text) against a requisition.
@@ -84,12 +84,28 @@ public class ScreeningAgentService {
         if (resumeText == null || resumeText.isBlank()) {
             throw new IllegalArgumentException("Could not extract any text from the uploaded resume file.");
         }
-        // Regex extraction for speed / fallback
-        String email = null;
+        ParsedNameEmail parsed = extractNameAndEmail(resumeText);
+        return ParsedResumeResponse.builder()
+                .name(parsed.name())
+                .email(parsed.email())
+                .resumeText(resumeText)
+                .build();
+    }
+
+    /**
+     * Extracts a candidate's name and email from raw resume text using Claude, falling back to
+     * regex/heuristics (a simple email pattern, and the first line that looks like a person's
+     * name) whenever the AI call fails or leaves a field blank — e.g. unusual resume layouts,
+     * a header line the heuristic alone can't parse, or an AI outage. Shared by the manual
+     * resume-upload flow and SFTP CV Inbox ingestion so both get the same, more robust extraction
+     * instead of CV Inbox relying on the heuristic alone.
+     */
+    public ParsedNameEmail extractNameAndEmail(String resumeText) {
+        String heuristicEmail = null;
         java.util.regex.Matcher emailMatcher = java.util.regex.Pattern
                 .compile("[a-zA-Z0-9._%+\\-]+@[a-zA-Z0-9.\\-]+\\.[a-zA-Z]{2,}")
                 .matcher(resumeText);
-        if (emailMatcher.find()) email = emailMatcher.group();
+        if (emailMatcher.find()) heuristicEmail = emailMatcher.group();
 
         // Heuristic name: first non-blank line that looks like a person's name
         // (2–5 words, no special chars except hyphens/apostrophes, title-cased or all-caps)
@@ -109,31 +125,48 @@ public class ScreeningAgentService {
             }
         }
 
-        // Use Claude to extract name (and email fallback)
         String prompt = "Extract the candidate's full name and email address from the following resume text. " +
                 "Reply ONLY as JSON with keys \"name\" and \"email\". If a field is not found, use an empty string.\n\nResume:\n" +
                 resumeText.substring(0, Math.min(resumeText.length(), 2000));
         try {
-            ParsedNameEmail parsed = chatClient.prompt()
-                    .system("You extract structured data from resumes. Return only valid JSON.")
-                    .user(prompt)
-                    .call()
-                    .entity(ParsedNameEmail.class);
+            ParsedNameEmail parsed = com.talentai.common.util.AiCallRetry.withRetry(
+                    () -> {
+                        var chatResponse = chatClient.prompt()
+                                .system("You extract structured data from resumes. Return only valid JSON.")
+                                .user(prompt)
+                                .call()
+                                .chatResponse();
+                        String raw = com.talentai.common.util.AiJsonExtractor.extractText(chatResponse);
+                        return com.talentai.common.util.AiJsonExtractor.parse(raw, ParsedNameEmail.class);
+                    },
+                    log, "Resume Name/Email Extraction", "resume text");
             String parsedName = parsed.name() != null ? parsed.name() : "";
             String parsedEmail = parsed.email() != null ? parsed.email() : "";
             String finalName = parsedName.isBlank() ? (heuristicName != null ? heuristicName : "") : parsedName;
-            return ParsedResumeResponse.builder()
-                    .name(finalName)
-                    .email(parsedEmail.isBlank() ? (email != null ? email : "") : parsedEmail)
-                    .resumeText(resumeText)
-                    .build();
+            String finalEmail = parsedEmail.isBlank() ? (heuristicEmail != null ? heuristicEmail : "") : parsedEmail;
+            return new ParsedNameEmail(titleCase(finalName), finalEmail);
         } catch (Exception e) {
-            return ParsedResumeResponse.builder()
-                    .name(heuristicName != null ? heuristicName : "")
-                    .email(email != null ? email : "")
-                    .resumeText(resumeText)
-                    .build();
+            log.warn("AI name/email extraction failed, using heuristics only: {}", e.getMessage());
+            return new ParsedNameEmail(
+                    titleCase(heuristicName != null ? heuristicName : ""),
+                    heuristicEmail != null ? heuristicEmail : "");
         }
+    }
+
+    /** "CHEN YU MING" / "chen yu ming" -> "Chen Yu Ming". Leaves already-mixed-case names
+     *  (e.g. "McDonald", "O'Brien") alone rather than lowercasing interior capitals. */
+    private static String titleCase(String name) {
+        if (name == null || name.isBlank() || !name.equals(name.toUpperCase()) && !name.equals(name.toLowerCase())) {
+            return name;
+        }
+        StringBuilder sb = new StringBuilder();
+        for (String word : name.split("\\s+")) {
+            if (word.isEmpty()) continue;
+            if (!sb.isEmpty()) sb.append(" ");
+            sb.append(Character.toUpperCase(word.charAt(0)));
+            if (word.length() > 1) sb.append(word.substring(1).toLowerCase());
+        }
+        return sb.toString();
     }
 
     /**
@@ -223,11 +256,15 @@ public class ScreeningAgentService {
         ClaudeScreeningResponse parsed;
         try {
             parsed = com.talentai.common.util.AiCallRetry.withRetry(
-                    () -> chatClient.prompt()
-                            .system(promptLoader.load("screening-agent"))
-                            .user(userPrompt)
-                            .call()
-                            .entity(ClaudeScreeningResponse.class),
+                    () -> {
+                        var chatResponse = chatClient.prompt()
+                                .system(promptLoader.load("screening-agent"))
+                                .user(userPrompt)
+                                .call()
+                                .chatResponse();
+                        String raw = com.talentai.common.util.AiJsonExtractor.extractText(chatResponse);
+                        return com.talentai.common.util.AiJsonExtractor.parse(raw, ClaudeScreeningResponse.class);
+                    },
                     log, "Screening Agent", "candidate " + candidate.getId() + " / requisition " + requisition.getId());
         } catch (Exception e) {
             log.error("Failed to get or parse Screening Agent response for candidate {}", candidate.getId(), e);

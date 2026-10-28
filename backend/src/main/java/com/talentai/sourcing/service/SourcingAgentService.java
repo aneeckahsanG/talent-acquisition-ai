@@ -242,11 +242,15 @@ public class SourcingAgentService {
 
         try {
             return com.talentai.common.util.AiCallRetry.withRetry(
-                    () -> chatClient.prompt()
-                            .system(promptLoader.load("sourcing-agent"))
-                            .user(userPrompt)
-                            .call()
-                            .entity(ClaudeMatchResponse.class),
+                    () -> {
+                        var chatResponse = chatClient.prompt()
+                                .system(promptLoader.load("sourcing-agent"))
+                                .user(userPrompt)
+                                .call()
+                                .chatResponse();
+                        String raw = com.talentai.common.util.AiJsonExtractor.extractText(chatResponse);
+                        return com.talentai.common.util.AiJsonExtractor.parse(raw, ClaudeMatchResponse.class);
+                    },
                     log, "Sourcing Agent", "candidate " + candidate.getId() + " / requisition " + requisition.getId());
         } catch (Exception e) {
             log.error("Failed to get or parse Sourcing Agent response for candidate {} / requisition {}",

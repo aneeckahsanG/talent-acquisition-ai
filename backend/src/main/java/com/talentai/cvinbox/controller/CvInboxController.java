@@ -40,6 +40,7 @@ public class CvInboxController {
     private final ExternalSftpClientService externalSftpClientService;
     private final SftpServerConfig sftpServerConfig;
     private final ObjectMapper objectMapper;
+    private final com.talentai.screening.repository.ScreeningResultRepository screeningResultRepository;
 
     @GetMapping("/items")
     public ResponseEntity<List<CvInboxItemResponse>> getItems(@RequestParam String decision) {
@@ -190,6 +191,28 @@ public class CvInboxController {
             }
         }
 
+        // The stored bestMatchScore/bestRationale are a frozen Sourcing Agent snapshot from
+        // ingestion time. Once the Screening Agent has actually evaluated the best-matching role,
+        // its rubric score is the more current, authoritative one — the same one the Pipeline and
+        // Screening Agent boards show — so surface that instead of the stale sourcing estimate.
+        java.math.BigDecimal bestMatchScore = item.getBestMatchScore();
+        String bestRationale = item.getBestRationale();
+        if (item.getCandidateId() != null && item.getBestRequisitionId() != null) {
+            var screening = screeningResultRepository
+                    .findByCandidateIdAndRequisitionId(item.getCandidateId(), item.getBestRequisitionId())
+                    .orElse(null);
+            if (screening != null) {
+                bestMatchScore = screening.getOverallScore();
+                bestRationale = screening.getRationale();
+                for (RoleMatchDetail rm : roleMatches) {
+                    if (item.getBestRequisitionId().equals(rm.getRequisitionId())) {
+                        rm.setMatchScore(screening.getOverallScore());
+                        rm.setRationale(screening.getRationale());
+                    }
+                }
+            }
+        }
+
         return CvInboxItemResponse.builder()
                 .id(item.getId())
                 .fileName(item.getFileName())
@@ -200,8 +223,8 @@ public class CvInboxController {
                 .status(item.getStatus())
                 .bestRequisitionId(item.getBestRequisitionId())
                 .bestRequisitionTitle(item.getBestRequisitionTitle())
-                .bestMatchScore(item.getBestMatchScore())
-                .bestRationale(item.getBestRationale())
+                .bestMatchScore(bestMatchScore)
+                .bestRationale(bestRationale)
                 .errorMessage(item.getErrorMessage())
                 .roleMatches(roleMatches)
                 .processedAt(item.getProcessedAt())

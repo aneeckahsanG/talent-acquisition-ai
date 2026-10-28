@@ -141,7 +141,7 @@ public class AgentToolExecutor {
     }
 
     private String checkPipeline(Long requisitionId) {
-        var stages = pipelineStageRepository.findByRequisitionId(requisitionId);
+        var stages = pipelineStageRepository.findByRequisitionIdOrderByEnteredAtDesc(requisitionId);
         if (stages.isEmpty()) return "Pipeline is empty — no candidates in any stage yet.";
         var counts = new java.util.LinkedHashMap<String, Integer>();
         stages.forEach(s -> counts.merge(s.getStage(), 1, Integer::sum));

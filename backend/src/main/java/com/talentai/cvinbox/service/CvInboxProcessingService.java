@@ -30,8 +30,6 @@ import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
@@ -54,9 +52,6 @@ import java.util.stream.Stream;
 @RequiredArgsConstructor
 @Slf4j
 public class CvInboxProcessingService {
-
-    private static final Pattern EMAIL_PATTERN =
-            Pattern.compile("[a-zA-Z0-9._%+\\-]+@[a-zA-Z0-9.\\-]+\\.[a-zA-Z]{2,}");
 
     private final CandidateRepository candidateRepository;
     private final JobRequisitionRepository jobRequisitionRepository;
@@ -173,8 +168,9 @@ public class CvInboxProcessingService {
             throw new IOException("Could not extract any text from the file.");
         }
 
-        String email = extractEmail(resumeText);
-        String name = extractHeuristicName(resumeText);
+        var parsedIdentity = screeningAgentService.extractNameAndEmail(resumeText);
+        String email = !parsedIdentity.email().isBlank() ? parsedIdentity.email() : null;
+        String name = !parsedIdentity.name().isBlank() ? parsedIdentity.name() : null;
 
         Candidate candidate = (email != null) ? candidateRepository.findByEmail(email).orElse(null) : null;
         if (candidate == null) {
@@ -287,29 +283,6 @@ public class CvInboxProcessingService {
         } catch (IOException e) {
             log.error("Failed to move processed file {} to {}", file.getFileName(), targetDir.getFileName(), e);
         }
-    }
-
-    private String extractEmail(String resumeText) {
-        Matcher m = EMAIL_PATTERN.matcher(resumeText);
-        return m.find() ? m.group() : null;
-    }
-
-    /** First non-blank line that looks like a person's name (2-5 title-cased words). */
-    private String extractHeuristicName(String resumeText) {
-        for (String line : resumeText.split("\\r?\\n")) {
-            String trimmed = line.trim();
-            if (trimmed.isBlank()) continue;
-            String[] words = trimmed.split("\\s+");
-            if (words.length >= 2 && words.length <= 5 && trimmed.matches("[A-Za-z .'-]+")) {
-                StringBuilder sb = new StringBuilder();
-                for (String word : words) {
-                    if (sb.length() > 0) sb.append(" ");
-                    sb.append(Character.toUpperCase(word.charAt(0))).append(word.substring(1).toLowerCase());
-                }
-                return sb.toString();
-            }
-        }
-        return null;
     }
 
     private String toJson(Object value) {

@@ -88,7 +88,7 @@ public class OrchestratorService {
         JobRequisition requisition = jobRequisitionRepository.findById(requisitionId)
                 .orElseThrow(() -> new IllegalArgumentException("Job requisition not found: " + requisitionId));
 
-        List<PipelineStage> stages = pipelineStageRepository.findByRequisitionId(requisitionId);
+        List<PipelineStage> stages = pipelineStageRepository.findByRequisitionIdOrderByEnteredAtDesc(requisitionId);
 
         Map<String, List<PipelineCandidateResponse>> board = new LinkedHashMap<>();
         for (String stageName : STAGE_ORDER) {

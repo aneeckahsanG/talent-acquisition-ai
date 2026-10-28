@@ -15,7 +15,7 @@ public interface PipelineStageRepository extends JpaRepository<PipelineStage, Lo
 
     @Query("SELECT COUNT(p) FROM PipelineStage p WHERE p.enteredAt < :cutoff AND p.stage NOT IN ('REJECTED', 'HIRED', 'NO_SHOW')")
     long countStalledCandidates(@Param("cutoff") LocalDateTime cutoff);
-    List<PipelineStage> findByRequisitionId(Long requisitionId);
+    List<PipelineStage> findByRequisitionIdOrderByEnteredAtDesc(Long requisitionId);
     List<PipelineStage> findByCandidateId(Long candidateId);
     Optional<PipelineStage> findByCandidateIdAndRequisitionId(Long candidateId, Long requisitionId);
     List<PipelineStage> findByStage(String stage);
