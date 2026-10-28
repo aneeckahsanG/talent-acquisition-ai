@@ -133,6 +133,10 @@ const AGENT_META = {
   OUTREACH:     { label: "Outreach",     color: "#0D9488", bg: "#CCFBF1", icon: Mail },
 };
 
+// Who made a stage move. HUMAN, CANDIDATE and ORCHESTRATOR are stored on the pipeline stage; agents fall back to their label.
+const ACTOR_LABELS = { HUMAN: "Recruiter", CANDIDATE: "Candidate", ORCHESTRATOR: "AI agent" };
+const actorLabel = agent => ACTOR_LABELS[agent] || AGENT_META[agent]?.label || agent;
+
 // The Sourcing service also handles careers-page applications and outreach emails, so it logs them as SOURCING.
 // Label each entry by what happened instead, so the Sourcing filter only shows real sourcing.
 const APPLICATION_ACTIONS = ["DIRECT_APPLICATION_RECEIVED", "APPLICANT_SHORTLISTED", "APPLICANT_REJECTED"];
@@ -3575,7 +3579,7 @@ function PipelineListView({
                   <td className="px-4 py-3">{score != null && <ScoreRing score={score} size={30} />}</td>
                   <td className="px-4 py-3 text-xs font-semibold"
                     style={{ color: AGENT_META[c.updatedByAgent]?.color || C.muted }}>
-                    {AGENT_META[c.updatedByAgent]?.label || c.updatedByAgent || "—"}
+                    {actorLabel(c.updatedByAgent) || "—"}
                   </td>
                   <td className="px-4 py-3 text-xs" style={{ color: C.muted }}>
                     {c.enteredAt ? new Date(c.enteredAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—"}
@@ -4090,7 +4094,7 @@ function PipelineView() {
                         {c.updatedByAgent && (
                           <p className="text-[10px] font-semibold mt-1"
                             style={{ color: AGENT_META[c.updatedByAgent]?.color || C.muted }}>
-                            {AGENT_META[c.updatedByAgent]?.label || c.updatedByAgent}
+                            Moved by {actorLabel(c.updatedByAgent)}
                           </p>
                         )}
                         {/* Why/when a candidate was rejected or did not show */}
@@ -5304,7 +5308,7 @@ function PipelineView() {
                             </div>
                             {isStage && ev.agent && (
                               <p className="text-[10px] font-semibold mt-0.5" style={{ color: AGENT_META[ev.agent]?.color || C.muted }}>
-                                {AGENT_META[ev.agent]?.label || ev.agent}
+                                {actorLabel(ev.agent)}
                               </p>
                             )}
                             {isInterview && ev.notes && (
