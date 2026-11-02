@@ -5,10 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.talentai.agent.service.HumanApprovalGate;
 import com.talentai.admin.service.AdminAgentService;
 import com.talentai.admin.dto.AdminDtos.ProposeInterviewRequest;
-import com.talentai.common.entity.Candidate;
 import com.talentai.common.repository.CandidateRepository;
 import com.talentai.orchestrator.service.OrchestratorService;
-import com.talentai.screening.dto.ScreeningDtos.ScreenByTextRequest;
 import com.talentai.screening.service.ScreeningAgentService;
 import com.talentai.sourcing.service.SourcingAgentService;
 import lombok.RequiredArgsConstructor;
@@ -86,14 +84,11 @@ public class RecruitingTools {
 
     // ── MEDIUM RISK — reversible writes ──────────────────────────────────────
 
-    @Tool(description = "Screen a candidate against a job requisition. Returns a score (0-100) and ADVANCE / HOLD / REJECT recommendation.")
+    @Tool(description = "Get a candidate's screening result for a job requisition: a score (0-100) and an ADVANCE / REVIEW / REJECT recommendation. "
+            + "A new application has normally been screened already, so this returns the saved result at no cost; it only screens if there is no result yet.")
     public String screenCandidate(Long candidateId, Long requisitionId) {
         try {
-            Candidate c = candidateRepository.findById(candidateId)
-                    .orElseThrow(() -> new IllegalArgumentException("Candidate not found: " + candidateId));
-            ScreenByTextRequest req = new ScreenByTextRequest(
-                    c.getFullName(), c.getEmail(), c.getResumeText(), requisitionId);
-            return toJson(screeningAgentService.screenCandidate(req));
+            return toJson(screeningAgentService.screenExistingCandidate(candidateId, requisitionId));
         } catch (Exception e) {
             return error("screenCandidate", e);
         }

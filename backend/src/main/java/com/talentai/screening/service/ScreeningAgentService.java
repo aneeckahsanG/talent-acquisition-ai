@@ -65,7 +65,8 @@ public class ScreeningAgentService {
     /**
      * Screens a candidate (provided via resume text) against a requisition.
      * Creates/updates the Candidate record, persists the screening result,
-     * and advances the pipeline stage.
+     * and advances the pipeline stage. A candidate who already has a result for the role
+     * gets that result back; it is not screened (or overwritten) a second time.
      */
     @Transactional
     public ScreeningResultResponse screenCandidate(ScreenByTextRequest request) {
@@ -75,7 +76,28 @@ public class ScreeningAgentService {
         Candidate candidate = findOrCreateCandidate(
                 request.getCandidateName(), request.getCandidateEmail(), request.getResumeText(), null, "UPLOAD");
 
-        ScreeningResult result = runScreening(candidate, requisition);
+        return screenOrReuse(candidate, requisition);
+    }
+
+    /**
+     * The screening result for a candidate we already hold, by id. Returns the saved result when
+     * there is one (the normal case for an application, which is screened as it arrives) and only
+     * screens when there is none yet. Unlike {@link #screenCandidate(ScreenByTextRequest)} it never
+     * looks the candidate up again by name or email, so it cannot create a second record for them.
+     */
+    @Transactional
+    public ScreeningResultResponse screenExistingCandidate(Long candidateId, Long requisitionId) {
+        JobRequisition requisition = jobRequisitionRepository.findById(requisitionId)
+                .orElseThrow(() -> new IllegalArgumentException("Job requisition not found: " + requisitionId));
+        Candidate candidate = candidateRepository.findById(candidateId)
+                .orElseThrow(() -> new IllegalArgumentException("Candidate not found: " + candidateId));
+        return screenOrReuse(candidate, requisition);
+    }
+
+    private ScreeningResultResponse screenOrReuse(Candidate candidate, JobRequisition requisition) {
+        ScreeningResult result = screeningResultRepository
+                .findByCandidateIdAndRequisitionId(candidate.getId(), requisition.getId())
+                .orElseGet(() -> runScreening(candidate, requisition));
         return toResponse(result, candidate, requisition);
     }
 
