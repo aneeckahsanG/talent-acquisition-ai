@@ -4,6 +4,7 @@ import com.talentai.common.entity.JobRequisition;
 import com.talentai.common.repository.JobRequisitionRepository;
 import com.talentai.common.util.PdfTextExtractor;
 import com.talentai.sourcing.dto.SourcingDtos.*;
+import com.talentai.sourcing.service.ApplicationFollowUpService;
 import com.talentai.sourcing.service.SourcingAgentService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -22,6 +23,7 @@ public class PublicJobController {
 
     private final JobRequisitionRepository jobRequisitionRepository;
     private final SourcingAgentService sourcingAgentService;
+    private final ApplicationFollowUpService followUpService;
     private final PdfTextExtractor pdfTextExtractor;
     private final org.springframework.ai.chat.client.ChatClient chatClient;
 
@@ -418,6 +420,9 @@ load();
     public ResponseEntity<?> apply(@PathVariable Long id, @RequestBody DirectApplyRequest request) {
         try {
             DirectApplyResponse result = sourcingAgentService.directApply(id, request);
+            // Same follow-up as a job-board application: tell HR and hand it to the orchestrator agent.
+            followUpService.afterApplication(result.getMatchId(), id, request.getFullName(), request.getEmail(),
+                    request.getResumeText(), "CAREERS_PAGE");
             return ResponseEntity.ok(result);
         } catch (IllegalStateException e) {
             return ResponseEntity.badRequest().body(e.getMessage());

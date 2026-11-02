@@ -70,15 +70,16 @@ is logged. The application cannot merge duplicates, delete a candidate or export
   or unusual case (roughly an overall score of 45-65) that a human must decide.
 - The screening itself only scores and recommends. A clear Reject from screening moves the candidate to
   **Rejected** automatically; Advance and Review leave the candidate at **Screened**, waiting for a recruiter.
-- **AI agent (Orchestrator).** Applications that arrive through the inbound application route (for example a
-  job-board webhook) also start an AI agent run. For a recommendation of Advance with a score of 75 or more,
+- **AI agent (Orchestrator).** Applications that candidates submit themselves, on the public careers page or
+  through a job-board webhook, also start an AI agent run, and HR is notified by email. For a recommendation of Advance with a score of 75 or more,
   the agent **shortlists the candidate by itself** and drafts an outreach email, which still needs a recruiter's
   approval before it is sent. For Review it leaves the candidate at Screened for a recruiter. For a clear Reject
   it queues the rejection and waits: **rejecting, and any move to Offer or Hired, always needs a recruiter's
   approval**. Open the role in Open Roles and look at its **Agent Activity** panel to see each run, what the
   agent did, and to approve or deny what it is waiting on. On the Pipeline, a card moved by the agent says
   "Moved by AI agent"; a recruiter's moves say "Moved by Recruiter" and an accepted offer says "Moved by
-  Candidate". Applications that do not start an agent run stay at Screened until a recruiter acts.
+  Candidate". Candidates who arrive another way (a referral, the Resume Drop Zone, the Talent Pool or a CV
+  upload) do not start an agent run and stay at Screened until a recruiter acts.
 - Applications from the job board are screened automatically; their rows show "Screening in progress". If the
   AI is unavailable or paused (see AI usage limits), the application is still saved and is screened
   automatically later.
