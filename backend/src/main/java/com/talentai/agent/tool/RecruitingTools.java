@@ -13,6 +13,7 @@ import com.talentai.screening.service.ScreeningAgentService;
 import com.talentai.sourcing.service.SourcingAgentService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.stereotype.Component;
 
@@ -33,6 +34,9 @@ public class RecruitingTools {
 
     /** Recorded as the actor on stage moves the agent makes, so the board does not credit them to a recruiter. */
     private static final String AGENT_ACTOR = "ORCHESTRATOR";
+
+    /** Tool-context key the orchestrator uses to tell gated tools which run is calling them. */
+    public static final String RUN_ID_KEY = "runId";
 
     private final ScreeningAgentService screeningAgentService;
     private final SourcingAgentService sourcingAgentService;
@@ -129,17 +133,22 @@ public class RecruitingTools {
     @Tool(description = "Move a candidate to a new pipeline stage. Valid stages: SCREENED, SHORTLISTED, INTERVIEW_SCHEDULED, OFFER, HIRED, REJECTED. "
             + "Stages OFFER, HIRED and REJECTED require recruiter approval (moving to REJECTED also emails the candidate): "
             + "the tool queues the move and returns PENDING_APPROVAL, so stop and report that it is waiting.")
-    public String moveCandidateStage(Long requisitionId, Long candidateId, String newStage) {
+    public String moveCandidateStage(Long requisitionId, Long candidateId, String newStage, ToolContext toolContext) {
         String actionKey = "moveStage:" + requisitionId + ":" + candidateId + ":" + newStage;
-        if (isHighRiskStage(newStage) && !approvalGate.isApproved(actionKey)) {
+        boolean gated = isHighRiskStage(newStage);
+        if (gated && !approvalGate.isApproved(actionKey)) {
             String pendingId = approvalGate.requestApproval(actionKey,
-                    "Move candidate " + candidateId + " to stage " + newStage
-                            + " on requisition " + requisitionId);
+                    "Move " + candidateLabel(candidateId) + " to " + newStage.toUpperCase()
+                            + " on requisition " + requisitionId
+                            + (newStage.equalsIgnoreCase("REJECTED") ? " (the candidate is emailed)" : ""),
+                    "moveCandidateStage", null, runIdOf(toolContext));
             return "PENDING_APPROVAL — action queued for recruiter review. Approval ID: " + pendingId
                     + ". Retry this tool call once the recruiter approves.";
         }
         try {
-            return toJson(orchestratorService.moveStage(requisitionId, candidateId, newStage, AGENT_ACTOR));
+            String result = toJson(orchestratorService.moveStage(requisitionId, candidateId, newStage, AGENT_ACTOR));
+            if (gated) approvalGate.consume(actionKey);
+            return result;
         } catch (Exception e) {
             return error("moveCandidateStage", e);
         }
@@ -149,16 +158,20 @@ public class RecruitingTools {
 
     @Tool(description = "Send an outreach email to a sourced candidate. Always requires human approval. "
             + "Pass the matchId and the email body to send. Call requestApproval first if not yet approved.")
-    public String sendOutreach(Long matchId, String emailBody) {
+    public String sendOutreach(Long matchId, String emailBody, ToolContext toolContext) {
         String actionKey = "sendOutreach:" + matchId;
         if (!approvalGate.isApproved(actionKey)) {
             String pendingId = approvalGate.requestApproval(actionKey,
-                    "Send outreach email for match " + matchId + ": " + truncate(emailBody, 120));
+                    "Send an outreach email for match " + matchId,
+                    "sendOutreach", emailBody, runIdOf(toolContext));
             return "PENDING_APPROVAL — outreach queued for recruiter sign-off. Approval ID: " + pendingId
                     + ". Retry once approved.";
         }
         try {
-            sourcingAgentService.sendOutreach(matchId, emailBody);
+            // Send the text the recruiter read and approved, not whatever the agent wrote this time round.
+            String approvedBody = approvalGate.approvedPayload(actionKey).orElse(emailBody);
+            sourcingAgentService.sendOutreach(matchId, approvedBody);
+            approvalGate.consume(actionKey);
             return "Outreach sent successfully for match " + matchId + ".";
         } catch (Exception e) {
             return error("sendOutreach", e);
@@ -167,22 +180,38 @@ public class RecruitingTools {
 
     @Tool(description = "Send a status notification to a candidate via EMAIL or SMS. Always requires human approval. "
             + "Call requestApproval first if not yet approved.")
-    public String sendCandidateStatusUpdate(Long candidateId, String message, String channel) {
+    public String sendCandidateStatusUpdate(Long candidateId, String message, String channel, ToolContext toolContext) {
         String actionKey = "statusUpdate:" + candidateId + ":" + channel;
         if (!approvalGate.isApproved(actionKey)) {
             String pendingId = approvalGate.requestApproval(actionKey,
-                    "Send " + channel + " status update to candidate " + candidateId + ": " + truncate(message, 120));
+                    "Send a " + channel + " status update to " + candidateLabel(candidateId),
+                    "sendCandidateStatusUpdate", message, runIdOf(toolContext));
             return "PENDING_APPROVAL — status update queued for recruiter sign-off. Approval ID: " + pendingId
                     + ". Retry once approved.";
         }
         try {
-            return toJson(adminAgentService.sendStatusUpdate(candidateId, message, channel));
+            String approvedMessage = approvalGate.approvedPayload(actionKey).orElse(message);
+            String result = toJson(adminAgentService.sendStatusUpdate(candidateId, approvedMessage, channel));
+            approvalGate.consume(actionKey);
+            return result;
         } catch (Exception e) {
             return error("sendCandidateStatusUpdate", e);
         }
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
+
+    /** The orchestrator run this tool call belongs to, or null when called outside one (the free-form agent). */
+    private Long runIdOf(ToolContext toolContext) {
+        if (toolContext == null || toolContext.getContext() == null) return null;
+        return toolContext.getContext().get(RUN_ID_KEY) instanceof Number n ? n.longValue() : null;
+    }
+
+    private String candidateLabel(Long candidateId) {
+        return candidateRepository.findById(candidateId)
+                .map(c -> c.getFullName() + " (candidate " + candidateId + ")")
+                .orElse("candidate " + candidateId);
+    }
 
     private boolean isHighRiskStage(String stage) {
         return stage != null && (stage.equalsIgnoreCase("OFFER") || stage.equalsIgnoreCase("HIRED")

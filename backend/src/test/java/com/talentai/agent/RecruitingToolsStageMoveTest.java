@@ -36,7 +36,7 @@ class RecruitingToolsStageMoveTest {
     @Test
     @DisplayName("shortlisting happens straight away and is recorded as the AI agent, not a recruiter")
     void shortlistIsRecordedAsTheAgent() {
-        tools.moveCandidateStage(1L, 9L, "SHORTLISTED");
+        tools.moveCandidateStage(1L, 9L, "SHORTLISTED", null);
 
         verify(orchestrator).moveStage(1L, 9L, "SHORTLISTED", "ORCHESTRATOR");
         assertThat(gate.listPending()).isEmpty();
@@ -45,7 +45,7 @@ class RecruitingToolsStageMoveTest {
     @Test
     @DisplayName("a rejection waits for a recruiter and nothing is emailed or moved until then")
     void rejectionWaitsForApproval() {
-        String result = tools.moveCandidateStage(1L, 9L, "REJECTED");
+        String result = tools.moveCandidateStage(1L, 9L, "REJECTED", null);
 
         assertThat(result).contains("PENDING_APPROVAL");
         assertThat(gate.listPending()).hasSize(1);
@@ -56,10 +56,10 @@ class RecruitingToolsStageMoveTest {
     @Test
     @DisplayName("once a recruiter approves, the rejection goes through as the AI agent's move")
     void approvedRejectionGoesThrough() {
-        tools.moveCandidateStage(1L, 9L, "REJECTED");
+        tools.moveCandidateStage(1L, 9L, "REJECTED", null);
         gate.approve(gate.listPending().get(0).approvalId());
 
-        tools.moveCandidateStage(1L, 9L, "REJECTED");
+        tools.moveCandidateStage(1L, 9L, "REJECTED", null);
 
         verify(orchestrator).moveStage(1L, 9L, "REJECTED", "ORCHESTRATOR");
     }
@@ -67,8 +67,8 @@ class RecruitingToolsStageMoveTest {
     @Test
     @DisplayName("offers and hires still need approval")
     void offerAndHireStillNeedApproval() {
-        assertThat(tools.moveCandidateStage(1L, 9L, "OFFER")).contains("PENDING_APPROVAL");
-        assertThat(tools.moveCandidateStage(1L, 9L, "HIRED")).contains("PENDING_APPROVAL");
+        assertThat(tools.moveCandidateStage(1L, 9L, "OFFER", null)).contains("PENDING_APPROVAL");
+        assertThat(tools.moveCandidateStage(1L, 9L, "HIRED", null)).contains("PENDING_APPROVAL");
         verify(orchestrator, never()).moveStage(org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.anyLong(),
                 anyString(), anyString());
     }
@@ -76,7 +76,7 @@ class RecruitingToolsStageMoveTest {
     @Test
     @DisplayName("moving back to Screened needs no approval")
     void screenedNeedsNoApproval() {
-        tools.moveCandidateStage(1L, 9L, "SCREENED");
+        tools.moveCandidateStage(1L, 9L, "SCREENED", null);
 
         verify(orchestrator).moveStage(1L, 9L, "SCREENED", "ORCHESTRATOR");
     }

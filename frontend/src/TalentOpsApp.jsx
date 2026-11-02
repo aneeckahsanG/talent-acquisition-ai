@@ -3098,6 +3098,13 @@ function AgentActivityPanel({ requisitionId }) {
   const [openRun, setOpenRun] = useState(null);
   const [steps, setSteps] = useState({});
   const [acting, setActing] = useState(null);
+  const [actionError, setActionError] = useState({});
+
+  // What the recruiter is shown for the text a paused action will send, by the tool that asked.
+  const PAYLOAD_LABEL = {
+    sendOutreach: "Email to be sent:",
+    sendCandidateStatusUpdate: "Message to be sent:",
+  };
 
   const RUN_STYLE = {
     RUNNING:             { bg: "#dbeafe", color: "#1d4ed8", label: "Running" },
@@ -3123,11 +3130,14 @@ function AgentActivityPanel({ requisitionId }) {
 
   async function decide(runId, action) {
     setActing(runId);
+    setActionError(prev => ({ ...prev, [runId]: null }));
     try {
       await apiFetch(`/agent/runs/${runId}/${action}`, { method: "POST" });
       setSteps(prev => ({ ...prev, [runId]: undefined }));
       setOpenRun(null);
       reload();
+    } catch (e) {
+      setActionError(prev => ({ ...prev, [runId]: e.message || "That didn't go through. Try again." }));
     } finally { setActing(null); }
   }
 
@@ -3167,15 +3177,15 @@ function AgentActivityPanel({ requisitionId }) {
               </button>
 
               {run.status === "PAUSED_FOR_APPROVAL" && (() => {
-                let pendingInput = null;
-                try { pendingInput = run.pendingInput ? JSON.parse(run.pendingInput) : null; } catch {}
-                const emailBody = run.pendingTool === "send_outreach_email" && pendingInput?.input?.emailBody;
-                const rejectReason = run.pendingTool === "reject_candidate" && pendingInput?.input?.reason;
+                let approvals = [];
+                try { approvals = run.pendingInput ? (JSON.parse(run.pendingInput).approvals || []) : []; } catch {}
                 return (
                   <div className="border-t" style={{ borderColor: C.border, backgroundColor: "#fefce8" }}>
                     <div className="px-4 py-3 flex items-center justify-between gap-3">
                       <p className="text-xs font-medium" style={{ color: "#854d0e" }}>
-                        Agent wants to run <span className="font-mono font-bold">{run.pendingTool}</span> — your approval is required.
+                        {approvals.length > 0
+                          ? "The agent is waiting for your approval before it does this:"
+                          : "The agent is waiting for your approval."}
                       </p>
                       <div className="flex gap-2 shrink-0">
                         <button disabled={acting === run.id} onClick={() => decide(run.id, "approve")}
@@ -3190,23 +3200,23 @@ function AgentActivityPanel({ requisitionId }) {
                         </button>
                       </div>
                     </div>
-                    {emailBody && (
-                      <div className="px-4 pb-3">
-                        <p className="text-xs font-semibold mb-1" style={{ color: "#854d0e" }}>Email to be sent:</p>
-                        <pre className="text-xs whitespace-pre-wrap rounded-lg p-3 leading-relaxed"
-                          style={{ backgroundColor: "#fef3c7", color: "#78350f", fontFamily: "inherit" }}>
-                          {emailBody}
-                        </pre>
-                      </div>
+                    {actionError[run.id] && (
+                      <p className="px-4 pb-3 text-xs font-medium" style={{ color: "#dc2626" }}>{actionError[run.id]}</p>
                     )}
-                    {rejectReason && (
-                      <div className="px-4 pb-3">
-                        <p className="text-xs font-semibold mb-1" style={{ color: "#854d0e" }}>Rejection reason:</p>
-                        <p className="text-xs rounded-lg p-3" style={{ backgroundColor: "#fef3c7", color: "#78350f" }}>
-                          {rejectReason}
-                        </p>
+                    {approvals.map((a, i) => (
+                      <div key={a.actionKey || i} className="px-4 pb-3">
+                        <p className="text-xs font-semibold mb-1" style={{ color: "#854d0e" }}>{a.description}</p>
+                        {a.payload && (
+                          <>
+                            <p className="text-xs mb-1" style={{ color: "#854d0e" }}>{PAYLOAD_LABEL[a.tool] || "Details:"}</p>
+                            <pre className="text-xs whitespace-pre-wrap rounded-lg p-3 leading-relaxed"
+                              style={{ backgroundColor: "#fef3c7", color: "#78350f", fontFamily: "inherit" }}>
+                              {a.payload}
+                            </pre>
+                          </>
+                        )}
                       </div>
-                    )}
+                    ))}
                   </div>
                 );
               })()}
