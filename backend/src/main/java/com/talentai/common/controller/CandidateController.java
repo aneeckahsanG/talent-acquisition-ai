@@ -4,12 +4,16 @@ import com.talentai.admin.entity.CandidateStatusUpdate;
 import com.talentai.admin.entity.InterviewSchedule;
 import com.talentai.admin.repository.CandidateStatusUpdateRepository;
 import com.talentai.admin.repository.InterviewScheduleRepository;
+import com.talentai.referral.entity.Referral;
+import com.talentai.referral.repository.ReferralRepository;
 import com.talentai.screening.entity.ScreeningResult;
 import com.talentai.screening.repository.ScreeningResultRepository;
 import com.talentai.common.entity.Candidate;
 import com.talentai.common.entity.PipelineStage;
+import com.talentai.common.entity.PipelineStageHistory;
 import com.talentai.common.repository.CandidateRepository;
 import com.talentai.common.repository.JobRequisitionRepository;
+import com.talentai.common.repository.PipelineStageHistoryRepository;
 import com.talentai.common.repository.PipelineStageRepository;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -39,6 +43,8 @@ public class CandidateController {
     private final InterviewScheduleRepository interviewScheduleRepository;
     private final com.talentai.admin.repository.InterviewScorecardRepository scorecardRepository;
     private final ScreeningResultRepository screeningResultRepository;
+    private final ReferralRepository referralRepository;
+    private final PipelineStageHistoryRepository stageHistoryRepository;
 
     @GetMapping
     public ResponseEntity<List<CandidateSummary>> getAll() {
@@ -117,8 +123,8 @@ public class CandidateController {
         private LocalDateTime createdAt;
     }
 
-    /** Returns full application timeline for a candidate:
-     *  all pipeline stage transitions + notification messages, chronologically. */
+    /** Returns full application timeline for a candidate, oldest first:
+     *  every pipeline stage change, referrals, interviews and notification messages. */
     @GetMapping("/{id}/history")
     public ResponseEntity<CandidateHistory> getHistory(@PathVariable Long id) {
         candidateRepository.findById(id)
@@ -134,25 +140,35 @@ public class CandidateController {
 
         List<HistoryEvent> events = new ArrayList<>();
 
-        // Stage transitions — for SCREENED stages, enrich notes with score from ScreeningResult
-        pipelineStageRepository.findByCandidateId(id).forEach(ps -> {
-            String notes = ps.getNotes();
-            if ("SCREENED".equals(ps.getStage())) {
-                var sr = screeningResultRepository.findByCandidateIdAndRequisitionId(ps.getCandidateId(), ps.getRequisitionId());
-                if (sr.isPresent()) {
-                    notes = "Score: " + sr.get().getOverallScore() + " — " + sr.get().getRecommendation();
-                }
-            }
-            events.add(HistoryEvent.builder()
-                    .type("STAGE")
-                    .timestamp(ps.getEnteredAt())
-                    .stage(ps.getStage())
-                    .requisitionId(ps.getRequisitionId())
-                    .requisitionTitle(reqTitles.getOrDefault(ps.getRequisitionId(), "Unknown Role"))
-                    .agent(ps.getUpdatedByAgent())
-                    .notes(notes)
-                    .build());
-        });
+        // Every stage change, as it happened. The pipeline row only holds the current stage, so the log is the record.
+        List<PipelineStageHistory> stageLog = stageHistoryRepository.findByCandidateIdOrderByOccurredAtAscIdAsc(id);
+        stageLog.forEach(h -> events.add(HistoryEvent.builder()
+                .type("STAGE")
+                .timestamp(h.getOccurredAt())
+                .stage(h.getToStage())
+                .fromStage(h.getFromStage())
+                .requisitionId(h.getRequisitionId())
+                .requisitionTitle(reqTitles.getOrDefault(h.getRequisitionId(), "Unknown Role"))
+                .agent(h.getChangedBy())
+                .notes(h.getNotes())
+                .build()));
+
+        // A role with no log yet (it predates the log) still shows where the candidate is now
+        pipelineStageRepository.findByCandidateId(id).stream()
+                .filter(ps -> stageLog.stream().noneMatch(h -> h.getRequisitionId().equals(ps.getRequisitionId())))
+                .forEach(ps -> events.add(HistoryEvent.builder()
+                        .type("STAGE")
+                        .timestamp(ps.getEnteredAt())
+                        .stage(ps.getStage())
+                        .requisitionId(ps.getRequisitionId())
+                        .requisitionTitle(reqTitles.getOrDefault(ps.getRequisitionId(), "Unknown Role"))
+                        .agent(ps.getUpdatedByAgent())
+                        .notes(ps.getNotes())
+                        .build()));
+
+        // Referrals. The pipeline row for a referred candidate moves on to SCREENED as soon as the match is
+        // screened, so the referral itself is the only record of how the candidate arrived.
+        referralRepository.findByCandidateId(id).forEach(r -> events.add(referralEvent(r)));
 
         // Interview schedules
         interviewScheduleRepository.findByCandidateId(id).forEach(iv -> {
@@ -188,13 +204,43 @@ public class CandidateController {
                         .message(su.getMessage())
                         .build()));
 
-        events.sort(Comparator.comparing(HistoryEvent::getTimestamp,
-                Comparator.nullsLast(Comparator.reverseOrder())));
+        // Oldest first; the sort is stable, so events at the same instant keep the order they were added in
+        events.sort(Comparator.comparing(HistoryEvent::getTimestamp, Comparator.nullsLast(Comparator.naturalOrder())));
 
         return ResponseEntity.ok(CandidateHistory.builder()
                 .candidateId(id)
                 .events(events)
                 .build());
+    }
+
+    private HistoryEvent referralEvent(Referral r) {
+        Long roleId = r.getMatchedRequisitionId() != null ? r.getMatchedRequisitionId() : r.getRequisitionId();
+        String roleTitle = roleId == null ? null
+                : jobRequisitionRepository.findById(roleId).map(x -> x.getTitle()).orElse("Unknown Role");
+
+        String by = r.getReferrerName() != null && !r.getReferrerName().isBlank() ? r.getReferrerName() : "an employee";
+        StringBuilder notes = new StringBuilder("Referred by ").append(by);
+        if (r.getReferrerPosition() != null && !r.getReferrerPosition().isBlank()) {
+            notes.append(" (").append(r.getReferrerPosition()).append(")");
+        }
+        if (r.getMatchedRequisitionId() != null) {
+            // The referrer's own choice, or the role the Referral Agent picked. Scores live in the screening.
+            boolean chosenByReferrer = r.getMatchedRequisitionId().equals(r.getRequisitionId());
+            notes.append(chosenByReferrer ? ". Referred for " : ". Routed to ").append(roleTitle);
+        } else {
+            notes.append(". No open role matched yet");
+        }
+        if (r.getRelationshipNotes() != null && !r.getRelationshipNotes().isBlank()) {
+            notes.append(". \"").append(r.getRelationshipNotes().trim()).append("\"");
+        }
+
+        return HistoryEvent.builder()
+                .type("REFERRAL")
+                .timestamp(r.getSubmittedAt())
+                .requisitionId(roleId)
+                .requisitionTitle(roleTitle)
+                .notes(notes.toString())
+                .build();
     }
 
     @Data
@@ -211,10 +257,11 @@ public class CandidateController {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class HistoryEvent {
-        private String type;           // STAGE | NOTIFICATION
+        private String type;           // STAGE | REFERRAL | INTERVIEW | NOTIFICATION
         private LocalDateTime timestamp;
         // STAGE fields
         private String stage;
+        private String fromStage;
         private Long requisitionId;
         private String requisitionTitle;
         private String agent;

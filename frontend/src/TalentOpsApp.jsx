@@ -151,7 +151,7 @@ function activityAgent(entry) {
 }
 
 const STAGE_LABELS = {
-  SOURCED: "Sourced", SCREENED: "Screened", SHORTLISTED: "Shortlisted",
+  SOURCED: "Sourced", REFERRAL_MATCHED: "Referral matched", SCREENED: "Screened", SHORTLISTED: "Shortlisted",
   INTERVIEW_SCHEDULED: "Interview", OFFER: "Offer", HIRED: "Hired", REJECTED: "Rejected",
   NO_SHOW: "No Show",
 };
@@ -5374,9 +5374,11 @@ function PipelineView() {
                       const isStage = ev.type === "STAGE";
                       const isInterview = ev.type === "INTERVIEW";
                       const isNotification = ev.type === "NOTIFICATION";
+                      const isReferral = ev.type === "REFERRAL";
 
                       const dotColor = isStage
                         ? ({ REJECTED: C.danger, HIRED: C.success }[ev.stage] || C.accent)
+                        : isReferral ? "#8b5cf6"
                         : isInterview ? "#f59e0b"
                         : C.success;
 
@@ -5388,6 +5390,7 @@ function PipelineView() {
                           <div className="w-5 h-5 rounded-full border-2 border-white flex items-center justify-center flex-shrink-0 mt-0.5 z-10"
                             style={{ backgroundColor: dotColor }}>
                             {isStage && <Activity size={9} color="#fff" />}
+                            {isReferral && <UserPlus size={9} color="#fff" />}
                             {isInterview && <Calendar size={9} color="#fff" />}
                             {isNotification && <Mail size={9} color="#fff" />}
                           </div>
@@ -5398,7 +5401,15 @@ function PipelineView() {
                                 {isStage && (
                                   <>
                                     <p className="text-xs font-bold" style={{ color: dotColor }}>{STAGE_LABELS[ev.stage] || ev.stage}</p>
-                                    <p className="text-[10px]" style={{ color: C.muted }}>{ev.requisitionTitle}</p>
+                                    <p className="text-[10px]" style={{ color: C.muted }}>
+                                      {ev.requisitionTitle}{ev.fromStage ? ` · from ${STAGE_LABELS[ev.fromStage] || ev.fromStage}` : ""}
+                                    </p>
+                                  </>
+                                )}
+                                {isReferral && (
+                                  <>
+                                    <p className="text-xs font-bold" style={{ color: dotColor }}>Referral received</p>
+                                    {ev.requisitionTitle && <p className="text-[10px]" style={{ color: C.muted }}>{ev.requisitionTitle}</p>}
                                   </>
                                 )}
                                 {isInterview && (
@@ -5444,7 +5455,7 @@ function PipelineView() {
                             {isInterview && ev.notes && (
                               <p className="text-[11px] mt-1 leading-relaxed" style={{ color: C.text }}>{ev.notes}</p>
                             )}
-                            {isStage && ev.notes && (
+                            {(isStage || isReferral) && ev.notes && (
                               <p className="text-[11px] mt-1 leading-relaxed" style={{ color: C.text }}>{ev.notes}</p>
                             )}
                             {isNotification && ev.message && (
@@ -8555,9 +8566,10 @@ function CandidateProfileView({ candidateId, onBack, onOpenCandidate }) {
                 <span className="text-xs w-32 shrink-0 pt-0.5" style={{ color: C.muted }}>{formatFullDateTime(e.timestamp)}</span>
                 <span style={{ color: C.text }}>
                   {e.type === "STAGE" && <>Moved to <b>{STAGE_LABELS[e.stage] || e.stage}</b>{e.requisitionTitle && ` · ${e.requisitionTitle}`}{e.notes && <span style={{ color: C.muted }}> — {e.notes}</span>}</>}
+                  {e.type === "REFERRAL" && <>Referral received{e.requisitionTitle && ` · ${e.requisitionTitle}`}{e.notes && <span style={{ color: C.muted }}> — {e.notes}</span>}</>}
                   {e.type === "INTERVIEW" && <>{titleCase(e.interviewType)} interview · {titleCase(e.interviewStatus)}</>}
                   {e.type === "NOTIFICATION" && <>Email: {e.message || e.channel}</>}
-                  {!["STAGE", "INTERVIEW", "NOTIFICATION"].includes(e.type) && titleCase(e.type)}
+                  {!["STAGE", "REFERRAL", "INTERVIEW", "NOTIFICATION"].includes(e.type) && titleCase(e.type)}
                 </span>
               </div>
             ))}

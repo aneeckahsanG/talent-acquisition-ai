@@ -652,6 +652,7 @@ public class OrchestratorService {
                         .candidateId(candidateId).requisitionId(requisitionId).build());
         ps.setStage("INTERVIEW_SCHEDULED");
         ps.setUpdatedByAgent("HUMAN");
+        ps.setNotes("Booking link sent for the " + interviewType.replace("_", " ").toLowerCase() + " interview");
         ps.setEnteredAt(LocalDateTime.now());
         pipelineStageRepository.save(ps);
 

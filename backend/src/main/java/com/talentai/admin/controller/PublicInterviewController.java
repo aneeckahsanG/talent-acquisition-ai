@@ -97,7 +97,8 @@ public class PublicInterviewController {
         pipelineStageRepository.findByCandidateIdAndRequisitionId(iv.getCandidateId(), iv.getRequisitionId())
                 .ifPresent(ps -> {
                     ps.setStage("INTERVIEW_SCHEDULED");
-                    ps.setUpdatedByAgent("HUMAN");
+                    ps.setUpdatedByAgent("CANDIDATE");
+                    ps.setNotes(iv.getInterviewType().replace("_", " ").toLowerCase() + " interview booked for " + start.format(DISPLAY));
                     ps.setEnteredAt(LocalDateTime.now());
                     pipelineStageRepository.save(ps);
                 });

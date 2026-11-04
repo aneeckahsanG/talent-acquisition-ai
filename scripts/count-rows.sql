@@ -1,6 +1,7 @@
 -- Row counts for the candidate data that cleanup-db.sql removes.
 SELECT 'REMOVED' AS action, 'candidate' AS tbl, COUNT(*) AS row_count FROM candidate
 UNION ALL SELECT 'REMOVED', 'pipeline_stage', COUNT(*) FROM pipeline_stage
+UNION ALL SELECT 'REMOVED', 'pipeline_stage_history', COUNT(*) FROM pipeline_stage_history
 UNION ALL SELECT 'REMOVED', 'screening_result', COUNT(*) FROM screening_result
 UNION ALL SELECT 'REMOVED', 'sourcing_match', COUNT(*) FROM sourcing_match
 UNION ALL SELECT 'REMOVED', 'referral', COUNT(*) FROM referral

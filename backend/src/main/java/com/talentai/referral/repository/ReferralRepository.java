@@ -10,6 +10,7 @@ public interface ReferralRepository extends JpaRepository<Referral, Long> {
     List<Referral> findByReferredByOrderBySubmittedAtDesc(Long referredBy);
     List<Referral> findAllByOrderBySubmittedAtDesc();
     List<Referral> findByStatus(String status);
+    List<Referral> findByCandidateId(Long candidateId);
 
     @Query("SELECT COUNT(r) FROM Referral r WHERE r.status IN ('SUBMITTED', 'MATCHED', 'SCREENING', 'ADVANCED')")
     long countInProgress();

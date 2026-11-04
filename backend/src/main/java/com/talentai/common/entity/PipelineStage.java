@@ -4,12 +4,17 @@ import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
+import lombok.ToString;
+
+import com.talentai.common.service.PipelineStageHistoryListener;
 
 import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "pipeline_stage")
+@EntityListeners(PipelineStageHistoryListener.class)
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -38,6 +43,18 @@ public class PipelineStage {
 
     @Column(columnDefinition = "TEXT")
     private String notes;
+
+    /** The stage as last loaded or saved, so the history listener can tell a stage move from a note edit. Not stored. */
+    @Transient
+    @EqualsAndHashCode.Exclude
+    @ToString.Exclude
+    private String loadedStage;
+
+    /** The note as last loaded or saved: a note left over from an earlier step is not the note of a later one. Not stored. */
+    @Transient
+    @EqualsAndHashCode.Exclude
+    @ToString.Exclude
+    private String loadedNotes;
 
     @PrePersist
     protected void onCreate() {
