@@ -64,6 +64,14 @@ public class RecruitingOrchestratorService {
         return startRun(null, candidateId, requisitionId, goal);
     }
 
+    /** Start a run for a candidate whose interview round has just been scored; the agent decides what follows. */
+    public AgentRun startInterviewFollowUpRun(Long candidateId, Long requisitionId, String candidateName, String interviewType) {
+        String goal = "The %s interview for '%s' (candidateId=%d) on requisition %d has just been completed and the "
+                .formatted(interviewType.replace("_", " ").toLowerCase(), candidateName, candidateId, requisitionId)
+                + "interviewer's scorecard is in. Decide the next step.";
+        return startRun(null, candidateId, requisitionId, goal);
+    }
+
     private AgentRun startRun(Long matchId, Long candidateId, Long requisitionId, String goal) {
         AgentRun run = runRepository.save(AgentRun.builder()
                 .matchId(matchId)

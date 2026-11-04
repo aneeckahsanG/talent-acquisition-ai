@@ -55,6 +55,17 @@ public class RecruitingTools {
         }
     }
 
+    @Tool(description = "Get how a candidate's interviews went for a job requisition: each round's type, status and, once the "
+            + "interviewer has submitted it, the verdict (STRONG_YES, YES, NO or STRONG_NO), average rating (1-5), ratings and "
+            + "notes. nextRound is the round that follows the latest completed one, or null if there is none.")
+    public String getInterviewFeedback(Long requisitionId, Long candidateId) {
+        try {
+            return toJson(orchestratorService.interviewFeedback(requisitionId, candidateId));
+        } catch (Exception e) {
+            return error("getInterviewFeedback", e);
+        }
+    }
+
     @Tool(description = "Get a high-level dashboard summary: open requisitions, total screenings, edge cases awaiting review, referrals, and scheduled interviews.")
     public String getDashboardSummary() {
         try {
@@ -173,8 +184,9 @@ public class RecruitingTools {
         }
     }
 
-    @Tool(description = "Email a shortlisted candidate a link to book an interview time from the published calendar. "
-            + "interviewType is PHONE_SCREEN, TECHNICAL or FINAL. Always requires recruiter approval: the tool queues it and "
+    @Tool(description = "Email a candidate a link to book an interview time from the published calendar: a shortlisted "
+            + "candidate's first interview, or the next round for a candidate whose previous round went well. "
+            + "interviewType is PHONE_SCREEN, TECHNICAL or FINAL, in that order. Always requires recruiter approval: the tool queues it and "
             + "returns PENDING_APPROVAL, so stop and report that it is waiting. If it returns an ERROR (no times published, "
             + "not shortlisted, already invited) do not retry; explain it in your final answer.")
     public String sendBookingLink(Long requisitionId, Long candidateId, String interviewType, ToolContext toolContext) {

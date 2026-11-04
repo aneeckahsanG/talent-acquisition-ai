@@ -555,7 +555,36 @@ public class OrchestratorService {
                 .notes(req.getNotes() != null && !req.getNotes().isBlank() ? req.getNotes().trim() : null)
                 .submittedBy(submittedBy)
                 .build());
-        return completeInterviewRound(interviewId);
+        InterviewRoundResponse round = completeInterviewRound(interviewId);
+        events.publishEvent(new com.talentai.orchestrator.event.InterviewCompletedEvent(
+                iv.getRequisitionId(), iv.getCandidateId(), iv.getInterviewType()));
+        return round;
+    }
+
+    /** One interview round as the agent sees it: when, how it went, and what the interviewer wrote. */
+    public record RoundFeedback(Long interviewId, String interviewType, String status, String confirmedSlot,
+                                String verdict, Double averageRating, Map<String, Integer> ratings, String notes,
+                                String noticePeriod, String expectedSalary) {}
+
+    /** A candidate's rounds so far, and the round that would follow the latest completed one (null if none). */
+    public record InterviewFeedback(String stage, List<RoundFeedback> rounds, String nextRound) {}
+
+    public InterviewFeedback interviewFeedback(Long requisitionId, Long candidateId) {
+        String stage = pipelineStageRepository.findByCandidateIdAndRequisitionId(candidateId, requisitionId)
+                .map(PipelineStage::getStage).orElse(null);
+        var interviews = interviewScheduleRepository
+                .findByCandidateIdAndRequisitionIdOrderByCreatedAtAsc(candidateId, requisitionId);
+        List<RoundFeedback> rounds = interviews.stream().map(iv -> {
+            var sc = scorecardRepository.findByInterviewId(iv.getId()).orElse(null);
+            return new RoundFeedback(iv.getId(), iv.getInterviewType(), iv.getStatus(),
+                    iv.getConfirmedSlot() == null ? null : iv.getConfirmedSlot().toString(),
+                    sc == null ? null : sc.getVerdict(), sc == null ? null : sc.averageRating(),
+                    sc == null ? null : sc.getRatings(), sc == null ? null : sc.getNotes(),
+                    sc == null ? null : sc.getNoticePeriod(), sc == null ? null : sc.getExpectedSalary());
+        }).toList();
+        String next = interviews.stream().filter(i -> "COMPLETED".equals(i.getStatus()))
+                .reduce((a, b) -> b).map(i -> InterviewRounds.next(i.getInterviewType())).orElse(null);
+        return new InterviewFeedback(stage, rounds, next);
     }
 
     private static String blankToNull(String s) {
@@ -687,9 +716,10 @@ public class OrchestratorService {
 
     /**
      * Whether a booking link can sensibly be sent to this candidate now, checked before anyone is asked to
-     * approve it: the candidate is shortlisted, has no live invitation for this interview already, has an
-     * email address, and there are free times for them to pick. Only open windows count, since the agent
-     * does not choose an interviewer.
+     * approve it: the candidate has an email address, has no open interview, and there are free times for them
+     * to pick (only open windows count, since the agent does not choose an interviewer). They are either
+     * shortlisted, or between rounds, in which case the link must be for the round after the latest completed
+     * one and that round's verdict must not be NO.
      */
     public BookingLinkCheck checkBookingLink(Long requisitionId, Long candidateId, String interviewType) {
         if (!ScorecardCriteria.BY_TYPE.containsKey(interviewType)) {
@@ -704,18 +734,50 @@ public class OrchestratorService {
             return new BookingLinkCheck(candidate.getFullName() + " has no email address, so a link cannot be sent.", null);
         }
         PipelineStage stage = pipelineStageRepository.findByCandidateIdAndRequisitionId(candidateId, requisitionId).orElse(null);
-        if (stage == null || !"SHORTLISTED".equals(stage.getStage())) {
+        String stageName = stage == null ? null : stage.getStage();
+        boolean shortlisted = "SHORTLISTED".equals(stageName);
+        boolean betweenRounds = "INTERVIEW_SCHEDULED".equals(stageName);
+        if (!shortlisted && !betweenRounds) {
             return new BookingLinkCheck(candidate.getFullName() + " is "
-                    + (stage == null ? "not in this pipeline" : "at stage " + stage.getStage())
-                    + ", not SHORTLISTED, so no booking link is sent.", null);
+                    + (stage == null ? "not in this pipeline" : "at stage " + stageName)
+                    + ", not SHORTLISTED or between interview rounds, so no booking link is sent.", null);
         }
-        boolean alreadyInvited = interviewScheduleRepository
-                .findByCandidateIdAndRequisitionIdOrderByCreatedAtAsc(candidateId, requisitionId).stream()
-                .anyMatch(i -> interviewType.equals(i.getInterviewType())
-                        && ("PROPOSED".equals(i.getStatus()) || "CONFIRMED".equals(i.getStatus())));
-        if (alreadyInvited) {
+        var interviews = interviewScheduleRepository
+                .findByCandidateIdAndRequisitionIdOrderByCreatedAtAsc(candidateId, requisitionId);
+        var open = interviews.stream()
+                .filter(i -> "PROPOSED".equals(i.getStatus()) || "CONFIRMED".equals(i.getStatus())).toList();
+        if (open.stream().anyMatch(i -> interviewType.equals(i.getInterviewType()))) {
             return new BookingLinkCheck(candidate.getFullName() + " already has a " + interviewType
                     + " interview invitation. Nothing to send.", null);
+        }
+        if (!open.isEmpty()) {
+            return new BookingLinkCheck(candidate.getFullName() + " already has a " + open.get(0).getInterviewType()
+                    + " interview that is not completed yet, so the next round waits until it is.", null);
+        }
+        if (betweenRounds) {
+            // Between rounds the link must be the next round, and only after a round that went well
+            var last = interviews.stream().filter(i -> "COMPLETED".equals(i.getStatus())).reduce((a, b) -> b).orElse(null);
+            if (last == null) {
+                return new BookingLinkCheck(candidate.getFullName() + " has no completed interview yet, so there is no "
+                        + "next round to invite them to.", null);
+            }
+            String expected = InterviewRounds.next(last.getInterviewType());
+            if (expected == null) {
+                return new BookingLinkCheck(candidate.getFullName() + " has finished the " + last.getInterviewType()
+                        + " round, which is the last one. There is no next round to invite them to.", null);
+            }
+            if (!expected.equals(interviewType)) {
+                return new BookingLinkCheck("After the " + last.getInterviewType() + " round the next one is "
+                        + expected + ", not " + interviewType + ".", null);
+            }
+            String verdict = scorecardRepository.findByInterviewId(last.getId())
+                    .map(com.talentai.admin.entity.InterviewScorecard::getVerdict).orElse(null);
+            if (verdict == null || "NO".equals(verdict) || "STRONG_NO".equals(verdict)) {
+                return new BookingLinkCheck(verdict == null
+                        ? "The " + last.getInterviewType() + " round has no scorecard, so no next round is offered."
+                        : "The " + last.getInterviewType() + " round verdict was " + verdict
+                                + ", so no next round is offered.", null);
+            }
         }
         if (interviewBookingService.availableStarts(interviewType, null, null).isEmpty()) {
             return new BookingLinkCheck("No free interview times are published, so " + candidate.getFullName()
