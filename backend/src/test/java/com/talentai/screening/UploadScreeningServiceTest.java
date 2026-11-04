@@ -2,6 +2,7 @@ package com.talentai.screening;
 
 import com.talentai.common.entity.Candidate;
 import com.talentai.common.entity.JobRequisition;
+import com.talentai.orchestrator.agent.RecruitingOrchestratorService;
 import com.talentai.screening.service.ScreeningAgentService;
 import com.talentai.screening.service.ScreeningAgentService.PreparedUpload;
 import com.talentai.screening.service.ScreeningProgressTracker;
@@ -28,13 +29,14 @@ class UploadScreeningServiceTest {
     private final ScreeningAgentService screening = mock(ScreeningAgentService.class);
     private final ScreeningProgressTracker tracker = new ScreeningProgressTracker();
     private final MultipartFile file = mock(MultipartFile.class);
+    private final RecruitingOrchestratorService orchestrator = mock(RecruitingOrchestratorService.class);
     private UploadScreeningService service;
     private final Candidate danny = Candidate.builder().id(5L).fullName("Danny").build();
     private final JobRequisition java = JobRequisition.builder().id(3L).title("Senior Backend Engineer (Java)").build();
 
     @BeforeEach
     void setUp() throws Exception {
-        service = new UploadScreeningService(screening, tracker);
+        service = new UploadScreeningService(screening, tracker, orchestrator);
         when(screening.prepareUpload("Danny", "d@example.com", 3L, file)).thenReturn(new PreparedUpload(danny, List.of(java)));
     }
 
@@ -54,6 +56,7 @@ class UploadScreeningServiceTest {
         release.countDown();
         await().untilAsserted(() -> assertThat(tracker.list()).isEmpty());
         verify(screening).screenPrepared(danny, java);
+        await().untilAsserted(() -> verify(orchestrator).startRunAsync(null, 5L, 3L, "Danny"));
     }
 
     @Test
@@ -67,6 +70,7 @@ class UploadScreeningServiceTest {
             assertThat(tracker.list()).hasSize(1);
             assertThat(tracker.list().get(0).error()).isEqualTo("AI budget reached");
         });
+        verify(orchestrator, never()).startRunAsync(any(), any(), any(), any());
     }
 
     @Test

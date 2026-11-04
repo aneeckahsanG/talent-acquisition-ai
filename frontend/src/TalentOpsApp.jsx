@@ -4396,12 +4396,6 @@ function PipelineView() {
                         {(c.screeningScore ?? c.sourcingMatchScore) != null && (
                           <ScoreRing score={c.screeningScore ?? c.sourcingMatchScore} size={30} />
                         )}
-                        {c.updatedByAgent && (
-                          <p className="text-[10px] font-semibold mt-1"
-                            style={{ color: AGENT_META[c.updatedByAgent]?.color || C.muted }}>
-                            Moved by {actorLabel(c.updatedByAgent)}
-                          </p>
-                        )}
                         {/* Why/when a candidate was rejected or did not show */}
                         {(stage === "REJECTED" || stage === "NO_SHOW") && (
                           <div className="mt-2 p-2 rounded-lg space-y-0.5" style={{ background: `${C.danger}08`, border: `1px solid ${C.danger}33` }}>
