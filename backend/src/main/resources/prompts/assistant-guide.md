@@ -1,7 +1,7 @@
 ---
 agent: assistant
 description: Application guide appended to the assistant system prompt - how each page and workflow really works
-last_updated: 2026-10-26
+last_updated: 2026-11-04
 ---
 
 # Application guide
@@ -116,8 +116,10 @@ is logged. The application cannot merge duplicates, delete a candidate or export
 
 1. On a Shortlisted card choose **Schedule Interview**. Pick the interview type, the interviewer and optional
    notes, then **Send Booking Link**.
-2. The candidate gets an email with a link and chooses a time from the interviewer's published availability.
-   The round shows "awaiting booking" until they do. Two bookings for the same interviewer can never overlap.
+2. The link is only sent when the chosen interviewer has published availability (or availability open to everyone)
+   that is still free; otherwise it is refused and you are told to publish availability first. The candidate gets
+   an email with a link and chooses a time from that availability. The round shows "awaiting booking" until they
+   do. Two bookings for the same interviewer can never overlap.
 3. Interview lengths are fixed by type: **Phone Screen 30 min, Technical 60 min, Final Round 90 min**.
 4. Round buttons: **Resend link** (while awaiting booking), **Reschedule** (emails the candidate a new link),
    **Set manually** (the recruiter picks the time without asking the candidate), and **Done** (once the

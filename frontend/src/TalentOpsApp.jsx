@@ -4038,6 +4038,7 @@ function PipelineView() {
 
   async function handleScheduleInterview() {
     setScheduling(true);
+    setScheduleModal(prev => ({ ...prev, error: null }));
     try {
       const result = await apiFetch(`/orchestrator/pipeline/${scheduleModal.requisitionId ?? reqId}/candidates/${scheduleModal.candidateId}/schedule-interview`, {
         method: "POST",
@@ -4048,6 +4049,8 @@ function PipelineView() {
       // Stay in modal to show the invitation email that was sent
       setScheduleModal(prev => ({ ...prev, confirmed: true, invitationEmail: result.invitationEmail, candidateEmail: result.candidateEmail }));
       reload();
+    } catch (e) {
+      setScheduleModal(prev => ({ ...prev, error: e.message }));
     } finally {
       setScheduling(false);
     }
@@ -5270,6 +5273,13 @@ function PipelineView() {
                     />
                   </div>
                 </div>
+
+                {scheduleModal.error && (
+                  <p className="mt-4 px-3 py-2 rounded-xl text-xs font-semibold"
+                    style={{ background: `${C.danger}10`, border: `1px solid ${C.danger}33`, color: C.danger }}>
+                    {scheduleModal.error}
+                  </p>
+                )}
 
                 <div className="flex gap-2 mt-5">
                   <Btn variant="primary" onClick={handleScheduleInterview} disabled={scheduling || !scheduleForm.interviewerId}>

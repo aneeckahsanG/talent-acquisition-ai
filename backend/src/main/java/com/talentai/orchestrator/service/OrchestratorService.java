@@ -604,6 +604,13 @@ public class OrchestratorService {
         if (interviewerId != null && !appUserRepository.existsById(interviewerId)) {
             throw new IllegalArgumentException("Interviewer not found: " + interviewerId);
         }
+        // A link with nothing to pick would only send the candidate to an empty page
+        if (interviewBookingService.availableStarts(interviewType, interviewerId, null).isEmpty()) {
+            throw new IllegalStateException("No free interview times are published"
+                    + (interviewerId != null ? " for this interviewer" : "")
+                    + ", so the candidate would have nothing to choose from. "
+                    + "Publish availability on the Calendar first, then send the booking link.");
+        }
         InterviewSchedule interview = InterviewSchedule.builder()
                 .candidateId(candidateId)
                 .requisitionId(requisitionId)
