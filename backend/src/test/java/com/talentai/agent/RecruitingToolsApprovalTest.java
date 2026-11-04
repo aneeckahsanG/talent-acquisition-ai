@@ -14,7 +14,6 @@ import com.talentai.referral.service.ReferralAgentService;
 import com.talentai.cvinbox.service.CvInboxProcessingService;
 import com.talentai.admin.repository.AvailabilityWindowRepository;
 import com.talentai.orchestrator.service.OrchestratorService;
-import com.talentai.orchestrator.agent.AgentTrace;
 import com.talentai.screening.service.ScreeningAgentService;
 import com.talentai.sourcing.service.SourcingAgentService;
 import org.junit.jupiter.api.BeforeEach;
@@ -56,7 +55,7 @@ class RecruitingToolsApprovalTest {
                 mock(MockJobRoleRepository.class), mock(CandidateDirectoryService.class),
                 mock(RequisitionService.class), mock(ReferralAgentService.class),
                 mock(CvInboxProcessingService.class), mock(AvailabilityWindowRepository.class),
-                new ObjectMapper(), mock(AgentTrace.class));
+                new ObjectMapper(), NoOpAgentTrace.create());
     }
 
     @Test

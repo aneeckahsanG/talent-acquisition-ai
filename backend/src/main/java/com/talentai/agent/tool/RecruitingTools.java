@@ -112,11 +112,13 @@ public class RecruitingTools {
             + "interviewer has submitted it, the verdict (STRONG_YES, YES, NO or STRONG_NO), average rating (1-5), ratings and "
             + "notes. nextRound is the round that follows the latest completed one, or null if there is none.")
     public String getInterviewFeedback(Long requisitionId, Long candidateId) {
-        try {
-            return toJson(orchestratorService.interviewFeedback(requisitionId, candidateId));
-        } catch (Exception e) {
-            return error("getInterviewFeedback", e);
-        }
+        return traced("getInterviewFeedback", "requisitionId=" + requisitionId + ", candidateId=" + candidateId, () -> {
+            try {
+                return toJson(orchestratorService.interviewFeedback(requisitionId, candidateId));
+            } catch (Exception e) {
+                return error("getInterviewFeedback", e);
+            }
+        });
     }
 
     @Tool(description = "Get a high-level dashboard summary: open requisitions, total screenings, edge cases awaiting review, referrals, and scheduled interviews.")
@@ -592,29 +594,32 @@ public class RecruitingTools {
             + "not shortlisted, already invited) do not retry; explain it in your final answer.")
     public String sendBookingLink(Long requisitionId, Long candidateId, String interviewType, ToolContext toolContext) {
         String type = interviewType == null || interviewType.isBlank() ? "PHONE_SCREEN" : interviewType.trim().toUpperCase();
-        var check = orchestratorService.checkBookingLink(requisitionId, candidateId, type);
-        if (check.problem() != null) {
-            return "ERROR in sendBookingLink: " + check.problem();
-        }
-        String actionKey = "bookingLink:" + requisitionId + ":" + candidateId + ":" + type;
-        if (!approvalGate.isApproved(actionKey)) {
-            String pendingId = approvalGate.requestApproval(actionKey,
-                    "Send " + candidateLabel(candidateId) + " a link to book a " + type.replace("_", " ").toLowerCase()
-                            + " interview (requisition " + requisitionId + ")",
-                    "sendBookingLink", check.emailText() + "\n\n[A personal link to the available calendar follows]",
-                    runIdOf(toolContext));
-            return "PENDING_APPROVAL — booking link queued for recruiter review. Approval ID: " + pendingId
-                    + ". Retry this tool call once the recruiter approves.";
-        }
-        try {
-            var request = new com.talentai.orchestrator.dto.OrchestratorDtos.ScheduleInterviewRequest();
-            request.setInterviewType(type);
-            String result = toJson(orchestratorService.scheduleInterview(requisitionId, candidateId, request, AGENT_ACTOR));
-            approvalGate.consume(actionKey);
-            return result;
-        } catch (Exception e) {
-            return error("sendBookingLink", e);
-        }
+        return traced("sendBookingLink",
+                "requisitionId=" + requisitionId + ", candidateId=" + candidateId + ", interviewType=" + type, () -> {
+            var check = orchestratorService.checkBookingLink(requisitionId, candidateId, type);
+            if (check.problem() != null) {
+                return "ERROR in sendBookingLink: " + check.problem();
+            }
+            String actionKey = "bookingLink:" + requisitionId + ":" + candidateId + ":" + type;
+            if (!approvalGate.isApproved(actionKey)) {
+                String pendingId = approvalGate.requestApproval(actionKey,
+                        "Send " + candidateLabel(candidateId) + " a link to book a " + type.replace("_", " ").toLowerCase()
+                                + " interview (requisition " + requisitionId + ")",
+                        "sendBookingLink", check.emailText() + "\n\n[A personal link to the available calendar follows]",
+                        runIdOf(toolContext));
+                return "PENDING_APPROVAL — booking link queued for recruiter review. Approval ID: " + pendingId
+                        + ". Retry this tool call once the recruiter approves.";
+            }
+            try {
+                var request = new com.talentai.orchestrator.dto.OrchestratorDtos.ScheduleInterviewRequest();
+                request.setInterviewType(type);
+                String result = toJson(orchestratorService.scheduleInterview(requisitionId, candidateId, request, AGENT_ACTOR));
+                approvalGate.consume(actionKey);
+                return result;
+            } catch (Exception e) {
+                return error("sendBookingLink", e);
+            }
+        });
     }
 
     @Tool(description = "Send a status notification to a candidate via EMAIL or SMS. Always requires human approval. "

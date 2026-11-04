@@ -13,7 +13,6 @@ import com.talentai.referral.service.ReferralAgentService;
 import com.talentai.cvinbox.service.CvInboxProcessingService;
 import com.talentai.admin.repository.AvailabilityWindowRepository;
 import com.talentai.orchestrator.service.OrchestratorService;
-import com.talentai.orchestrator.agent.AgentTrace;
 import com.talentai.screening.dto.ScreeningDtos.ScreeningResultResponse;
 import com.talentai.screening.service.ScreeningAgentService;
 import com.talentai.sourcing.service.SourcingAgentService;
@@ -42,7 +41,7 @@ class RecruitingToolsScreenTest {
                 mock(JobRequisitionRepository.class), mock(MockJobRoleRepository.class),
                 mock(CandidateDirectoryService.class), mock(RequisitionService.class),
                 mock(ReferralAgentService.class), mock(CvInboxProcessingService.class),
-                mock(AvailabilityWindowRepository.class), new ObjectMapper(), mock(AgentTrace.class));
+                mock(AvailabilityWindowRepository.class), new ObjectMapper(), NoOpAgentTrace.create());
     }
 
     @Test

@@ -8,7 +8,6 @@ import com.talentai.common.repository.CandidateRepository;
 import com.talentai.orchestrator.dto.OrchestratorDtos.ScheduleInterviewRequest;
 import com.talentai.orchestrator.service.OrchestratorService;
 import com.talentai.orchestrator.service.OrchestratorService.BookingLinkCheck;
-import com.talentai.orchestrator.agent.AgentTrace;
 import com.talentai.screening.service.ScreeningAgentService;
 import com.talentai.sourcing.service.SourcingAgentService;
 import org.junit.jupiter.api.BeforeEach;
@@ -51,7 +50,7 @@ class RecruitingToolsBookingLinkTest {
                 mock(com.talentai.referral.service.ReferralAgentService.class),
                 mock(com.talentai.cvinbox.service.CvInboxProcessingService.class),
                 mock(com.talentai.admin.repository.AvailabilityWindowRepository.class),
-                new ObjectMapper(), mock(AgentTrace.class));
+                new ObjectMapper(), NoOpAgentTrace.create());
         when(orchestrator.checkBookingLink(1L, 9L, "PHONE_SCREEN"))
                 .thenReturn(new BookingLinkCheck(null, "Dear Priya, we would like to invite you"));
     }
