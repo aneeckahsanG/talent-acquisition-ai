@@ -6,6 +6,12 @@ import com.talentai.agent.service.HumanApprovalGate;
 import com.talentai.agent.tool.RecruitingTools;
 import com.talentai.common.repository.CandidateRepository;
 import com.talentai.directory.CandidateDirectoryService;
+import com.talentai.common.service.RequisitionService;
+import com.talentai.common.repository.JobRequisitionRepository;
+import com.talentai.sourcing.repository.MockJobRoleRepository;
+import com.talentai.referral.service.ReferralAgentService;
+import com.talentai.cvinbox.service.CvInboxProcessingService;
+import com.talentai.admin.repository.AvailabilityWindowRepository;
 import com.talentai.orchestrator.service.OrchestratorService;
 import com.talentai.screening.service.ScreeningAgentService;
 import com.talentai.sourcing.service.SourcingAgentService;
@@ -32,7 +38,10 @@ class RecruitingToolsStageMoveTest {
         gate = new HumanApprovalGate();
         tools = new RecruitingTools(mock(ScreeningAgentService.class), mock(SourcingAgentService.class),
                 mock(AdminAgentService.class), orchestrator, gate, mock(CandidateRepository.class),
-                mock(CandidateDirectoryService.class), new ObjectMapper());
+                mock(JobRequisitionRepository.class), mock(MockJobRoleRepository.class),
+                mock(CandidateDirectoryService.class), mock(RequisitionService.class),
+                mock(ReferralAgentService.class), mock(CvInboxProcessingService.class),
+                mock(AvailabilityWindowRepository.class), new ObjectMapper());
     }
 
     @Test

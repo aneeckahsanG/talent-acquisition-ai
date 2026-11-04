@@ -6,20 +6,43 @@ import com.talentai.agent.service.HumanApprovalGate;
 import com.talentai.admin.service.AdminAgentService;
 import com.talentai.admin.dto.AdminDtos.ProposeInterviewRequest;
 import com.talentai.admin.dto.AdminDtos.InterviewScheduleResponse;
+import com.talentai.admin.dto.AdminDtos.ConfirmSlotRequest;
+import com.talentai.admin.entity.AvailabilityWindow;
+import com.talentai.admin.repository.AvailabilityWindowRepository;
 import com.talentai.common.repository.CandidateRepository;
+import com.talentai.common.dto.JobRequisitionDtos.CreateRequisitionRequest;
+import com.talentai.common.entity.Candidate;
+import com.talentai.common.entity.JobRequisition;
+import com.talentai.common.repository.JobRequisitionRepository;
+import com.talentai.common.service.RequisitionService;
 import com.talentai.directory.CandidateDirectoryService;
+import com.talentai.cvinbox.service.CvInboxProcessingService;
 import com.talentai.orchestrator.service.OrchestratorService;
+import com.talentai.orchestrator.dto.OrchestratorDtos.CreateOfferRequest;
+import com.talentai.referral.dto.ReferralDtos.SubmitReferralRequest;
+import com.talentai.referral.service.ReferralAgentService;
+import com.talentai.screening.dto.ScreeningDtos.ReviewDecisionRequest;
+import com.talentai.screening.dto.ScreeningDtos.ScreenByTextRequest;
 import com.talentai.screening.service.ScreeningAgentService;
+import com.talentai.sourcing.dto.SourcingDtos.AddTalentPoolCandidateRequest;
+import com.talentai.sourcing.entity.MockJobRole;
+import com.talentai.sourcing.repository.MockJobRoleRepository;
 import com.talentai.sourcing.service.SourcingAgentService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.annotation.Tool;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.time.DayOfWeek;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Spring AI tool bean — all @Tool methods are exposed to the LLM in the agentic loop.
@@ -46,8 +69,17 @@ public class RecruitingTools {
     private final OrchestratorService orchestratorService;
     private final HumanApprovalGate approvalGate;
     private final CandidateRepository candidateRepository;
+    private final JobRequisitionRepository jobRequisitionRepository;
+    private final MockJobRoleRepository mockJobRoleRepository;
     private final CandidateDirectoryService candidateDirectoryService;
+    private final RequisitionService requisitionService;
+    private final ReferralAgentService referralAgentService;
+    private final CvInboxProcessingService cvInboxProcessingService;
+    private final AvailabilityWindowRepository availabilityWindowRepository;
     private final ObjectMapper objectMapper;
+
+    @Value("${server.port:8080}")
+    private String serverPort;
 
     // ── LOW RISK — read ───────────────────────────────────────────────────────
 
@@ -93,6 +125,277 @@ public class RecruitingTools {
             return toJson(candidateDirectoryService.list(null));
         } catch (Exception e) {
             return error("listCandidates", e);
+        }
+    }
+
+    @Tool(description = "List all currently open job requisitions with their exact live title, department, location, experience level, required skills, description, interview rounds, status, and ID.")
+    public String listOpenRoles() {
+        try {
+            return toJson(requisitionService.getAll("OPEN"));
+        } catch (Exception e) {
+            return error("listOpenRoles", e);
+        }
+    }
+
+    @Tool(description = "Search candidates by name, email, phone, skills, or headline. Use this before showing a candidate profile when the user gives a name or other text.")
+    public String searchCandidates(String query) {
+        try {
+            return toJson(candidateDirectoryService.search(query, "ai-assistant"));
+        } catch (Exception e) {
+            return error("searchCandidates", e);
+        }
+    }
+
+    @Tool(description = "Get the full recruiter profile for one candidate, including contact details, applications, screening results, interviews, offers, and sent emails.")
+    public String getCandidateProfile(Long candidateId) {
+        try {
+            return toJson(candidateDirectoryService.profile(candidateId, "ai-assistant", false));
+        } catch (Exception e) {
+            return error("getCandidateProfile", e);
+        }
+    }
+
+    @Tool(description = "Create a new open role. Required fields are title, department, location, experienceLevel "
+            + "(JUNIOR, MID, SENIOR, or LEAD), requiredSkills, description, and requiredInterviewRounds. "
+            + "Requires recruiter approval before creation.")
+    public String createRole(String title, String department, String location, String experienceLevel,
+                             String requiredSkills, String description, Integer requiredInterviewRounds,
+                             ToolContext toolContext) {
+        String actionKey = "createRole:" + title + ":" + department;
+        if (!approvalGate.isApproved(actionKey)) {
+            String pendingId = approvalGate.requestApproval(actionKey,
+                    "Create the " + title + " role in " + department,
+                    "createRole", description, runIdOf(toolContext));
+            return "PENDING_APPROVAL — role creation queued for recruiter review. Approval ID: " + pendingId
+                    + ". Retry this tool call once the recruiter approves.";
+        }
+        try {
+            CreateRequisitionRequest request = new CreateRequisitionRequest();
+            request.setTitle(title);
+            request.setDepartment(department);
+            request.setLocation(location);
+            request.setExperienceLevel(experienceLevel);
+            request.setRequiredSkills(requiredSkills);
+            request.setDescription(description);
+            request.setRequiredInterviewRounds(requiredInterviewRounds);
+            String result = toJson(requisitionService.create(request, "admin"));
+            approvalGate.consume(actionKey);
+            return result;
+        } catch (Exception e) {
+            return error("createRole", e);
+        }
+    }
+
+    @Tool(description = "Publish an existing open job requisition to the mock job board. Requires recruiter approval.")
+    public String publishRoleToJobBoard(Long requisitionId, ToolContext toolContext) {
+        String actionKey = "publishRole:" + requisitionId;
+        if (!approvalGate.isApproved(actionKey)) {
+            return pending(actionKey, "Publish requisition " + requisitionId + " to the job board",
+                    "publishRoleToJobBoard", toolContext);
+        }
+        try {
+            JobRequisition req = jobRequisitionRepository.findById(requisitionId)
+                    .orElseThrow(() -> new IllegalArgumentException("Requisition not found: " + requisitionId));
+            if (!"OPEN".equalsIgnoreCase(req.getStatus())) {
+                throw new IllegalArgumentException("Only OPEN requisitions can be published");
+            }
+            MockJobRole role = mockJobRoleRepository.save(MockJobRole.builder()
+                    .title(req.getTitle()).department(req.getDepartment()).location(req.getLocation())
+                    .description(req.getDescription()).requirements(req.getRequiredSkills())
+                    .company("TalentAI").requisitionId(req.getId())
+                    .webhookUrl("http://localhost:" + serverPort + "/api/public/applications")
+                    .active(true).build());
+            approvalGate.consume(actionKey);
+            return toJson(Map.of("status", "PUBLISHED", "requisitionId", requisitionId,
+                    "jobRoleId", role.getId(), "message", "Role published to the job board."));
+        } catch (Exception e) {
+            return error("publishRoleToJobBoard", e);
+        }
+    }
+
+    @Tool(description = "Edit an existing job requisition. Null or empty fields are left unchanged. Requires recruiter approval.")
+    public String editRole(Long requisitionId, String title, String department, String location,
+                           String description, String requiredSkills, String experienceLevel,
+                           Integer requiredInterviewRounds, ToolContext toolContext) {
+        String actionKey = "editRole:" + requisitionId;
+        if (!approvalGate.isApproved(actionKey)) {
+            return pending(actionKey, "Edit requisition " + requisitionId, "editRole", toolContext);
+        }
+        try {
+            CreateRequisitionRequest request = new CreateRequisitionRequest();
+            request.setTitle(title); request.setDepartment(department); request.setLocation(location);
+            request.setDescription(description); request.setRequiredSkills(requiredSkills);
+            request.setExperienceLevel(experienceLevel); request.setRequiredInterviewRounds(requiredInterviewRounds);
+            String result = toJson(requisitionService.update(requisitionId, request));
+            approvalGate.consume(actionKey);
+            return result;
+        } catch (Exception e) {
+            return error("editRole", e);
+        }
+    }
+
+    @Tool(description = "Archive a job requisition by closing it. This is reversible and requires recruiter approval.")
+    public String archiveRole(Long requisitionId, ToolContext toolContext) {
+        String actionKey = "archiveRole:" + requisitionId;
+        if (!approvalGate.isApproved(actionKey)) {
+            return pending(actionKey, "Archive requisition " + requisitionId, "archiveRole", toolContext);
+        }
+        try {
+            String result = toJson(requisitionService.updateStatus(requisitionId, "CLOSED"));
+            approvalGate.consume(actionKey);
+            return result;
+        } catch (Exception e) {
+            return error("archiveRole", e);
+        }
+    }
+
+    @Tool(description = "Create a candidate in the talent pool and match them to open roles. Requires recruiter approval.")
+    public String createCandidate(String fullName, String email, String headline, String resumeText,
+                                  String skills, String yearsExperience, String profileUrl,
+                                  String sourceChannel, Boolean hasResume, Long targetRequisitionId,
+                                  ToolContext toolContext) {
+        String actionKey = "createCandidate:" + email;
+        if (!approvalGate.isApproved(actionKey)) {
+            return pending(actionKey, "Create candidate " + fullName, "createCandidate", toolContext);
+        }
+        try {
+            AddTalentPoolCandidateRequest request = new AddTalentPoolCandidateRequest(fullName, email, headline,
+                    resumeText, skills, yearsExperience == null ? null : new java.math.BigDecimal(yearsExperience),
+                    profileUrl, sourceChannel, hasResume, targetRequisitionId);
+            String result = toJson(sourcingAgentService.addCandidateAndMatch(request));
+            approvalGate.consume(actionKey);
+            return result;
+        } catch (Exception e) {
+            return error("createCandidate", e);
+        }
+    }
+
+    @Tool(description = "Submit a candidate referral. Requires recruiter approval.")
+    public String createReferral(String candidateName, String candidateEmail, String resumeText,
+                                 Long requisitionId, String referrerName, String referrerEmail,
+                                 String referrerPosition, String relationshipNotes, ToolContext toolContext) {
+        String actionKey = "createReferral:" + candidateEmail + ":" + requisitionId;
+        if (!approvalGate.isApproved(actionKey)) {
+            return pending(actionKey, "Submit a referral for " + candidateName, "createReferral", toolContext);
+        }
+        try {
+            String result = toJson(referralAgentService.submitPublicReferral(new SubmitReferralRequest(
+                    candidateName, candidateEmail, resumeText, requisitionId, referrerName, referrerEmail,
+                    referrerPosition, relationshipNotes)));
+            approvalGate.consume(actionKey);
+            return result;
+        } catch (Exception e) {
+            return error("createReferral", e);
+        }
+    }
+
+    @Tool(description = "Create an employment offer for a candidate. Requires recruiter approval.")
+    public String createOffer(Long requisitionId, Long candidateId, String salaryAmount,
+                              String currency, String startDate, String expiryDate, String notes,
+                              ToolContext toolContext) {
+        String actionKey = "createOffer:" + requisitionId + ":" + candidateId;
+        if (!approvalGate.isApproved(actionKey)) {
+            return pending(actionKey, "Create an employment offer for candidate " + candidateId,
+                    "createOffer", toolContext);
+        }
+        try {
+            CreateOfferRequest request = new CreateOfferRequest(new java.math.BigDecimal(salaryAmount),
+                    currency, startDate, expiryDate, notes);
+            String result = toJson(orchestratorService.createOffer(requisitionId, candidateId, request));
+            approvalGate.consume(actionKey);
+            return result;
+        } catch (Exception e) {
+            return error("createOffer", e);
+        }
+    }
+
+    @Tool(description = "Generate interview availability windows for weekdays between two dates. Requires recruiter approval.")
+    public String manageInterviewAvailability(String fromDate, String toDate, String startTime, String endTime,
+                                              ToolContext toolContext) {
+        String actionKey = "availability:" + fromDate + ":" + toDate + ":" + startTime + ":" + endTime;
+        if (!approvalGate.isApproved(actionKey)) {
+            return pending(actionKey, "Generate interview availability from " + fromDate + " to " + toDate,
+                    "manageInterviewAvailability", toolContext);
+        }
+        try {
+            LocalDate from = LocalDate.parse(fromDate), to = LocalDate.parse(toDate);
+            LocalTime start = LocalTime.parse(startTime), end = LocalTime.parse(endTime);
+            List<AvailabilityWindow> windows = new ArrayList<>();
+            for (LocalDate day = from; !day.isAfter(to); day = day.plusDays(1)) {
+                if (day.getDayOfWeek() != DayOfWeek.SATURDAY && day.getDayOfWeek() != DayOfWeek.SUNDAY) {
+                    windows.add(AvailabilityWindow.builder().startTime(LocalDateTime.of(day, start))
+                            .endTime(LocalDateTime.of(day, end)).build());
+                }
+            }
+            approvalGate.consume(actionKey);
+            return toJson(availabilityWindowRepository.saveAll(windows));
+        } catch (Exception e) {
+            return error("manageInterviewAvailability", e);
+        }
+    }
+
+    @Tool(description = "Process all pending Resume Inbox files through the existing parser and matching workflow. Requires recruiter approval.")
+    public String processResumeInbox(ToolContext toolContext) {
+        String actionKey = "processResumeInbox";
+        if (!approvalGate.isApproved(actionKey)) {
+            return pending(actionKey, "Process pending Resume Inbox files", "processResumeInbox", toolContext);
+        }
+        try {
+            String result = toJson(cvInboxProcessingService.processNow());
+            approvalGate.consume(actionKey);
+            return result;
+        } catch (Exception e) {
+            return error("processResumeInbox", e);
+        }
+    }
+
+    @Tool(description = "Review and approve or reject a screening decision. decision must be ADVANCE or REJECT. Requires recruiter approval.")
+    public String reviewScreening(Long screeningResultId, String decision, String notes, ToolContext toolContext) {
+        String actionKey = "reviewScreening:" + screeningResultId + ":" + decision;
+        if (!approvalGate.isApproved(actionKey)) {
+            return pending(actionKey, "Record screening decision " + decision + " for result " + screeningResultId,
+                    "reviewScreening", toolContext);
+        }
+        try {
+            String result = toJson(screeningAgentService.recordReviewerDecision(screeningResultId,
+                    new ReviewDecisionRequest(decision, notes), null));
+            approvalGate.consume(actionKey);
+            return result;
+        } catch (Exception e) {
+            return error("reviewScreening", e);
+        }
+    }
+
+    @Tool(description = "Confirm an existing proposed interview slot. Requires recruiter approval.")
+    public String confirmInterview(Long scheduleId, String confirmedSlot, ToolContext toolContext) {
+        String actionKey = "confirmInterview:" + scheduleId + ":" + confirmedSlot;
+        if (!approvalGate.isApproved(actionKey)) {
+            return pending(actionKey, "Confirm interview " + scheduleId + " at " + confirmedSlot,
+                    "confirmInterview", toolContext);
+        }
+        try {
+            String result = toJson(adminAgentService.confirmSlot(scheduleId,
+                    new ConfirmSlotRequest(LocalDateTime.parse(confirmedSlot))));
+            approvalGate.consume(actionKey);
+            return result;
+        } catch (Exception e) {
+            return error("confirmInterview", e);
+        }
+    }
+
+    @Tool(description = "Reschedule an existing interview to a new ISO local date-time. Requires recruiter approval.")
+    public String rescheduleInterview(Long interviewId, String newSlot, ToolContext toolContext) {
+        String actionKey = "rescheduleInterview:" + interviewId + ":" + newSlot;
+        if (!approvalGate.isApproved(actionKey)) {
+            return pending(actionKey, "Reschedule interview " + interviewId + " to " + newSlot,
+                    "rescheduleInterview", toolContext);
+        }
+        try {
+            String result = toJson(orchestratorService.rescheduleInterview(interviewId, newSlot));
+            approvalGate.consume(actionKey);
+            return result;
+        } catch (Exception e) {
+            return error("rescheduleInterview", e);
         }
     }
 
@@ -142,14 +445,14 @@ public class RecruitingTools {
     @Tool(description = "Schedule or reschedule a candidate interview at an exact future local date/time. "
             + "confirmedSlot must be ISO local date-time, for example 2026-11-05T17:00:00. "
             + "Requires recruiter approval before booking.")
-    public String scheduleInterview(Long candidateId, Long requisitionId, String interviewType,
-                                    String confirmedSlot, ToolContext toolContext) {
+    public String scheduleInterviewAt(Long candidateId, Long requisitionId, String interviewType,
+                                      String confirmedSlot, ToolContext toolContext) {
         String actionKey = "scheduleInterview:" + candidateId + ":" + requisitionId + ":" + interviewType + ":" + confirmedSlot;
         if (!approvalGate.isApproved(actionKey)) {
             String pendingId = approvalGate.requestApproval(actionKey,
                     "Schedule a " + interviewType + " interview for " + candidateLabel(candidateId)
                             + " on " + confirmedSlot,
-                    "scheduleInterview", confirmedSlot, runIdOf(toolContext));
+                    "scheduleInterviewAt", confirmedSlot, runIdOf(toolContext));
             return "PENDING_APPROVAL — interview schedule queued for recruiter review. Approval ID: " + pendingId
                     + ". Retry this tool call once the recruiter approves.";
         }
@@ -159,10 +462,10 @@ public class RecruitingTools {
             approvalGate.consume(actionKey);
             return toJson(response);
         } catch (DateTimeParseException e) {
-            return error("scheduleInterview", new IllegalArgumentException(
+            return error("scheduleInterviewAt", new IllegalArgumentException(
                     "confirmedSlot must be ISO local date-time, for example 2026-11-05T17:00:00", e));
         } catch (Exception e) {
-            return error("scheduleInterview", e);
+            return error("scheduleInterviewAt", e);
         }
     }
 
@@ -286,6 +589,12 @@ public class RecruitingTools {
     private String error(String tool, Exception e) {
         log.error("Tool '{}' failed: {}", tool, e.getMessage());
         return "ERROR in " + tool + ": " + e.getMessage();
+    }
+
+    private String pending(String actionKey, String description, String toolName, ToolContext toolContext) {
+        String pendingId = approvalGate.requestApproval(actionKey, description, toolName, null, runIdOf(toolContext));
+        return "PENDING_APPROVAL — " + description + ". Approval ID: " + pendingId
+                + ". Retry this tool call after the recruiter approves it.";
     }
 
     private String truncate(String s, int max) {
