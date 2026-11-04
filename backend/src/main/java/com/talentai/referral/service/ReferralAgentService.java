@@ -15,23 +15,24 @@ import com.talentai.common.repository.PipelineStageRepository;
 import com.talentai.referral.dto.ReferralDtos.*;
 import com.talentai.referral.entity.Referral;
 import com.talentai.referral.repository.ReferralRepository;
+import com.talentai.screening.repository.ScreeningResultRepository;
 import com.talentai.screening.service.ScreeningAgentService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * REFERRAL AGENT
  *
  * Responsibilities:
  *  - Accept employee referral submissions.
- *  - Automatically match the referred candidate against open requisitions
- *    using Claude (if the referrer didn't target a specific role, or to
- *    validate/improve on the targeted role).
+ *  - Route the referred candidate to a role: the one the referrer chose, or,
+ *    if they left it open, the open requisition Claude picks as the best fit.
+ *    The agent does not score; the Screening Agent does, against that role.
  *  - Track referral status from submission through to hire, and notify
  *    (simulated) the referring employee of status changes.
  *
@@ -55,6 +56,7 @@ public class ReferralAgentService {
     private final AgentActivityLogRepository activityLogRepository;
     private final AppUserRepository appUserRepository;
     private final ScreeningAgentService screeningAgentService;
+    private final ScreeningResultRepository screeningResultRepository;
 
     @org.springframework.beans.factory.annotation.Value("${app.demo-mode:false}")
     private boolean demoMode;
@@ -103,7 +105,7 @@ public class ReferralAgentService {
                 .details("Public referral by " + request.getReferrerName())
                 .build());
 
-        referral = runMatching(referral, candidate);
+        referral = routeToRole(referral, candidate);
         autoScreen(referral, candidate);
         return toResponse(referral, candidate, null);
     }
@@ -147,8 +149,8 @@ public class ReferralAgentService {
                 .details("Referred by " + referrer.getFullName())
                 .build());
 
-        // Auto-match against open roles, then auto-screen
-        referral = runMatching(referral, candidate);
+        // Route to a role, then auto-screen
+        referral = routeToRole(referral, candidate);
         autoScreen(referral, candidate);
 
         return toResponse(referral, candidate, referrer);
@@ -168,14 +170,32 @@ public class ReferralAgentService {
         }
     }
 
-    private Referral runMatching(Referral referral, Candidate candidate) {
-        List<JobRequisition> openRequisitions = jobRequisitionRepository.findByStatus("OPEN");
+    /**
+     * Sends the referral to a role. The referrer's own choice is used as it is, with no AI call; only when they left
+     * it open (or the role they chose is no longer open) does Claude pick one of the open roles. Either way the
+     * candidate is then screened against that role, and that screening is the only score.
+     */
+    private Referral routeToRole(Referral referral, Candidate candidate) {
+        List<JobRequisition> open = jobRequisitionRepository.findByStatus("OPEN");
+        if (open.isEmpty()) return referral;
 
-        if (openRequisitions.isEmpty()) {
-            return referral;
+        JobRequisition chosen = referral.getRequisitionId() == null ? null
+                : open.stream().filter(r -> r.getId().equals(referral.getRequisitionId())).findFirst().orElse(null);
+        String rationale = null;
+        if (chosen == null) {
+            Optional<ClaudeReferralRoleResponse> pick = pickRole(open, candidate, referral.getId());
+            if (pick.isEmpty()) return referral;
+            Long pickedId = pick.get().getBestRequisitionId();
+            chosen = open.stream().filter(r -> r.getId().equals(pickedId)).findFirst().orElse(null);
+            if (chosen == null) return referral;
+            rationale = pick.get().getRationale();
         }
+        return attachToRole(referral, candidate, chosen, rationale);
+    }
 
-        String requisitionList = openRequisitions.stream()
+    /** Claude's choice among the open roles, or empty when it names none, names one that is not open, or fails. */
+    private Optional<ClaudeReferralRoleResponse> pickRole(List<JobRequisition> open, Candidate candidate, Long referralId) {
+        String requisitionList = open.stream()
                 .map(r -> "ID %d: %s | Skills: %s | Level: %s".formatted(
                         r.getId(), r.getTitle(), nullToDash(r.getRequiredSkills()), nullToDash(r.getExperienceLevel())))
                 .reduce("", (a, b) -> a + b + "\n");
@@ -190,47 +210,52 @@ public class ReferralAgentService {
                 %s
                 """.formatted(requisitionList, candidate.getFullName(), nullToDash(candidate.getResumeText()));
 
-        ClaudeReferralMatchResponse parsed;
         try {
-            parsed = chatClient.prompt()
+            ClaudeReferralRoleResponse parsed = chatClient.prompt()
                     .system(promptLoader.load("referral-agent"))
                     .user(userPrompt)
                     .call()
-                    .entity(ClaudeReferralMatchResponse.class);
+                    .entity(ClaudeReferralRoleResponse.class);
+            if (parsed == null || parsed.getBestRequisitionId() == null) return Optional.empty();
+            boolean isOpen = open.stream().anyMatch(r -> r.getId().equals(parsed.getBestRequisitionId()));
+            return isOpen ? Optional.of(parsed) : Optional.empty();
         } catch (Exception e) {
-            log.error("Failed to get or parse Referral Agent response for referral {}", referral.getId(), e);
-            // Non-fatal: leave referral in SUBMITTED state for manual matching
-            return referral;
+            // Non-fatal: leave the referral SUBMITTED for a recruiter to route by hand
+            log.error("Failed to get or parse Referral Agent response for referral {}", referralId, e);
+            return Optional.empty();
         }
+    }
 
-        if (parsed.getBestRequisitionId() != null && parsed.getMatchScore() != null
-                && parsed.getMatchScore().compareTo(BigDecimal.valueOf(40)) >= 0) {
+    private Referral attachToRole(Referral referral, Candidate candidate, JobRequisition role, String rationale) {
+        referral.setMatchedRequisitionId(role.getId());
+        referral.setStatus("MATCHED");
+        referral = referralRepository.save(referral);
 
-            referral.setMatchedRequisitionId(parsed.getBestRequisitionId());
-            referral.setMatchScore(parsed.getMatchScore());
-            referral.setStatus("MATCHED");
-            referral = referralRepository.save(referral);
+        String note = rationale == null
+                ? "Referred for this role by " + nameOf(referral)
+                : "Routed to this role by the Referral Agent. " + rationale;
+        pipelineStageRepository.findByCandidateIdAndRequisitionId(candidate.getId(), role.getId())
+                .orElseGet(() -> pipelineStageRepository.save(PipelineStage.builder()
+                        .candidateId(candidate.getId())
+                        .requisitionId(role.getId())
+                        .stage("REFERRAL_MATCHED")
+                        .updatedByAgent(AGENT_NAME)
+                        .notes(note)
+                        .build()));
 
-            // Move candidate into the pipeline for the matched requisition
-            pipelineStageRepository.findByCandidateIdAndRequisitionId(candidate.getId(), parsed.getBestRequisitionId())
-                    .orElseGet(() -> pipelineStageRepository.save(PipelineStage.builder()
-                            .candidateId(candidate.getId())
-                            .requisitionId(parsed.getBestRequisitionId())
-                            .stage("REFERRAL_MATCHED")
-                            .updatedByAgent(AGENT_NAME)
-                            .notes("Matched via referral, score: " + parsed.getMatchScore() + ". " + parsed.getRationale())
-                            .build()));
-
-            activityLogRepository.save(AgentActivityLog.builder()
-                    .agentName(AGENT_NAME)
-                    .candidateId(candidate.getId())
-                    .requisitionId(parsed.getBestRequisitionId())
-                    .action("REFERRAL_MATCHED")
-                    .details("Match score: " + parsed.getMatchScore() + " - " + parsed.getRationale())
-                    .build());
-        }
-
+        activityLogRepository.save(AgentActivityLog.builder()
+                .agentName(AGENT_NAME)
+                .candidateId(candidate.getId())
+                .requisitionId(role.getId())
+                .action("REFERRAL_MATCHED")
+                .details(rationale == null ? "Referrer chose " + role.getTitle() : "Routed to " + role.getTitle() + " - " + rationale)
+                .build());
         return referral;
+    }
+
+    private String nameOf(Referral referral) {
+        return referral.getReferrerName() != null && !referral.getReferrerName().isBlank()
+                ? referral.getReferrerName() : "an employee";
     }
 
     public List<ReferralResponse> getAllReferrals() {
@@ -273,7 +298,9 @@ public class ReferralAgentService {
 
     private ReferralResponse toResponseLookup(Referral referral) {
         Candidate candidate = candidateRepository.findById(referral.getCandidateId()).orElse(null);
-        AppUser referrer = appUserRepository.findById(referral.getReferredBy()).orElse(null);
+        // Public referrals have no signed-in referrer
+        AppUser referrer = referral.getReferredBy() == null ? null
+                : appUserRepository.findById(referral.getReferredBy()).orElse(null);
         return toResponse(referral, candidate, referrer);
     }
 
@@ -283,6 +310,10 @@ public class ReferralAgentService {
         JobRequisition matchedRequisition = referral.getMatchedRequisitionId() != null
                 ? jobRequisitionRepository.findById(referral.getMatchedRequisitionId()).orElse(null) : null;
 
+        Long scoredRoleId = referral.getMatchedRequisitionId() != null ? referral.getMatchedRequisitionId() : referral.getRequisitionId();
+        Optional<com.talentai.screening.entity.ScreeningResult> screening = scoredRoleId == null ? Optional.empty()
+                : screeningResultRepository.findByCandidateIdAndRequisitionId(referral.getCandidateId(), scoredRoleId);
+
         return ReferralResponse.builder()
                 .id(referral.getId())
                 .candidateId(referral.getCandidateId())
@@ -291,7 +322,8 @@ public class ReferralAgentService {
                 .requisitionTitle(requisition != null ? requisition.getTitle() : null)
                 .matchedRequisitionId(referral.getMatchedRequisitionId())
                 .matchedRequisitionTitle(matchedRequisition != null ? matchedRequisition.getTitle() : null)
-                .matchScore(referral.getMatchScore())
+                .screeningScore(screening.map(r -> r.getOverallScore()).orElse(null))
+                .screeningRecommendation(screening.map(r -> r.getRecommendation()).orElse(null))
                 .referredByUsername(referrer != null ? referrer.getUsername() : null)
                 .referrerName(referral.getReferrerName())
                 .referrerEmail(referral.getReferrerEmail())

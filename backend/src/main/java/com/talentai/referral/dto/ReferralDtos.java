@@ -24,13 +24,12 @@ public class ReferralDtos {
         private String relationshipNotes;
     }
 
-    /** Structure Claude returns when matching a referral against open roles. */
+    /** Structure Claude returns when choosing which open role a referral should go to. No score: Screening scores. */
     @Data
     @NoArgsConstructor
     @AllArgsConstructor
-    public static class ClaudeReferralMatchResponse {
+    public static class ClaudeReferralRoleResponse {
         private Long bestRequisitionId;
-        private BigDecimal matchScore;
         private String rationale;
     }
 
@@ -46,7 +45,9 @@ public class ReferralDtos {
         private String requisitionTitle;
         private Long matchedRequisitionId;
         private String matchedRequisitionTitle;
-        private BigDecimal matchScore;
+        /** The Screening Agent's score for the matched role, once the referral has been screened. */
+        private BigDecimal screeningScore;
+        private String screeningRecommendation;
         private String referredByUsername;
         private String referrerName;
         private String referrerEmail;

@@ -7146,7 +7146,7 @@ function ReferralsView({ currentUser = {} }) {
   return (
     <div>
       <TopBar title="Referral Agent"
-        subtitle="Submit referrals and let the agent auto-match against open roles"
+        subtitle="Submit referrals. Each goes to the role you pick, or the agent's best open role, and is then screened"
         action={
           <Btn onClick={() => {
             setForm({ candidateName:"", candidateEmail:"", resumeText:"", relationshipNotes:"", requisitionId:"", referrerName: currentUser.fullName || "", referrerPosition:"" });
@@ -7163,7 +7163,7 @@ function ReferralsView({ currentUser = {} }) {
         <table className="w-full text-sm">
           <thead>
             <tr style={{ backgroundColor: C.bg }}>
-              {["Candidate","Matched Role","Match Score","Referred By","Position / Email","Status","Submitted"].map(h => (
+              {["Candidate","Role","Screening","Referred By","Position / Email","Status","Submitted"].map(h => (
                 <th key={h} className="text-left px-5 py-3 font-semibold" style={{ color: C.muted }}>{h}</th>
               ))}
             </tr>
@@ -7191,7 +7191,12 @@ function ReferralsView({ currentUser = {} }) {
                       {r.matchedRequisitionTitle || r.requisitionTitle || "—"}
                     </td>
                     <td className="px-5 py-4">
-                      {r.matchScore != null ? <ScoreRing score={r.matchScore} size={36} /> : "—"}
+                      {r.screeningScore != null
+                        ? <div className="flex items-center gap-2">
+                            <ScoreRing score={r.screeningScore} size={36} />
+                            <span className="text-[11px] font-semibold" style={{ color: C.muted }}>{r.screeningRecommendation}</span>
+                          </div>
+                        : "—"}
                     </td>
                     <td className="px-5 py-4" style={{ color: C.text }}>
                       <div className="font-medium">{r.referrerName || r.referredByUsername || "—"}</div>
@@ -7221,7 +7226,7 @@ function ReferralsView({ currentUser = {} }) {
             <div className="flex items-center justify-between mb-5">
               <div>
                 <h2 className="font-bold text-lg" style={{ color: C.text }}>Submit a Referral</h2>
-                <p className="text-sm" style={{ color: C.muted }}>Agent will auto-match to best open role</p>
+                <p className="text-sm" style={{ color: C.muted }}>Pick a role, or let the agent route to the best open role</p>
               </div>
               <button onClick={() => setShowForm(false)}
                 className="w-8 h-8 rounded-xl flex items-center justify-center hover:bg-slate-100">
@@ -7283,8 +7288,8 @@ function ReferralsView({ currentUser = {} }) {
                 style={{ background: "linear-gradient(135deg,#E6F3FB,#EAF0F7)", border: "1px solid #B8DCF2" }}>
                 <Sparkles size={14} className="shrink-0 mt-0.5" style={{ color: C.accent }} />
                 <p className="text-xs" style={{ color: C.muted }}>
-                  The Referral Agent will auto-match this candidate against all open roles
-                  and route them to the best fit.
+                  With a target role the candidate goes straight to it. Without one, the Referral Agent
+                  picks the best-fitting open role. The Screening Agent then scores them against that role.
                 </p>
               </div>
               <Btn type="submit" variant="primary" className="w-full justify-center py-2.5" disabled={submitting}>
@@ -7555,7 +7560,7 @@ function PublicReferralPage() {
           </div>
           <h2 className="text-xl font-bold mb-2" style={{ color: C.text }}>Referral Submitted!</h2>
           <p className="text-sm mb-6" style={{ color: C.muted }}>
-            Thanks {form.referrerName}! Our AI agent is matching {form.candidateName} against open roles.
+            Thanks {form.referrerName}! {form.candidateName} is being routed to a role and screened.
             The recruiting team will be in touch.
           </p>
           <Btn variant="outline" onClick={() => { setSubmitted(false); setForm({ referrerName:"", referrerEmail:"", referrerPosition:"", candidateName:"", candidateEmail:"", resumeText:"", relationshipNotes:"", requisitionId:"" }); }}>
@@ -7583,7 +7588,7 @@ function PublicReferralPage() {
         <Card className="p-6">
           <h2 className="font-bold text-lg mb-1" style={{ color: C.text }}>Refer Someone</h2>
           <p className="text-sm mb-5" style={{ color: C.muted }}>
-            Know someone great? Submit a referral and our AI agent will match them to the best open role.
+            Know someone great? Submit a referral. They go to the role you pick, or our AI agent chooses the best open role.
           </p>
 
           {error && (
@@ -7654,7 +7659,7 @@ function PublicReferralPage() {
               style={{ background: "linear-gradient(135deg,#E6F3FB,#EAF0F7)", border: "1px solid #B8DCF2" }}>
               <Sparkles size={14} className="shrink-0 mt-0.5" style={{ color: C.accent }} />
               <p className="text-xs" style={{ color: C.muted }}>
-                Our AI agent will automatically match this candidate to the best open role and notify the recruiting team.
+                The candidate is routed to the role you pick, or to the best open role if you leave it blank, then screened. The recruiting team reviews the result.
               </p>
             </div>
 

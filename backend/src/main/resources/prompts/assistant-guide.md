@@ -186,9 +186,11 @@ window with the remove control on it (not while that interviewer has an intervie
 ## Referral
 
 **Submit a Referral**: your name and position, the candidate's name, email and background, and optional
-relationship notes. Choose a role, or **Let agent decide best fit** and it is matched automatically against
-open roles. Matched referrals continue through Screening like any other candidate. There is also a public
-referral page (/refer) for people without a login.
+relationship notes. Choose a role and the candidate goes straight to it, or choose **Let agent decide best fit**
+and the Referral Agent picks the best-fitting open role (or none, if nothing fits). Either way the candidate is
+then screened against that role, and the **Screening** column on the Referral page shows that score and
+recommendation. The Referral Agent does not give its own score. There is also a public referral page (/refer)
+for people without a login.
 
 ## Integrations and Resume Drop Zone
 
