@@ -997,7 +997,7 @@ function CalendarWeekGrid({ data, weekStart, onSelect, selectedId }) {
                   backgroundColor: key === todayKey ? `${C.accent}08` : "transparent",
                 }}>
                 {windows.filter(w => w.start.slice(0, 10) === key).map(w => (
-                  <div key={`w${w.id}`} className="absolute left-0 right-0" title={`Open ${clockTime(w.start)}–${clockTime(w.end)}`}
+                  <div key={`w${w.id}`} className="absolute left-0 right-0" title={`${w.interviewerName || "Everyone"} · open ${clockTime(w.start)}–${clockTime(w.end)}`}
                     style={{ top: top(w.start), height: top(w.end) - top(w.start), backgroundColor: `${C.success}1f` }} />
                 ))}
                 {bookings.filter(b => b.start.slice(0, 10) === key).map(b => (
@@ -1034,7 +1034,8 @@ function CalendarView() {
   const [data, setData] = useState(null);
   const [durations, setDurations] = useState({});
   const [selected, setSelected] = useState(null);
-  const [form, setForm] = useState({ fromDate: addDaysStr(today, 1), toDate: addDaysStr(today, 5), weekdaysOnly: true, startTime: "10:00", endTime: "17:00" });
+  const [form, setForm] = useState({ fromDate: addDaysStr(today, 1), toDate: addDaysStr(today, 5), weekdaysOnly: true, startTime: "10:00", endTime: "17:00", interviewerId: "" });
+  const [interviewers, setInterviewers] = useState([]);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
 
@@ -1046,11 +1047,15 @@ function CalendarView() {
   }, [range]);
   useEffect(() => { load(); }, [load]);
   useEffect(() => { apiFetch("/calendar/durations").then(setDurations).catch(() => {}); }, []);
+  useEffect(() => { apiFetch("/calendar/interviewers").then(setInterviewers).catch(() => {}); }, []);
 
   async function generate() {
     setBusy(true); setMsg(null);
     try {
-      const r = await apiFetch("/calendar/windows/generate", { method: "POST", body: JSON.stringify(form) });
+      const r = await apiFetch("/calendar/windows/generate", {
+        method: "POST",
+        body: JSON.stringify({ ...form, interviewerId: form.interviewerId ? Number(form.interviewerId) : null }),
+      });
       setMsg({ text: `${r.created} day${r.created === 1 ? "" : "s"} published.` });
       if (view === "week") setWeekStart(mondayOf(new Date(form.fromDate + "T00:00")));
       else if (form.toDate > range.to) setRange(rg => ({ ...rg, to: form.toDate }));
@@ -1063,9 +1068,20 @@ function CalendarView() {
     if (window.confirm("Free this time and email the candidate to choose a new one?")) act(`/calendar/bookings/${id}/release`, "POST");
   }
 
+  // The "For" menu and the toolbar menu are one setting: whose calendar is shown and who a new publish is for.
+  // "" is everyone's calendar and an open-to-all publish; otherwise one interviewer's own availability plus the
+  // open windows, and only their bookings.
+  const filter = form.interviewerId;
+  const pickInterviewer = id => { setForm(f => ({ ...f, interviewerId: id })); setSelected(null); };
+  const shown = data && filter
+    ? {
+        windows: data.windows.filter(w => w.interviewerId == null || String(w.interviewerId) === filter),
+        bookings: data.bookings.filter(b => String(b.interviewerId) === filter),
+      }
+    : data;
   const days = {};
-  (data?.windows || []).forEach(w => { (days[w.start.slice(0, 10)] ??= { windows: [], bookings: [] }).windows.push(w); });
-  (data?.bookings || []).forEach(b => { (days[b.start.slice(0, 10)] ??= { windows: [], bookings: [] }).bookings.push(b); });
+  (shown?.windows || []).forEach(w => { (days[w.start.slice(0, 10)] ??= { windows: [], bookings: [] }).windows.push(w); });
+  (shown?.bookings || []).forEach(b => { (days[b.start.slice(0, 10)] ??= { windows: [], bookings: [] }).bookings.push(b); });
   const inputCls = "w-full px-3 py-2 rounded-xl border text-sm";
   const inputSty = { borderColor: C.border, color: C.text, backgroundColor: C.bg };
   const lbl = t => <label className="block text-xs font-semibold mb-1.5" style={{ color: C.muted }}>{t}</label>;
@@ -1081,11 +1097,18 @@ function CalendarView() {
 
   return (
     <div>
-      <TopBar title="Interview Calendar" subtitle="Publish when you are free — candidates book a time that fits their interview length, and bookings never overlap" />
+      <TopBar title="Interview Calendar" subtitle="Publish when each interviewer is free — candidates book a time that fits their interview length, and an interviewer is never double-booked" />
       <div className="grid gap-6" style={{ gridTemplateColumns: "280px 1fr" }}>
         <div className="space-y-4 self-start">
           <Card className="p-5 space-y-3">
             <p className="text-xs font-bold uppercase tracking-wide" style={{ color: C.muted }}>Publish availability</p>
+            <div>
+              {lbl("For")}
+              <select className={inputCls} style={inputSty} value={form.interviewerId} onChange={e => pickInterviewer(e.target.value)}>
+                <option value="">Everyone (any interviewer)</option>
+                {interviewers.map(u => <option key={u.id} value={u.id}>{u.fullName}</option>)}
+              </select>
+            </div>
             <div className="grid grid-cols-2 gap-2">
               <div>{lbl("From")}<input type="date" className={inputCls} style={inputSty} value={form.fromDate} onChange={e => setForm(f => ({ ...f, fromDate: e.target.value }))} /></div>
               <div>{lbl("To")}<input type="date" className={inputCls} style={inputSty} value={form.toDate} onChange={e => setForm(f => ({ ...f, toDate: e.target.value }))} /></div>
@@ -1127,14 +1150,18 @@ function CalendarView() {
                 <input type="date" className="px-3 py-1.5 rounded-xl border text-xs" style={inputSty} value={range.to} onChange={e => setRange(r => ({ ...r, to: e.target.value }))} />
               </>
             )}
-            <span className="text-xs ml-auto" style={{ color: C.muted }}>{data ? `${data.bookings.length} booked` : ""}</span>
+            <select className="px-3 py-1.5 rounded-xl border text-xs ml-auto" style={inputSty} value={filter} onChange={e => pickInterviewer(e.target.value)}>
+              <option value="">All interviewers</option>
+              {interviewers.map(u => <option key={u.id} value={u.id}>{u.fullName}</option>)}
+            </select>
+            <span className="text-xs" style={{ color: C.muted }}>{shown ? `${shown.bookings.length} booked` : ""}</span>
           </div>
 
           {data === null && <div className="py-10 flex justify-center"><Spinner size={20} /></div>}
 
           {data && view === "week" && (
             <>
-              <CalendarWeekGrid data={data} weekStart={weekStart} onSelect={setSelected} selectedId={selected?.id} />
+              <CalendarWeekGrid data={shown} weekStart={weekStart} onSelect={setSelected} selectedId={selected?.id} />
               {selected && (
                 <Card className="p-4 flex items-center justify-between gap-4 flex-wrap">
                   <div className="text-xs space-y-0.5">
@@ -1171,7 +1198,7 @@ function CalendarView() {
                 {days[day].windows.map(w => (
                   <span key={w.id} className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold"
                     style={{ border: `1px solid ${C.success}66`, color: C.success }}>
-                    Open {clockTime(w.start)}–{clockTime(w.end)}
+                    {w.interviewerName || "Everyone"} · open {clockTime(w.start)}–{clockTime(w.end)}
                     <button onClick={() => act(`/calendar/windows/${w.id}`, "DELETE")} title="Remove availability"><X size={11} /></button>
                   </span>
                 ))}
@@ -8979,6 +9006,75 @@ function InterviewPrepModal({ interviewId, onClose, onChanged }) {
   );
 }
 
+// An interviewer publishes the days and hours they can interview; candidates only see times inside these.
+function MyAvailability() {
+  const today = ymdLocal(new Date());
+  const { data: windows, error, reload } = useApi("/interviewer/availability");
+  const [form, setForm] = useState({ fromDate: addDaysStr(today, 1), toDate: addDaysStr(today, 5), weekdaysOnly: true, startTime: "10:00", endTime: "17:00" });
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+
+  async function publish() {
+    setBusy(true); setMsg(null);
+    try {
+      const r = await apiFetch("/interviewer/availability", { method: "POST", body: JSON.stringify(form) });
+      setMsg({ text: r.created === 0 ? "You already have availability on those days." : `${r.created} day${r.created === 1 ? "" : "s"} published.` });
+      reload();
+    } catch (e) { setMsg({ err: true, text: e.message }); }
+    finally { setBusy(false); }
+  }
+  async function remove(id) {
+    setMsg(null);
+    try { await apiFetch(`/interviewer/availability/${id}`, { method: "DELETE" }); reload(); }
+    catch (e) { setMsg({ err: true, text: e.message }); }
+  }
+
+  const inputCls = "w-full px-3 py-2 rounded-xl border text-sm";
+  const inputSty = { borderColor: C.border, color: C.text, backgroundColor: C.bg };
+  const lbl = t => <label className="block text-xs font-semibold mb-1.5" style={{ color: C.muted }}>{t}</label>;
+
+  return (
+    <div className="mb-6">
+      <div className="flex items-baseline gap-2 mb-2">
+        <h2 className="text-sm font-bold" style={{ color: C.text }}>My availability</h2>
+        <span className="text-xs" style={{ color: C.muted }}>candidates can only book you inside these hours</span>
+      </div>
+      <Card className="p-5 grid gap-5" style={{ gridTemplateColumns: "minmax(0, 280px) minmax(0, 1fr)" }}>
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-2">
+            <div>{lbl("From")}<input type="date" className={inputCls} style={inputSty} value={form.fromDate} onChange={e => setForm(f => ({ ...f, fromDate: e.target.value }))} /></div>
+            <div>{lbl("To")}<input type="date" className={inputCls} style={inputSty} value={form.toDate} onChange={e => setForm(f => ({ ...f, toDate: e.target.value }))} /></div>
+            <div>{lbl("Day starts")}<input type="time" className={inputCls} style={inputSty} value={form.startTime} onChange={e => setForm(f => ({ ...f, startTime: e.target.value }))} /></div>
+            <div>{lbl("Day ends")}<input type="time" className={inputCls} style={inputSty} value={form.endTime} onChange={e => setForm(f => ({ ...f, endTime: e.target.value }))} /></div>
+          </div>
+          <label className="flex items-center gap-2 text-xs" style={{ color: C.text }}>
+            <input type="checkbox" checked={form.weekdaysOnly} onChange={e => setForm(f => ({ ...f, weekdaysOnly: e.target.checked }))} /> Weekdays only
+          </label>
+          <Btn variant="primary" onClick={publish} disabled={busy}>{busy ? <><Spinner size={13} /> Publishing…</> : <><Plus size={13} /> Publish availability</>}</Btn>
+          {msg && <p className="text-xs" style={{ color: msg.err ? C.danger : C.success }}>{msg.text}</p>}
+        </div>
+        <div className="min-w-0">
+          {error && <p className="text-xs" style={{ color: C.danger }}>{error}</p>}
+          {windows && windows.length === 0 && (
+            <p className="text-xs" style={{ color: C.muted }}>
+              You have not published any availability. Until you do, candidates cannot book an interview with you.
+            </p>
+          )}
+          <div className="flex flex-wrap gap-2 content-start">
+            {(windows || []).map(w => (
+              <span key={w.id} className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold"
+                style={{ border: `1px solid ${C.success}66`, color: C.success }}>
+                {new Date(w.start).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })} · {clockTime(w.start)}–{clockTime(w.end)}
+                <button onClick={() => remove(w.id)} title="Remove availability"><X size={11} /></button>
+              </span>
+            ))}
+          </div>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 function InterviewerHome() {
   const { data, loading, error, reload } = useApi("/interviewer/interviews");
   const [openId, setOpenId] = useState(null);
@@ -9033,6 +9129,7 @@ function InterviewerHome() {
           <p className="text-xs mt-1" style={{ color: C.muted }}>When the recruiting team books an interview with you, it will appear here.</p>
         </Card>
       )}
+      <MyAvailability />
       {section("Ready for you", "booked, scorecard needed after the interview", todo)}
       {section("Waiting for the candidate", "the candidate has not picked a time", waiting)}
       {section("Completed", "your submitted scorecards", done)}

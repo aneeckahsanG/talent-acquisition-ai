@@ -8,7 +8,10 @@ import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 
-/** A period when interviews can be booked, e.g. 10:00-17:00 on a given day. */
+/**
+ * A period when interviews can be booked, e.g. 10:00-17:00 on a given day. It belongs to one interviewer, or to
+ * nobody (interviewerId null) when it is open to every interviewer.
+ */
 @Entity
 @Table(name = "availability_window")
 @Data
@@ -26,4 +29,7 @@ public class AvailabilityWindow {
 
     @Column(name = "end_time", nullable = false)
     private LocalDateTime endTime;
+
+    @Column(name = "interviewer_id")
+    private Long interviewerId;
 }

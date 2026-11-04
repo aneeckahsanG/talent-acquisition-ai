@@ -16,13 +16,12 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.*;
 
-/** Recruiter-facing shared interview calendar: publish availability windows, see bookings, release them. */
+/** Recruiter-facing interview calendar: publish availability (for one interviewer or for everyone), see bookings, release them. */
 @RestController
 @RequestMapping("/api/calendar")
 @RequiredArgsConstructor
@@ -47,6 +46,7 @@ public class CalendarController {
         private boolean weekdaysOnly = true;
         private String startTime = "10:00";
         private String endTime = "17:00";
+        private Long interviewerId;     // whose availability this is; null = open to every interviewer
     }
 
     @GetMapping("/durations")
@@ -68,9 +68,16 @@ public class CalendarController {
         LocalDateTime start = LocalDate.parse(from).atStartOfDay();
         LocalDateTime end = LocalDate.parse(to).plusDays(1).atStartOfDay();
 
+        Map<Long, String> names = new HashMap<>();
         List<Map<String, Object>> windows = new ArrayList<>();
         for (AvailabilityWindow w : windowRepository.findOverlapping(start, end)) {
-            windows.add(Map.of("id", w.getId(), "start", w.getStartTime().toString(), "end", w.getEndTime().toString()));
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id", w.getId());
+            m.put("start", w.getStartTime().toString());
+            m.put("end", w.getEndTime().toString());
+            m.put("interviewerId", w.getInterviewerId());
+            m.put("interviewerName", nameOf(w.getInterviewerId(), names));
+            windows.add(m);
         }
 
         List<Map<String, Object>> bookings = new ArrayList<>();
@@ -79,6 +86,7 @@ public class CalendarController {
             m.put("id", b.getId());
             m.put("start", b.getStartTime().toString());
             m.put("end", b.getEndTime().toString());
+            m.put("interviewerId", b.getInterviewerId());
             InterviewSchedule iv = interviewRepository.findById(b.getInterviewId()).orElse(null);
             if (iv != null) {
                 m.put("interviewId", iv.getId());
@@ -100,36 +108,29 @@ public class CalendarController {
 
     @PostMapping("/windows/generate")
     public Map<String, Object> generate(@RequestBody GenerateRequest req) {
-        LocalDate from = LocalDate.parse(req.getFromDate());
-        LocalDate to = LocalDate.parse(req.getToDate());
-        if (to.isBefore(from) || from.plusDays(60).isBefore(to)) {
-            throw new IllegalArgumentException("Date range must be valid and at most 60 days.");
+        if (req.getInterviewerId() != null && !appUserRepository.existsById(req.getInterviewerId())) {
+            throw new IllegalArgumentException("Interviewer not found: " + req.getInterviewerId());
         }
-        LocalTime dayStart = LocalTime.parse(req.getStartTime());
-        LocalTime dayEnd = LocalTime.parse(req.getEndTime());
-        if (!dayEnd.isAfter(dayStart)) throw new IllegalArgumentException("End time must be after start time.");
-
-        int created = 0;
-        for (LocalDate d = from; !d.isAfter(to); d = d.plusDays(1)) {
-            if (req.isWeekdaysOnly() && (d.getDayOfWeek() == DayOfWeek.SATURDAY || d.getDayOfWeek() == DayOfWeek.SUNDAY)) continue;
-            LocalDateTime s = d.atTime(dayStart);
-            LocalDateTime e = d.atTime(dayEnd);
-            if (!windowRepository.findOverlapping(s, e).isEmpty()) continue;
-            windowRepository.save(AvailabilityWindow.builder().startTime(s).endTime(e).build());
-            created++;
-        }
+        int created = bookingService.publish(req.getInterviewerId(),
+                LocalDate.parse(req.getFromDate()), LocalDate.parse(req.getToDate()), req.isWeekdaysOnly(),
+                LocalTime.parse(req.getStartTime()), LocalTime.parse(req.getEndTime()));
         return Map.of("created", created);
     }
 
     @DeleteMapping("/windows/{id}")
     public ResponseEntity<?> deleteWindow(@PathVariable Long id) {
-        AvailabilityWindow w = windowRepository.findById(id).orElse(null);
-        if (w == null) return ResponseEntity.notFound().build();
-        if (!bookingRepository.findOverlapping(w.getStartTime(), w.getEndTime()).isEmpty()) {
+        Optional<Boolean> removed = bookingService.removeWindow(id, null);
+        if (removed.isEmpty()) return ResponseEntity.notFound().build();
+        if (!removed.get()) {
             return ResponseEntity.status(409).body(Map.of("message", "This day has booked interviews. Release them first."));
         }
-        windowRepository.delete(w);
         return ResponseEntity.noContent().build();
+    }
+
+    private String nameOf(Long userId, Map<Long, String> cache) {
+        if (userId == null) return null;
+        return cache.computeIfAbsent(userId, id -> appUserRepository.findById(id)
+                .map(u -> u.getFullName()).orElse("Unknown"));
     }
 
     /** Calendar page: reschedule the interview behind this booking. */

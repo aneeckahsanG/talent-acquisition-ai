@@ -7,12 +7,17 @@ import com.talentai.admin.repository.InterviewSlotRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.time.DayOfWeek;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.*;
 
 /**
- * Central rules for the shared interview calendar: fixed length per type, and bookings
- * that never overlap for the same interviewer. Interviews with no interviewer share one pool.
+ * Central rules for the interview calendar: fixed length per type, and bookings that never overlap for the
+ * same interviewer. Availability belongs to an interviewer, or to nobody when it is open to all of them.
+ * An interview with an interviewer can use that person's windows and the open ones; an interview with no
+ * interviewer can use only the open ones.
  */
 @Service
 @RequiredArgsConstructor
@@ -44,6 +49,7 @@ public class InterviewBookingService {
 
         List<LocalDateTime> starts = new ArrayList<>();
         for (AvailabilityWindow w : windowRepository.findByEndTimeAfterOrderByStartTimeAsc(now)) {
+            if (!usableBy(w, interviewerId)) continue;
             for (LocalDateTime t = w.getStartTime(); !t.plusMinutes(dur).isAfter(w.getEndTime()); t = t.plusMinutes(STEP_MINUTES)) {
                 if (!t.isAfter(now)) continue;
                 LocalDateTime end = t.plusMinutes(dur);
@@ -54,6 +60,53 @@ public class InterviewBookingService {
         }
         Collections.sort(starts);
         return starts;
+    }
+
+    /** A window is usable when it is open to everyone or belongs to this interviewer. */
+    private static boolean usableBy(AvailabilityWindow w, Long interviewerId) {
+        return w.getInterviewerId() == null || w.getInterviewerId().equals(interviewerId);
+    }
+
+    /**
+     * Publishes one window per day from {@code from} to {@code to}, for this interviewer (null = open to all).
+     * Days that already have an overlapping window for the same owner are skipped.
+     * @return how many days were published
+     */
+    public int publish(Long interviewerId, LocalDate from, LocalDate to, boolean weekdaysOnly,
+                       LocalTime dayStart, LocalTime dayEnd) {
+        if (to.isBefore(from) || from.plusDays(60).isBefore(to)) {
+            throw new IllegalArgumentException("Date range must be valid and at most 60 days.");
+        }
+        if (!dayEnd.isAfter(dayStart)) throw new IllegalArgumentException("End time must be after start time.");
+
+        int created = 0;
+        for (LocalDate d = from; !d.isAfter(to); d = d.plusDays(1)) {
+            if (weekdaysOnly && (d.getDayOfWeek() == DayOfWeek.SATURDAY || d.getDayOfWeek() == DayOfWeek.SUNDAY)) continue;
+            LocalDateTime s = d.atTime(dayStart);
+            LocalDateTime e = d.atTime(dayEnd);
+            boolean taken = windowRepository.findOverlapping(s, e).stream()
+                    .anyMatch(w -> Objects.equals(w.getInterviewerId(), interviewerId));
+            if (taken) continue;
+            windowRepository.save(AvailabilityWindow.builder().startTime(s).endTime(e).interviewerId(interviewerId).build());
+            created++;
+        }
+        return created;
+    }
+
+    /**
+     * Removes a window unless interviews are booked inside it. A window that belongs to an interviewer is blocked
+     * by that interviewer's bookings; an open window is blocked by any booking.
+     * @param onlyOwnedBy when not null, the window must belong to this interviewer
+     * @return empty when the window does not exist (or is not theirs); otherwise whether it was removed
+     */
+    public Optional<Boolean> removeWindow(Long windowId, Long onlyOwnedBy) {
+        AvailabilityWindow w = windowRepository.findById(windowId).orElse(null);
+        if (w == null || (onlyOwnedBy != null && !onlyOwnedBy.equals(w.getInterviewerId()))) return Optional.empty();
+        boolean booked = bookingRepository.findOverlapping(w.getStartTime(), w.getEndTime()).stream()
+                .anyMatch(b -> w.getInterviewerId() == null || w.getInterviewerId().equals(b.getInterviewerId()));
+        if (booked) return Optional.of(false);
+        windowRepository.delete(w);
+        return Optional.of(true);
     }
 
     /** Books the interview if the start is still free. Synchronized so two candidates can't take overlapping times. */

@@ -175,10 +175,13 @@ is logged. The application cannot merge duplicates, delete a candidate or export
 
 ## Calendar
 
-The **Interview Calendar** is shared by all interviewers. An interviewer **publishes availability** (dates and
-times they are free); candidates can only book inside published windows, at the fixed interview length, and
-bookings never overlap for one interviewer. The grid shows booked interviews with the interviewer, and you can
-**Reschedule by email** from there. Remove an availability window with the remove control on it.
+Availability belongs to an interviewer. On the **Interview Calendar** a recruiter publishes availability **For** one
+interviewer (dates and times they are free), or for **Everyone**, which any interviewer can use. Interviewers can
+also publish and remove their own under **My availability** on their home page. A candidate booking with an
+interviewer can only pick times inside that interviewer's windows or the open ones, at the fixed interview length,
+and bookings never overlap for one interviewer. The **All interviewers** menu shows one person's calendar. The grid
+shows booked interviews with the interviewer, and you can **Reschedule by email** from there. Remove an availability
+window with the remove control on it (not while that interviewer has an interview booked inside it).
 
 ## Referral
 
