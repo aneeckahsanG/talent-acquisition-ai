@@ -43,43 +43,65 @@ public class RecruitingTools {
     private final HumanApprovalGate approvalGate;
     private final CandidateRepository candidateRepository;
     private final ObjectMapper objectMapper;
+    private final com.talentai.orchestrator.agent.AgentTrace agentTrace;
+
+    /**
+     * Runs a tool body inside a trace span, so the run records which tool was called, with what
+     * arguments, how long it took and what it returned — and any LLM call the tool makes is nested
+     * underneath it. Outside an agent run the span is a no-op.
+     */
+    private String traced(String tool, String arguments, java.util.function.Supplier<String> body) {
+        try (com.talentai.orchestrator.agent.AgentTrace.Span span = agentTrace.tool(tool, arguments)) {
+            String result = body.get();
+            span.result(result);
+            return result;
+        }
+    }
 
     // ── LOW RISK — read ───────────────────────────────────────────────────────
 
     @Tool(description = "Get the pipeline board for a job requisition, showing every candidate, their current stage, screening score, and interview rounds completed.")
     public String getPipelineBoard(Long requisitionId) {
-        try {
-            return toJson(orchestratorService.getPipelineBoard(requisitionId));
-        } catch (Exception e) {
-            return error("getPipelineBoard", e);
-        }
+        return traced("getPipelineBoard", "requisitionId=" + requisitionId, () -> {
+            try {
+                return toJson(orchestratorService.getPipelineBoard(requisitionId));
+            } catch (Exception e) {
+                return error("getPipelineBoard", e);
+            }
+        });
     }
 
     @Tool(description = "Get a high-level dashboard summary: open requisitions, total screenings, edge cases awaiting review, referrals, and scheduled interviews.")
     public String getDashboardSummary() {
-        try {
-            return toJson(orchestratorService.getDashboardSummary());
-        } catch (Exception e) {
-            return error("getDashboardSummary", e);
-        }
+        return traced("getDashboardSummary", null, () -> {
+            try {
+                return toJson(orchestratorService.getDashboardSummary());
+            } catch (Exception e) {
+                return error("getDashboardSummary", e);
+            }
+        });
     }
 
     @Tool(description = "List all sourcing matches for a job requisition, including match scores and current status.")
     public String getMatchesForRequisition(Long requisitionId) {
-        try {
-            return toJson(sourcingAgentService.getMatchesForRequisition(requisitionId));
-        } catch (Exception e) {
-            return error("getMatchesForRequisition", e);
-        }
+        return traced("getMatchesForRequisition", "requisitionId=" + requisitionId, () -> {
+            try {
+                return toJson(sourcingAgentService.getMatchesForRequisition(requisitionId));
+            } catch (Exception e) {
+                return error("getMatchesForRequisition", e);
+            }
+        });
     }
 
     @Tool(description = "List screening edge cases (HOLD results) that are awaiting human review for a given requisition.")
     public String getEdgeCases(Long requisitionId) {
-        try {
-            return toJson(screeningAgentService.getEdgeCases(requisitionId));
-        } catch (Exception e) {
-            return error("getEdgeCases", e);
-        }
+        return traced("getEdgeCases", "requisitionId=" + requisitionId, () -> {
+            try {
+                return toJson(screeningAgentService.getEdgeCases(requisitionId));
+            } catch (Exception e) {
+                return error("getEdgeCases", e);
+            }
+        });
     }
 
     // ── MEDIUM RISK — reversible writes ──────────────────────────────────────
@@ -87,66 +109,78 @@ public class RecruitingTools {
     @Tool(description = "Get a candidate's screening result for a job requisition: a score (0-100) and an ADVANCE / REVIEW / REJECT recommendation. "
             + "A new application has normally been screened already, so this returns the saved result at no cost; it only screens if there is no result yet.")
     public String screenCandidate(Long candidateId, Long requisitionId) {
-        try {
-            return toJson(screeningAgentService.screenExistingCandidate(candidateId, requisitionId));
-        } catch (Exception e) {
-            return error("screenCandidate", e);
-        }
+        return traced("screenCandidate", "candidateId=" + candidateId + ", requisitionId=" + requisitionId, () -> {
+            try {
+                return toJson(screeningAgentService.screenExistingCandidate(candidateId, requisitionId));
+            } catch (Exception e) {
+                return error("screenCandidate", e);
+            }
+        });
     }
 
     @Tool(description = "Match an existing candidate in the talent pool against all currently open job requisitions and store the best matches.")
     public String matchCandidateToOpenRoles(Long candidateId) {
-        try {
-            return toJson(sourcingAgentService.matchExistingCandidateToOpenRoles(candidateId));
-        } catch (Exception e) {
-            return error("matchCandidateToOpenRoles", e);
-        }
+        return traced("matchCandidateToOpenRoles", "candidateId=" + candidateId, () -> {
+            try {
+                return toJson(sourcingAgentService.matchExistingCandidateToOpenRoles(candidateId));
+            } catch (Exception e) {
+                return error("matchCandidateToOpenRoles", e);
+            }
+        });
     }
 
     @Tool(description = "Draft an outreach email for a sourcing match. Returns the draft text for recruiter review; does NOT send it.")
     public String draftOutreach(Long matchId) {
-        try {
-            return toJson(sourcingAgentService.draftOutreach(matchId));
-        } catch (Exception e) {
-            return error("draftOutreach", e);
-        }
+        return traced("draftOutreach", "matchId=" + matchId, () -> {
+            try {
+                return toJson(sourcingAgentService.draftOutreach(matchId));
+            } catch (Exception e) {
+                return error("draftOutreach", e);
+            }
+        });
     }
 
     @Tool(description = "Propose up to 3 interview time slots for a candidate and generate a draft invitation message. interviewType must be one of: SCREENING, TECHNICAL, CULTURAL, FINAL.")
     public String proposeInterview(Long candidateId, Long requisitionId, String interviewType) {
-        try {
-            ProposeInterviewRequest req = new ProposeInterviewRequest();
-            req.setCandidateId(candidateId);
-            req.setRequisitionId(requisitionId);
-            req.setInterviewType(interviewType);
-            return toJson(adminAgentService.proposeInterview(req));
-        } catch (Exception e) {
-            return error("proposeInterview", e);
-        }
+        return traced("proposeInterview",
+                "candidateId=" + candidateId + ", requisitionId=" + requisitionId + ", interviewType=" + interviewType, () -> {
+            try {
+                ProposeInterviewRequest req = new ProposeInterviewRequest();
+                req.setCandidateId(candidateId);
+                req.setRequisitionId(requisitionId);
+                req.setInterviewType(interviewType);
+                return toJson(adminAgentService.proposeInterview(req));
+            } catch (Exception e) {
+                return error("proposeInterview", e);
+            }
+        });
     }
 
     @Tool(description = "Move a candidate to a new pipeline stage. Valid stages: SCREENED, SHORTLISTED, INTERVIEW_SCHEDULED, OFFER, HIRED, REJECTED. "
             + "Stages OFFER, HIRED and REJECTED require recruiter approval (moving to REJECTED also emails the candidate): "
             + "the tool queues the move and returns PENDING_APPROVAL, so stop and report that it is waiting.")
     public String moveCandidateStage(Long requisitionId, Long candidateId, String newStage, ToolContext toolContext) {
-        String actionKey = "moveStage:" + requisitionId + ":" + candidateId + ":" + newStage;
-        boolean gated = isHighRiskStage(newStage);
-        if (gated && !approvalGate.isApproved(actionKey)) {
-            String pendingId = approvalGate.requestApproval(actionKey,
-                    "Move " + candidateLabel(candidateId) + " to " + newStage.toUpperCase()
-                            + " on requisition " + requisitionId
-                            + (newStage.equalsIgnoreCase("REJECTED") ? " (the candidate is emailed)" : ""),
-                    "moveCandidateStage", null, runIdOf(toolContext));
-            return "PENDING_APPROVAL — action queued for recruiter review. Approval ID: " + pendingId
-                    + ". Retry this tool call once the recruiter approves.";
-        }
-        try {
-            String result = toJson(orchestratorService.moveStage(requisitionId, candidateId, newStage, AGENT_ACTOR));
-            if (gated) approvalGate.consume(actionKey);
-            return result;
-        } catch (Exception e) {
-            return error("moveCandidateStage", e);
-        }
+        return traced("moveCandidateStage",
+                "requisitionId=" + requisitionId + ", candidateId=" + candidateId + ", newStage=" + newStage, () -> {
+            String actionKey = "moveStage:" + requisitionId + ":" + candidateId + ":" + newStage;
+            boolean gated = isHighRiskStage(newStage);
+            if (gated && !approvalGate.isApproved(actionKey)) {
+                String pendingId = approvalGate.requestApproval(actionKey,
+                        "Move " + candidateLabel(candidateId) + " to " + newStage.toUpperCase()
+                                + " on requisition " + requisitionId
+                                + (newStage.equalsIgnoreCase("REJECTED") ? " (the candidate is emailed)" : ""),
+                        "moveCandidateStage", null, runIdOf(toolContext));
+                return "PENDING_APPROVAL — action queued for recruiter review. Approval ID: " + pendingId
+                        + ". Retry this tool call once the recruiter approves.";
+            }
+            try {
+                String result = toJson(orchestratorService.moveStage(requisitionId, candidateId, newStage, AGENT_ACTOR));
+                if (gated) approvalGate.consume(actionKey);
+                return result;
+            } catch (Exception e) {
+                return error("moveCandidateStage", e);
+            }
+        });
     }
 
     // ── HIGH RISK — candidate-facing / irreversible ───────────────────────────
@@ -154,23 +188,25 @@ public class RecruitingTools {
     @Tool(description = "Send an outreach email to a sourced candidate. Always requires human approval. "
             + "Pass the matchId and the email body to send. Call requestApproval first if not yet approved.")
     public String sendOutreach(Long matchId, String emailBody, ToolContext toolContext) {
-        String actionKey = "sendOutreach:" + matchId;
-        if (!approvalGate.isApproved(actionKey)) {
-            String pendingId = approvalGate.requestApproval(actionKey,
-                    "Send an outreach email for match " + matchId,
-                    "sendOutreach", emailBody, runIdOf(toolContext));
-            return "PENDING_APPROVAL — outreach queued for recruiter sign-off. Approval ID: " + pendingId
-                    + ". Retry once approved.";
-        }
-        try {
-            // Send the text the recruiter read and approved, not whatever the agent wrote this time round.
-            String approvedBody = approvalGate.approvedPayload(actionKey).orElse(emailBody);
-            sourcingAgentService.sendOutreach(matchId, approvedBody);
-            approvalGate.consume(actionKey);
-            return "Outreach sent successfully for match " + matchId + ".";
-        } catch (Exception e) {
-            return error("sendOutreach", e);
-        }
+        return traced("sendOutreach", "matchId=" + matchId, () -> {
+            String actionKey = "sendOutreach:" + matchId;
+            if (!approvalGate.isApproved(actionKey)) {
+                String pendingId = approvalGate.requestApproval(actionKey,
+                        "Send an outreach email for match " + matchId,
+                        "sendOutreach", emailBody, runIdOf(toolContext));
+                return "PENDING_APPROVAL — outreach queued for recruiter sign-off. Approval ID: " + pendingId
+                        + ". Retry once approved.";
+            }
+            try {
+                // Send the text the recruiter read and approved, not whatever the agent wrote this time round.
+                String approvedBody = approvalGate.approvedPayload(actionKey).orElse(emailBody);
+                sourcingAgentService.sendOutreach(matchId, approvedBody);
+                approvalGate.consume(actionKey);
+                return "Outreach sent successfully for match " + matchId + ".";
+            } catch (Exception e) {
+                return error("sendOutreach", e);
+            }
+        });
     }
 
     @Tool(description = "Email a shortlisted candidate a link to book an interview time from the published calendar. "
@@ -207,22 +243,24 @@ public class RecruitingTools {
     @Tool(description = "Send a status notification to a candidate via EMAIL or SMS. Always requires human approval. "
             + "Call requestApproval first if not yet approved.")
     public String sendCandidateStatusUpdate(Long candidateId, String message, String channel, ToolContext toolContext) {
-        String actionKey = "statusUpdate:" + candidateId + ":" + channel;
-        if (!approvalGate.isApproved(actionKey)) {
-            String pendingId = approvalGate.requestApproval(actionKey,
-                    "Send a " + channel + " status update to " + candidateLabel(candidateId),
-                    "sendCandidateStatusUpdate", message, runIdOf(toolContext));
-            return "PENDING_APPROVAL — status update queued for recruiter sign-off. Approval ID: " + pendingId
-                    + ". Retry once approved.";
-        }
-        try {
-            String approvedMessage = approvalGate.approvedPayload(actionKey).orElse(message);
-            String result = toJson(adminAgentService.sendStatusUpdate(candidateId, approvedMessage, channel));
-            approvalGate.consume(actionKey);
-            return result;
-        } catch (Exception e) {
-            return error("sendCandidateStatusUpdate", e);
-        }
+        return traced("sendCandidateStatusUpdate", "candidateId=" + candidateId + ", channel=" + channel, () -> {
+            String actionKey = "statusUpdate:" + candidateId + ":" + channel;
+            if (!approvalGate.isApproved(actionKey)) {
+                String pendingId = approvalGate.requestApproval(actionKey,
+                        "Send a " + channel + " status update to " + candidateLabel(candidateId),
+                        "sendCandidateStatusUpdate", message, runIdOf(toolContext));
+                return "PENDING_APPROVAL — status update queued for recruiter sign-off. Approval ID: " + pendingId
+                        + ". Retry once approved.";
+            }
+            try {
+                String approvedMessage = approvalGate.approvedPayload(actionKey).orElse(message);
+                String result = toJson(adminAgentService.sendStatusUpdate(candidateId, approvedMessage, channel));
+                approvalGate.consume(actionKey);
+                return result;
+            } catch (Exception e) {
+                return error("sendCandidateStatusUpdate", e);
+            }
+        });
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

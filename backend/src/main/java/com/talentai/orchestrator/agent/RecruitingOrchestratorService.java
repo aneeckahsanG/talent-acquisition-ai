@@ -45,6 +45,7 @@ public class RecruitingOrchestratorService {
     private final PromptLoader promptLoader;
     private final AgentRunRepository runRepository;
     private final AgentStepRepository stepRepository;
+    private final AgentTrace agentTrace;
     private final ObjectMapper objectMapper;
 
     /** One action a paused run is waiting on, as saved on the run. */
@@ -130,6 +131,9 @@ public class RecruitingOrchestratorService {
     }
 
     private void runLoop(Long runId, String goal) {
+        // Opens the trace for this thread. Spring AI runs tool calls on the same thread, so each
+        // tool — and any LLM call it makes — attaches itself to this run as a nested step.
+        agentTrace.begin(runId);
         try {
             recordStep(runId, "START", null, "Goal: " + goal);
 
@@ -153,6 +157,8 @@ public class RecruitingOrchestratorService {
         } catch (Exception e) {
             log.error("Agent run {} failed: {}", runId, e.getMessage(), e);
             failRun(runId, "Run failed: " + e.getMessage());
+        } finally {
+            agentTrace.end();
         }
     }
 
@@ -223,15 +229,8 @@ public class RecruitingOrchestratorService {
         });
     }
 
-    private synchronized void recordStep(Long runId, String type, String toolName, String content) {
-        int next = stepRepository.findByRunIdOrderByStepNoAsc(runId).size() + 1;
-        stepRepository.save(AgentStep.builder()
-                .runId(runId)
-                .stepNo(next)
-                .stepType(type)
-                .toolName(toolName)
-                .content(content)
-                .createdAt(LocalDateTime.now())
-                .build());
+    /** Run-level steps (START, FINAL, APPROVAL_*, ERROR) sit at depth 0, above the traced calls. */
+    private void recordStep(Long runId, String type, String toolName, String content) {
+        agentTrace.runStep(runId, type, toolName, content);
     }
 }

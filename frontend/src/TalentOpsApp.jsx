@@ -1439,14 +1439,18 @@ function AiUsageSection() {
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ backgroundColor: C.bg, color: C.muted }}>
-                  <th className={th}>What asked for it</th><th className={th}>Calls</th><th className={th}>Failed</th>
+                  <th className={th}>Agent</th><th className={th}>What it was doing</th><th className={th}>Calls</th><th className={th}>Failed</th>
                   <th className={th}>Avg tokens in / out</th><th className={th}>Avg per call</th><th className={th}>Total</th><th className={th}>Share</th>
                 </tr>
               </thead>
               <tbody className="divide-y" style={{ borderColor: C.border }}>
                 {byFeature.map(f => (
                   <tr key={f.feature}>
-                    <td className="px-3 py-2.5 font-semibold" style={{ color: C.text }}>{f.feature}</td>
+                    <td className="px-3 py-2.5 font-semibold whitespace-nowrap" style={{ color: C.accent }}>{f.agent || "—"}</td>
+                    <td className="px-3 py-2.5">
+                      <p style={{ color: C.text }}>{f.purpose || f.feature}</p>
+                      <p className="text-[10px] font-mono" style={{ color: C.muted }}>{f.feature}</p>
+                    </td>
                     <td className="px-3 py-2.5" style={{ color: C.text }}>{f.calls}</td>
                     <td className="px-3 py-2.5" style={{ color: f.failedCalls > 0 ? C.danger : C.muted }}>{f.failedCalls}</td>
                     <td className="px-3 py-2.5 text-xs" style={{ color: C.muted }}>{num(f.avgInputTokens)} / {num(f.avgOutputTokens)}</td>
@@ -3118,6 +3122,81 @@ function WebhookUrlCard({ requisitionId }) {
 }
 
 // ============================================================
+// AGENT CALL CHAIN — one traced step, indented under whatever invoked it
+// ============================================================
+const CHAIN_ICON = {
+  START: "▶", TOOL_CALL: "🔧", AI_CALL: "🤖", THOUGHT: "💭", TOOL_RESULT: "📄",
+  APPROVAL_REQUEST: "✋", APPROVAL_DECISION: "👤", FINAL: "✅", ERROR: "⚠️",
+};
+const CHAIN_COLOR = { TOOL_CALL: "#6366F1", AI_CALL: "#8B5CF6", ERROR: "#EF4444", APPROVAL_REQUEST: "#F59E0B" };
+
+const fmtMs = ms => (ms == null ? null : ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`);
+const fmtUsd = c => (c == null ? null : `$${Number(c) < 0.01 ? Number(c).toFixed(4) : Number(c).toFixed(2)}`);
+
+/** Totals across a run, so the cost of one application is visible at a glance. */
+function CallChainSummary({ steps }) {
+  const tools = steps.filter(s => s.stepType === "TOOL_CALL");
+  const ai = steps.filter(s => s.stepType === "AI_CALL");
+  if (tools.length === 0 && ai.length === 0) return null;
+  const cost = ai.reduce((n, s) => n + Number(s.estimatedCost || 0), 0);
+  const tokens = ai.reduce((n, s) => n + (s.inputTokens || 0) + (s.outputTokens || 0), 0);
+  const chip = (label, value) => (
+    <span className="px-2 py-1 rounded-lg text-xs" style={{ backgroundColor: "#EEF2FF", color: "#3730A3" }}>
+      <strong>{value}</strong> {label}
+    </span>
+  );
+  return (
+    <div className="flex flex-wrap gap-2 pb-2 mb-1 border-b" style={{ borderColor: C.border }}>
+      {chip(tools.length === 1 ? "tool call" : "tool calls", tools.length)}
+      {chip(ai.length === 1 ? "AI call" : "AI calls", ai.length)}
+      {tokens > 0 && chip("tokens", tokens.toLocaleString())}
+      {cost > 0 && chip("spent", fmtUsd(cost))}
+    </div>
+  );
+}
+
+function AgentStepRow({ step }) {
+  const [open, setOpen] = useState(false);
+  const depth = step.depth || 0;
+  const colour = CHAIN_COLOR[step.stepType] || C.text;
+  const isAi = step.stepType === "AI_CALL";
+  const label = step.toolName || step.stepType;
+  const meta = [
+    isAi && step.model,
+    isAi && step.inputTokens != null && `${(step.inputTokens + (step.outputTokens || 0)).toLocaleString()} tok`,
+    isAi && fmtUsd(step.estimatedCost),
+    fmtMs(step.durationMs),
+  ].filter(Boolean).join("  ·  ");
+
+  return (
+    <div className="text-xs" style={{ paddingLeft: depth * 18 }}>
+      <div className="flex gap-2 items-start">
+        {depth > 0 && <span className="shrink-0 select-none" style={{ color: C.border }}>└</span>}
+        <span className="shrink-0">{CHAIN_ICON[step.stepType] || "•"}</span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-baseline gap-2 flex-wrap">
+            <span className="font-bold" style={{ color: colour }}>{label}</span>
+            {step.detail && <span style={{ color: C.muted }}>{step.detail}</span>}
+            {meta && <span className="ml-auto shrink-0" style={{ color: C.muted }}>{meta}</span>}
+          </div>
+          {step.content && (
+            <>
+              <button onClick={() => setOpen(o => !o)} className="mt-0.5 underline" style={{ color: C.muted }}>
+                {open ? "hide" : step.stepType === "TOOL_CALL" ? "show what it returned" : "show detail"}
+              </button>
+              {open && (
+                <pre className="whitespace-pre-wrap font-sans mt-1 max-h-48 overflow-y-auto rounded-lg p-2"
+                  style={{ color: C.muted, backgroundColor: C.bg }}>{step.content}</pre>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
 // AGENT ACTIVITY PANEL — agentic orchestrator runs, traces, and approvals
 // ============================================================
 function AgentActivityPanel({ requisitionId }) {
@@ -3140,11 +3219,6 @@ function AgentActivityPanel({ requisitionId }) {
     COMPLETED:           { bg: "#dcfce7", color: "#16a34a", label: "Completed" },
     FAILED:              { bg: "#fee2e2", color: "#dc2626", label: "Failed" },
     CANCELLED:           { bg: "#f1f5f9", color: "#64748b", label: "Cancelled" },
-  };
-
-  const STEP_ICON = {
-    THOUGHT: "💭", TOOL_CALL: "🔧", TOOL_RESULT: "📄",
-    APPROVAL_REQUEST: "✋", APPROVAL_DECISION: "👤", FINAL: "✅", ERROR: "⚠️",
   };
 
   async function toggleRun(runId) {
@@ -3253,19 +3327,12 @@ function AgentActivityPanel({ requisitionId }) {
                 <div className="border-t px-4 py-3 space-y-2" style={{ borderColor: C.border, backgroundColor: "#fafafa" }}>
                   {!steps[run.id] ? (
                     <p className="text-xs" style={{ color: C.muted }}>Loading trace…</p>
-                  ) : steps[run.id].map(step => (
-                    <div key={step.id} className="flex gap-2 text-xs">
-                      <span className="shrink-0">{STEP_ICON[step.stepType] || "•"}</span>
-                      <div className="min-w-0">
-                        <span className="font-bold" style={{ color: C.text }}>
-                          {step.stepType}{step.toolName ? ` · ${step.toolName}` : ""}
-                        </span>
-                        <pre className="whitespace-pre-wrap font-sans mt-0.5 max-h-40 overflow-y-auto" style={{ color: C.muted }}>
-                          {step.content}
-                        </pre>
-                      </div>
-                    </div>
-                  ))}
+                  ) : (
+                    <>
+                      <CallChainSummary steps={steps[run.id]} />
+                      {steps[run.id].map(step => <AgentStepRow key={step.id} step={step} />)}
+                    </>
+                  )}
                   {run.resultSummary && (
                     <div className="mt-2 pt-2 border-t text-xs" style={{ borderColor: C.border }}>
                       <span className="font-bold" style={{ color: C.text }}>Final summary: </span>

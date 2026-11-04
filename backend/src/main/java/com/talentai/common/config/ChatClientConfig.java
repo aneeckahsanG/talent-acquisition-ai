@@ -42,8 +42,10 @@ public class ChatClientConfig {
     }
 
     @Bean
-    ChatClient chatClient(ChatClient.Builder builder, AiUsageRecorder usageRecorder, AiBudgetGuard budgetGuard) {
-        // every AI call made through this client is checked against the budget, then recorded
-        return builder.defaultAdvisors(new AiUsageAdvisor(usageRecorder, budgetGuard)).build();
+    ChatClient chatClient(ChatClient.Builder builder, AiUsageRecorder usageRecorder, AiBudgetGuard budgetGuard,
+                          com.talentai.orchestrator.agent.AgentTrace agentTrace) {
+        // every AI call made through this client is checked against the budget, recorded for cost,
+        // and attached to the agent run that triggered it when one is in progress
+        return builder.defaultAdvisors(new AiUsageAdvisor(usageRecorder, budgetGuard, agentTrace)).build();
     }
 }

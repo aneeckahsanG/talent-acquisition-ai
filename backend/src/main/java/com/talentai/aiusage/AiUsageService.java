@@ -36,7 +36,9 @@ public class AiUsageService {
 
     public record Period(int calls, int failedCalls, long inputTokens, long outputTokens, double cost) {}
 
-    public record FeatureCost(String feature, int calls, int failedCalls, long avgInputTokens, long avgOutputTokens,
+    /** {@code agent} and {@code purpose} are for reading; {@code feature} is the Class.method behind them. */
+    public record FeatureCost(String feature, String agent, String purpose, int calls, int failedCalls,
+                              long avgInputTokens, long avgOutputTokens,
                               double totalCost, double avgCostPerCall, double shareOfCost) {}
 
     public record DayCost(String date, int calls, double cost) {}
@@ -53,11 +55,14 @@ public class AiUsageService {
         Period month = period(logs);
         Double projected = week.calls() > 0 ? round(week.cost() / 7.0 * 30.0) : null;
 
+        // Grouped on the normalised name so rows written before and after a lambda was added or
+        // moved in the calling class still count as one feature.
         List<FeatureCost> byFeature = new ArrayList<>();
-        for (var e : logs.stream().collect(Collectors.groupingBy(AiUsageLog::getFeature)).entrySet()) {
+        for (var e : logs.stream().collect(Collectors.groupingBy(l -> AiFeatureLabels.normalise(l.getFeature()))).entrySet()) {
             List<AiUsageLog> of = e.getValue();
             double total = of.stream().mapToDouble(l -> l.getEstimatedCost().doubleValue()).sum();
-            byFeature.add(new FeatureCost(e.getKey(), of.size(), (int) of.stream().filter(l -> !l.isSuccess()).count(),
+            byFeature.add(new FeatureCost(e.getKey(), AiFeatureLabels.agentOf(e.getKey()), AiFeatureLabels.purposeOf(e.getKey()),
+                    of.size(), (int) of.stream().filter(l -> !l.isSuccess()).count(),
                     Math.round(of.stream().mapToInt(AiUsageLog::getInputTokens).average().orElse(0)),
                     Math.round(of.stream().mapToInt(AiUsageLog::getOutputTokens).average().orElse(0)),
                     round(total), round(total / of.size()), month.cost() > 0 ? round(100.0 * total / month.cost()) : 0));
@@ -85,7 +90,10 @@ public class AiUsageService {
         String pricing = String.format("Estimated at US$%.2f per million input tokens and US$%.2f per million output tokens. These are list prices: set your contract rates in app.ai.price-input-per-million-usd and app.ai.price-output-per-million-usd.", inputPrice, outputPrice);
         List<Failure> failures = logs.stream().filter(l -> !l.isSuccess())
                 .sorted(Comparator.comparing(AiUsageLog::getCreatedAt).reversed()).limit(5)
-                .map(l -> new Failure(l.getCreatedAt(), l.getFeature(), l.getError())).toList();
+                .map(l -> new Failure(l.getCreatedAt(),
+                        AiFeatureLabels.agentOf(AiFeatureLabels.normalise(l.getFeature()))
+                                + " — " + AiFeatureLabels.purposeOf(AiFeatureLabels.normalise(l.getFeature())),
+                        l.getError())).toList();
         int blockedToday = (int) logs.stream().filter(l -> !l.getCreatedAt().isBefore(startOfToday) && !l.isSuccess()
                 && l.getError() != null && l.getError().startsWith("AiBudgetExceededException")).count();
         return new Report(now, today, week, month, projected, byFeature, byDay, unit, failures, budgetGuard.status(), blockedToday, pricing);
