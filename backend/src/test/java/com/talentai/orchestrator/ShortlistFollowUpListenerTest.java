@@ -3,7 +3,6 @@ package com.talentai.orchestrator;
 import com.talentai.aiusage.AiBudgetGuard;
 import com.talentai.common.entity.Candidate;
 import com.talentai.common.repository.CandidateRepository;
-import com.talentai.orchestrator.agent.AgentRun;
 import com.talentai.orchestrator.agent.AgentRunRepository;
 import com.talentai.orchestrator.agent.RecruitingOrchestratorService;
 import com.talentai.orchestrator.agent.ShortlistFollowUpListener;
@@ -13,12 +12,12 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
-import java.util.List;
 import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -39,7 +38,6 @@ class ShortlistFollowUpListenerTest {
         listener = new ShortlistFollowUpListener(orchestrator, runs, candidates, budget);
         ReflectionTestUtils.setField(listener, "enabled", true);
         when(candidates.findById(5L)).thenReturn(Optional.of(Candidate.builder().id(5L).fullName("Priya Sharma").build()));
-        when(runs.findByStatusOrderByCreatedAtDesc(anyString())).thenReturn(List.of());
     }
 
     @Test
@@ -53,8 +51,7 @@ class ShortlistFollowUpListenerTest {
     @Test
     @DisplayName("a run already running or waiting for approval for the same candidate and role is not duplicated")
     void noSecondRunWhileOneIsOpen() {
-        when(runs.findByStatusOrderByCreatedAtDesc("PAUSED_FOR_APPROVAL"))
-                .thenReturn(List.of(AgentRun.builder().id(1L).candidateId(5L).requisitionId(3L).status("PAUSED_FOR_APPROVAL").build()));
+        when(runs.existsByCandidateIdAndRequisitionIdAndStatusIn(eq(5L), eq(3L), any())).thenReturn(true);
 
         listener.onShortlisted(event);
 
@@ -64,8 +61,7 @@ class ShortlistFollowUpListenerTest {
     @Test
     @DisplayName("a run for a different candidate does not block this one")
     void otherCandidatesRunDoesNotBlock() {
-        when(runs.findByStatusOrderByCreatedAtDesc("RUNNING"))
-                .thenReturn(List.of(AgentRun.builder().id(1L).candidateId(6L).requisitionId(3L).status("RUNNING").build()));
+        when(runs.existsByCandidateIdAndRequisitionIdAndStatusIn(eq(6L), eq(3L), any())).thenReturn(true);
 
         listener.onShortlisted(event);
 

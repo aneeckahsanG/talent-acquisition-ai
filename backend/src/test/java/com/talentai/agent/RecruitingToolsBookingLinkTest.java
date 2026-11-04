@@ -98,6 +98,34 @@ class RecruitingToolsBookingLinkTest {
     }
 
     @Test
+    @DisplayName("the feedback tool hands the agent the verdict, the notes and the round that comes next")
+    void feedbackToolReturnsTheScorecard() {
+        when(orchestrator.interviewFeedback(1L, 9L)).thenReturn(new OrchestratorService.InterviewFeedback("INTERVIEW_SCHEDULED",
+                java.util.List.of(new OrchestratorService.RoundFeedback(11L, "PHONE_SCREEN", "COMPLETED", null, "YES", 4.5,
+                        Map.of("COMMUNICATION", 4), "Clear and keen", null, null)), "TECHNICAL"));
+
+        String result = tools.getInterviewFeedback(1L, 9L);
+
+        assertThat(result).contains("\"verdict\":\"YES\"").contains("Clear and keen").contains("\"nextRound\":\"TECHNICAL\"");
+    }
+
+    @Test
+    @DisplayName("an approved next-round link is sent for that round, and not before approval")
+    void nextRoundLinkNeedsApproval() {
+        when(orchestrator.checkBookingLink(1L, 9L, "TECHNICAL")).thenReturn(new BookingLinkCheck(null, "Dear Priya, technical round"));
+
+        assertThat(tools.sendBookingLink(1L, 9L, "TECHNICAL", RUN_8)).contains("PENDING_APPROVAL");
+        verify(orchestrator, never()).scheduleInterview(anyLong(), anyLong(), any(), anyString());
+
+        gate.approve(gate.listPending().get(0).approvalId());
+        tools.sendBookingLink(1L, 9L, "TECHNICAL", RUN_8);
+
+        ArgumentCaptor<ScheduleInterviewRequest> sent = ArgumentCaptor.forClass(ScheduleInterviewRequest.class);
+        verify(orchestrator).scheduleInterview(eq(1L), eq(9L), sent.capture(), eq("ORCHESTRATOR"));
+        assertThat(sent.getValue().getInterviewType()).isEqualTo("TECHNICAL");
+    }
+
+    @Test
     @DisplayName("an approval given for one interview type does not let another type through")
     void approvalIsPerInterviewType() {
         when(orchestrator.checkBookingLink(1L, 9L, "FINAL")).thenReturn(new BookingLinkCheck(null, "Final round"));

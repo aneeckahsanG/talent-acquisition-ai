@@ -89,6 +89,13 @@ is logged. The application cannot merge duplicates, delete a candidate or export
   times are published, the agent does not queue anything and its run says a recruiter needs to publish
   availability on the Calendar first (only availability open to everyone counts, because the agent does not
   pick an interviewer). A candidate who already has that invitation is not sent a second one.
+- **A scored interview round also starts an agent run.** When an interviewer submits a scorecard, the agent
+  reads it and proposes the next step in Agent Activity, always for the recruiter's approval: a strong
+  result (Strong yes, or Yes with an average rating of 3.5 or more) queues the booking link for the next
+  round (phone screen, then technical, then final); a No or Strong no queues a rejection email; a weaker Yes
+  is left for a recruiter to review. After a candidate passes the final round the agent sends nothing, it
+  only notes that a recruiter should consider an offer. A link is never queued for a candidate who still
+  has an unfinished interview, or out of order.
 - Applications from the job board are screened automatically; their rows show "Screening in progress". If the
   AI is unavailable or paused (see AI usage limits), the application is still saved and is screened
   automatically later.

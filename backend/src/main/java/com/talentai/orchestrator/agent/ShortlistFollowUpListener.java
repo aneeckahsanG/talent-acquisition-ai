@@ -41,10 +41,8 @@ public class ShortlistFollowUpListener {
                 return;
             }
             // One run at a time per candidate and role: shortlisting twice must not queue two invitations
-            boolean alreadyOpen = OPEN_RUN_STATUSES.stream()
-                    .flatMap(s -> runRepository.findByStatusOrderByCreatedAtDesc(s).stream())
-                    .anyMatch(r -> event.candidateId().equals(r.getCandidateId())
-                            && event.requisitionId().equals(r.getRequisitionId()));
+            boolean alreadyOpen = runRepository.existsByCandidateIdAndRequisitionIdAndStatusIn(
+                    event.candidateId(), event.requisitionId(), OPEN_RUN_STATUSES);
             if (alreadyOpen) return;
 
             String name = candidateRepository.findById(event.candidateId()).map(c -> c.getFullName()).orElse("candidate");

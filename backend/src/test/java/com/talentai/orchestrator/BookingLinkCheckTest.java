@@ -1,7 +1,9 @@
 package com.talentai.orchestrator;
 
 import com.talentai.admin.entity.InterviewSchedule;
+import com.talentai.admin.entity.InterviewScorecard;
 import com.talentai.admin.repository.InterviewScheduleRepository;
+import com.talentai.admin.repository.InterviewScorecardRepository;
 import com.talentai.admin.service.InterviewBookingService;
 import com.talentai.common.entity.Candidate;
 import com.talentai.common.entity.JobRequisition;
@@ -39,6 +41,7 @@ class BookingLinkCheckTest {
     @Mock private PipelineStageRepository pipelineStageRepository;
     @Mock private InterviewScheduleRepository interviewScheduleRepository;
     @Mock private InterviewBookingService interviewBookingService;
+    @Mock private InterviewScorecardRepository scorecardRepository;
     @Mock private org.springframework.context.ApplicationEventPublisher events;
     @InjectMocks private OrchestratorService service;
 
@@ -102,6 +105,78 @@ class BookingLinkCheckTest {
                 InterviewSchedule.builder().candidateId(5L).requisitionId(3L).interviewType("PHONE_SCREEN").status("COMPLETED").build()));
 
         assertThat(service.checkBookingLink(3L, 5L, "PHONE_SCREEN").problem()).isNull();
+    }
+
+    // ── between rounds ───────────────────────────────────────────────────────
+
+    private void betweenRounds(String lastType, String verdict) {
+        row.setStage("INTERVIEW_SCHEDULED");
+        when(interviewScheduleRepository.findByCandidateIdAndRequisitionIdOrderByCreatedAtAsc(5L, 3L)).thenReturn(List.of(
+                InterviewSchedule.builder().id(11L).candidateId(5L).requisitionId(3L).interviewType(lastType).status("COMPLETED").build()));
+        when(scorecardRepository.findByInterviewId(11L)).thenReturn(verdict == null ? Optional.empty()
+                : Optional.of(InterviewScorecard.builder().interviewId(11L).verdict(verdict).build()));
+        when(interviewBookingService.availableStarts(org.mockito.ArgumentMatchers.anyString(), isNull(), isNull()))
+                .thenReturn(List.of(LocalDateTime.now().plusDays(1)));
+    }
+
+    @Test
+    @DisplayName("after a good phone screen the technical round can be offered")
+    void nextRoundAfterAGoodRound() {
+        betweenRounds("PHONE_SCREEN", "YES");
+
+        BookingLinkCheck check = service.checkBookingLink(3L, 5L, "TECHNICAL");
+
+        assertThat(check.problem()).isNull();
+        assertThat(check.emailText()).contains("technical");
+    }
+
+    @Test
+    @DisplayName("a round out of order, or the same round again, is refused")
+    void onlyTheNextRoundInOrder() {
+        betweenRounds("PHONE_SCREEN", "STRONG_YES");
+
+        assertThat(service.checkBookingLink(3L, 5L, "FINAL").problem()).contains("next one is TECHNICAL");
+        assertThat(service.checkBookingLink(3L, 5L, "PHONE_SCREEN").problem()).contains("next one is TECHNICAL");
+    }
+
+    @Test
+    @DisplayName("a NO or STRONG_NO verdict, or a round with no scorecard, offers nothing")
+    void noNextRoundAfterAWeakRound() {
+        betweenRounds("PHONE_SCREEN", "NO");
+        assertThat(service.checkBookingLink(3L, 5L, "TECHNICAL").problem()).contains("verdict was NO");
+
+        betweenRounds("PHONE_SCREEN", "STRONG_NO");
+        assertThat(service.checkBookingLink(3L, 5L, "TECHNICAL").problem()).contains("STRONG_NO");
+
+        betweenRounds("PHONE_SCREEN", null);
+        assertThat(service.checkBookingLink(3L, 5L, "TECHNICAL").problem()).contains("no scorecard");
+    }
+
+    @Test
+    @DisplayName("after the final round there is nothing left to offer")
+    void nothingAfterTheFinalRound() {
+        betweenRounds("FINAL", "STRONG_YES");
+
+        assertThat(service.checkBookingLink(3L, 5L, "FINAL").problem()).contains("last one");
+    }
+
+    @Test
+    @DisplayName("while another round is still booked or proposed, the next one waits")
+    void nextRoundWaitsForAnOpenOne() {
+        betweenRounds("PHONE_SCREEN", "YES");
+        when(interviewScheduleRepository.findByCandidateIdAndRequisitionIdOrderByCreatedAtAsc(5L, 3L)).thenReturn(List.of(
+                InterviewSchedule.builder().id(11L).interviewType("PHONE_SCREEN").status("COMPLETED").build(),
+                InterviewSchedule.builder().id(12L).interviewType("TECHNICAL").status("PROPOSED").build()));
+
+        assertThat(service.checkBookingLink(3L, 5L, "FINAL").problem()).contains("already has a TECHNICAL interview that is not completed");
+    }
+
+    @Test
+    @DisplayName("a candidate at another stage, such as an offer, is not sent a link")
+    void otherStagesAreRefused() {
+        row.setStage("OFFER");
+
+        assertThat(service.checkBookingLink(3L, 5L, "TECHNICAL").problem()).contains("OFFER").contains("not SHORTLISTED");
     }
 
     @Test
