@@ -10,7 +10,8 @@ public final class AssistantDtos {
 
     public record ChatRequest(
             @NotBlank @Size(max = 4000) String message,
-            @Size(max = 100) String currentPage
+            @Size(max = 100) String currentPage,
+            @Size(max = 12000) String conversation
     ) {
     }
 

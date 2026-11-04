@@ -5,7 +5,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.talentai.agent.service.HumanApprovalGate;
 import com.talentai.admin.service.AdminAgentService;
 import com.talentai.admin.dto.AdminDtos.ProposeInterviewRequest;
+import com.talentai.admin.dto.AdminDtos.InterviewScheduleResponse;
 import com.talentai.common.repository.CandidateRepository;
+import com.talentai.directory.CandidateDirectoryService;
 import com.talentai.orchestrator.service.OrchestratorService;
 import com.talentai.screening.service.ScreeningAgentService;
 import com.talentai.sourcing.service.SourcingAgentService;
@@ -15,6 +17,8 @@ import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 
 /**
@@ -42,6 +46,7 @@ public class RecruitingTools {
     private final OrchestratorService orchestratorService;
     private final HumanApprovalGate approvalGate;
     private final CandidateRepository candidateRepository;
+    private final CandidateDirectoryService candidateDirectoryService;
     private final ObjectMapper objectMapper;
 
     // ── LOW RISK — read ───────────────────────────────────────────────────────
@@ -79,6 +84,15 @@ public class RecruitingTools {
             return toJson(screeningAgentService.getEdgeCases(requisitionId));
         } catch (Exception e) {
             return error("getEdgeCases", e);
+        }
+    }
+
+    @Tool(description = "List the latest 25 candidates in the talent pool, including their name, contact details, latest role, and current pipeline stage.")
+    public String listCandidates() {
+        try {
+            return toJson(candidateDirectoryService.list(null));
+        } catch (Exception e) {
+            return error("listCandidates", e);
         }
     }
 
@@ -125,6 +139,33 @@ public class RecruitingTools {
         }
     }
 
+    @Tool(description = "Schedule or reschedule a candidate interview at an exact future local date/time. "
+            + "confirmedSlot must be ISO local date-time, for example 2026-11-05T17:00:00. "
+            + "Requires recruiter approval before booking.")
+    public String scheduleInterview(Long candidateId, Long requisitionId, String interviewType,
+                                    String confirmedSlot, ToolContext toolContext) {
+        String actionKey = "scheduleInterview:" + candidateId + ":" + requisitionId + ":" + interviewType + ":" + confirmedSlot;
+        if (!approvalGate.isApproved(actionKey)) {
+            String pendingId = approvalGate.requestApproval(actionKey,
+                    "Schedule a " + interviewType + " interview for " + candidateLabel(candidateId)
+                            + " on " + confirmedSlot,
+                    "scheduleInterview", confirmedSlot, runIdOf(toolContext));
+            return "PENDING_APPROVAL — interview schedule queued for recruiter review. Approval ID: " + pendingId
+                    + ". Retry this tool call once the recruiter approves.";
+        }
+        try {
+            InterviewScheduleResponse response = adminAgentService.scheduleInterviewAt(
+                    candidateId, requisitionId, interviewType, LocalDateTime.parse(confirmedSlot));
+            approvalGate.consume(actionKey);
+            return toJson(response);
+        } catch (DateTimeParseException e) {
+            return error("scheduleInterview", new IllegalArgumentException(
+                    "confirmedSlot must be ISO local date-time, for example 2026-11-05T17:00:00", e));
+        } catch (Exception e) {
+            return error("scheduleInterview", e);
+        }
+    }
+
     @Tool(description = "Move a candidate to a new pipeline stage. Valid stages: SCREENED, SHORTLISTED, INTERVIEW_SCHEDULED, OFFER, HIRED, REJECTED. "
             + "Stages OFFER, HIRED and REJECTED require recruiter approval (moving to REJECTED also emails the candidate): "
             + "the tool queues the move and returns PENDING_APPROVAL, so stop and report that it is waiting.")
@@ -146,6 +187,27 @@ public class RecruitingTools {
             return result;
         } catch (Exception e) {
             return error("moveCandidateStage", e);
+        }
+    }
+
+    @Tool(description = "Override an AI REJECT screening decision and shortlist the candidate. Use only when the recruiter explicitly asks to override the rejection. Requires recruiter approval.")
+    public String overrideScreeningDecision(Long candidateId, Long requisitionId, ToolContext toolContext) {
+        String actionKey = "overrideScreening:" + requisitionId + ":" + candidateId + ":SHORTLISTED";
+        if (!approvalGate.isApproved(actionKey)) {
+            String pendingId = approvalGate.requestApproval(actionKey,
+                    "Override the AI Reject and shortlist " + candidateLabel(candidateId)
+                            + " on requisition " + requisitionId,
+                    "overrideScreeningDecision", null, runIdOf(toolContext));
+            return "PENDING_APPROVAL — action queued for recruiter review. Approval ID: " + pendingId
+                    + ". Retry this tool call once the recruiter approves.";
+        }
+        try {
+            String result = toJson(orchestratorService.moveStage(
+                    requisitionId, candidateId, "SHORTLISTED", AGENT_ACTOR));
+            approvalGate.consume(actionKey);
+            return result;
+        } catch (Exception e) {
+            return error("overrideScreeningDecision", e);
         }
     }
 

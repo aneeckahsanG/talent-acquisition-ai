@@ -6,6 +6,7 @@ import com.talentai.agent.service.HumanApprovalGate;
 import com.talentai.agent.tool.RecruitingTools;
 import com.talentai.common.entity.Candidate;
 import com.talentai.common.repository.CandidateRepository;
+import com.talentai.directory.CandidateDirectoryService;
 import com.talentai.orchestrator.service.OrchestratorService;
 import com.talentai.screening.service.ScreeningAgentService;
 import com.talentai.sourcing.service.SourcingAgentService;
@@ -44,7 +45,7 @@ class RecruitingToolsApprovalTest {
         candidates = mock(CandidateRepository.class);
         gate = new HumanApprovalGate();
         tools = new RecruitingTools(mock(ScreeningAgentService.class), sourcing, mock(AdminAgentService.class),
-                orchestrator, gate, candidates, new ObjectMapper());
+                orchestrator, gate, candidates, mock(CandidateDirectoryService.class), new ObjectMapper());
     }
 
     @Test

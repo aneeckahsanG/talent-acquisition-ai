@@ -6,7 +6,6 @@ import {
   ChevronRight, ChevronUp, ChevronDown, Sparkles, CheckCircle2, XCircle, AlertCircle, Clock,
   Briefcase, Mail, X, ArrowRight, Bell, LogOut, Loader2, UploadCloud,
   RefreshCw, Plus, Globe, List, ArrowUp, ArrowDown, ArrowUpDown, TrendingUp, Pencil, Inbox, Settings,History, FileText, Trash2, Maximize2,
-  Users, ClipboardCheck, KeyRound, Copy,
 } from "lucide-react";
 
 // ============================================================
@@ -76,6 +75,11 @@ function useApi(path, deps = []) {
   }, [path, ...deps]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    const refresh = () => load();
+    window.addEventListener("talentai:data-changed", refresh);
+    return () => window.removeEventListener("talentai:data-changed", refresh);
+  }, [load]);
   return { data, loading, error, reload: load };
 }
 
@@ -134,10 +138,6 @@ const AGENT_META = {
   OUTREACH:     { label: "Outreach",     color: "#0D9488", bg: "#CCFBF1", icon: Mail },
 };
 
-// Who made a stage move. HUMAN, CANDIDATE and ORCHESTRATOR are stored on the pipeline stage; agents fall back to their label.
-const ACTOR_LABELS = { HUMAN: "Recruiter", CANDIDATE: "Candidate", ORCHESTRATOR: "AI agent" };
-const actorLabel = agent => ACTOR_LABELS[agent] || AGENT_META[agent]?.label || agent;
-
 // The Sourcing service also handles careers-page applications and outreach emails, so it logs them as SOURCING.
 // Label each entry by what happened instead, so the Sourcing filter only shows real sourcing.
 const APPLICATION_ACTIONS = ["DIRECT_APPLICATION_RECEIVED", "APPLICANT_SHORTLISTED", "APPLICANT_REJECTED"];
@@ -151,7 +151,7 @@ function activityAgent(entry) {
 }
 
 const STAGE_LABELS = {
-  SOURCED: "Sourced", REFERRAL_MATCHED: "Referral matched", SCREENED: "Screened", SHORTLISTED: "Shortlisted",
+  SOURCED: "Sourced", SCREENED: "Screened", SHORTLISTED: "Shortlisted",
   INTERVIEW_SCHEDULED: "Interview", OFFER: "Offer", HIRED: "Hired", REJECTED: "Rejected",
   NO_SHOW: "No Show",
 };
@@ -172,11 +172,6 @@ function mergePipelineBoards(boards) {
       const list = b?.stages?.[s] || [];
       stages[s].push(...list);
     }
-  }
-  // Each role's list already comes back newest-first; merging roles in role order would
-  // interleave them out of date order, so re-sort by enteredAt once combined.
-  for (const s of PIPELINE_STAGES) {
-    stages[s].sort((a, b) => new Date(b.enteredAt || 0) - new Date(a.enteredAt || 0));
   }
   return { requisitionId: null, requisitionTitle: "All Roles", stages };
 }
@@ -209,232 +204,6 @@ const joinRejectReason = form => form.preset + (form.note.trim() ? ` — ${form.
 
 const VERDICT_LABELS = { STRONG_YES: "Strong yes", YES: "Yes", NO: "No", STRONG_NO: "Strong no" };
 const verdictColor = v => (v === "STRONG_YES" || v === "YES" ? C.success : C.danger);
-
-const DEBRIEF_REC = {
-  ADVANCE_TO_OFFER:    { label: "Ready for offer",   color: C.success },
-  ADD_ROUND:           { label: "Add another round", color: C.accent },
-  HOLD_FOR_DISCUSSION: { label: "Discuss as a team", color: C.warning },
-  DO_NOT_PROCEED:      { label: "Do not proceed",    color: C.danger },
-};
-const DEBRIEF_CONFIDENCE = { HIGH: "High confidence", MEDIUM: "Medium confidence", LOW: "Low confidence" };
-
-function DebriefButton({ onClick }) {
-  return (
-    <button onClick={onClick}
-      className="w-full text-[10px] font-semibold py-1 rounded-lg flex items-center justify-center gap-1"
-      style={{ color: C.accent, border: `1px solid ${C.accent}55`, background: `${C.accent}0D` }}>
-      <Sparkles size={10} /> AI Debrief
-    </button>
-  );
-}
-
-function DebriefList({ title, items, color }) {
-  if (!items?.length) return null;
-  return (
-    <div>
-      <p className="text-[11px] font-bold uppercase tracking-wide mb-1.5" style={{ color }}>{title}</p>
-      <ul className="space-y-1">
-        {items.map((t, i) => (
-          <li key={i} className="text-xs leading-relaxed flex gap-2" style={{ color: C.text }}>
-            <span style={{ color }}>•</span><span>{t}</span>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-// Loads the stored debrief and lets the caller (re)generate it. Reading never calls the AI; only generate() does.
-function useDebrief(requisitionId, candidateId) {
-  const path = `/orchestrator/pipeline/${requisitionId}/candidates/${candidateId}/debrief`;
-  const { data, loading, error, reload } = useApi(path, [requisitionId, candidateId]);
-  const [fresh, setFresh] = useState(null);
-  const [generating, setGenerating] = useState(false);
-  const [genError, setGenError] = useState(null);
-
-  async function generate() {
-    setGenerating(true); setGenError(null);
-    try {
-      setFresh(await apiFetch(path, { method: "POST" }));
-    } catch (e) {
-      setGenError(e.message);
-    } finally {
-      setGenerating(false);
-    }
-  }
-
-  return { d: fresh || data, loading, error, reload, generate, generating, genError };
-}
-
-// Compact debrief shown inside the Create Offer dialog, so the scorecards are weighed before the offer goes out.
-// Advisory only: it never blocks the offer.
-function OfferDebriefPanel({ requisitionId, candidateId }) {
-  const { d, loading, error, reload, generate, generating, genError } = useDebrief(requisitionId, candidateId);
-  const rec = d?.generated ? DEBRIEF_REC[d.recommendation] : null;
-  const concerning = rec && d.recommendation !== "ADVANCE_TO_OFFER";
-
-  return (
-    <div className="rounded-xl border p-3 mb-4"
-      style={{ borderColor: concerning ? `${rec.color}66` : C.border, backgroundColor: concerning ? `${rec.color}0D` : "#F8FAFC" }}>
-      <p className="text-[11px] font-bold uppercase tracking-wide flex items-center gap-1 mb-1.5" style={{ color: C.accent }}>
-        <Sparkles size={11} /> AI Debrief before you offer
-      </p>
-
-      {loading && !d && <p className="text-xs" style={{ color: C.muted }}>Loading the scorecard review…</p>}
-      {error && !d && <ErrorBanner message={error} onRetry={reload} />}
-
-      {d && !d.available && (
-        <p className="text-xs leading-relaxed" style={{ color: C.muted }}>
-          No interview scorecards on file, so there is nothing for the AI to review. You can still create the offer.
-        </p>
-      )}
-
-      {d && d.available && !d.generated && (
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-xs" style={{ color: C.muted }}>
-            {d.scorecardCount} scorecard{d.scorecardCount === 1 ? "" : "s"} not yet reviewed by the AI.
-          </p>
-          <Btn onClick={generate} disabled={generating}>{generating ? "Generating…" : "Generate"}</Btn>
-        </div>
-      )}
-
-      {rec && (
-        <div className="space-y-2">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs font-bold px-2.5 py-0.5 rounded-full"
-              style={{ color: rec.color, backgroundColor: `${rec.color}1A`, border: `1px solid ${rec.color}55` }}>
-              {rec.label}
-            </span>
-            <span className="text-[11px]" style={{ color: C.muted }}>{DEBRIEF_CONFIDENCE[d.confidence] || d.confidence}</span>
-          </div>
-          {d.stale && (
-            <p className="text-[11px]" style={{ color: "#92400E" }}>Scorecards changed since this was generated. Regenerate before relying on it.</p>
-          )}
-          <p className="text-xs leading-relaxed" style={{ color: C.text }}>{d.summary}</p>
-          {concerning && d.suggestedNextStep && (
-            <p className="text-xs leading-relaxed" style={{ color: C.text }}>
-              <span className="font-semibold" style={{ color: rec.color }}>Suggested: </span>{d.suggestedNextStep}
-            </p>
-          )}
-          <button onClick={generate} disabled={generating} className="text-[11px] underline" style={{ color: C.muted }}>
-            {generating ? "Regenerating…" : "Regenerate"}
-          </button>
-        </div>
-      )}
-
-      {genError && <p className="text-xs mt-1" style={{ color: C.danger }}>{genError}</p>}
-    </div>
-  );
-}
-
-// AI debrief of a candidate's interview scorecards for one role. Advisory only: it never moves the candidate.
-function DebriefModal({ requisitionId, candidateId, candidateName, onClose }) {
-  const { d, loading, error, reload, generate, generating, genError } = useDebrief(requisitionId, candidateId);
-  const rec = d?.generated ? DEBRIEF_REC[d.recommendation] : null;
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ backgroundColor: "rgba(15,23,42,0.5)", backdropFilter: "blur(4px)" }}>
-      <Card className="w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h2 className="font-bold text-base flex items-center gap-1.5" style={{ color: C.text }}>
-              <Sparkles size={15} style={{ color: C.accent }} /> AI Debrief · {candidateName}
-            </h2>
-            <p className="text-xs mt-1" style={{ color: C.muted }}>
-              Combines the interview scorecards into one view. The AI advises; the decision is yours.
-            </p>
-          </div>
-          <button onClick={onClose} className="shrink-0 p-1 rounded-lg hover:bg-slate-100" aria-label="Close">
-            <XCircle size={18} style={{ color: C.muted }} />
-          </button>
-        </div>
-
-        <div className="mt-4 space-y-4">
-          {loading && !d && <LoadingCard rows={3} />}
-          {error && !d && <ErrorBanner message={error} onRetry={reload} />}
-
-          {d && !d.available && (
-            <p className="text-sm leading-relaxed" style={{ color: C.muted }}>
-              {d.completedRounds > 0
-                ? `${d.completedRounds} interview round${d.completedRounds === 1 ? " was" : "s were"} completed without a scorecard, so there is nothing for the AI to read. A debrief is built from scorecards, which are submitted when an upcoming round is marked Done.`
-                : "There is nothing to debrief yet. Complete an interview round and submit its scorecard first."}
-            </p>
-          )}
-
-          {d && d.available && !d.generated && (
-            <div className="rounded-xl border p-4" style={{ borderColor: C.border, backgroundColor: "#F8FAFC" }}>
-              <p className="text-sm" style={{ color: C.text }}>
-                {d.scorecardCount} scorecard{d.scorecardCount === 1 ? "" : "s"} ready to review.
-              </p>
-              <p className="text-xs mt-1" style={{ color: C.muted }}>
-                Interview rounds completed: {d.completedRounds} of {d.requiredRounds} required for an offer.
-              </p>
-            </div>
-          )}
-
-          {rec && (
-            <>
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-sm font-bold px-3 py-1 rounded-full"
-                  style={{ color: rec.color, backgroundColor: `${rec.color}1A`, border: `1px solid ${rec.color}55` }}>
-                  {rec.label}
-                </span>
-                <span className="text-xs" style={{ color: C.muted }}>{DEBRIEF_CONFIDENCE[d.confidence] || d.confidence}</span>
-                <span className="text-xs" style={{ color: C.muted }}>
-                  · {d.scorecardCount} scorecard{d.scorecardCount === 1 ? "" : "s"} · {d.completedRounds} of {d.requiredRounds} rounds
-                </span>
-              </div>
-
-              {d.stale && (
-                <div className="p-3 rounded-xl border text-xs flex items-start gap-2"
-                  style={{ backgroundColor: "#FFFBEB", borderColor: "#FDE68A", color: "#92400E" }}>
-                  <AlertCircle size={14} className="mt-0.5 shrink-0" />
-                  <span>The scorecards have changed since this debrief was generated. Regenerate it before relying on it.</span>
-                </div>
-              )}
-
-              <p className="text-sm leading-relaxed" style={{ color: C.text }}>{d.summary}</p>
-
-              <DebriefList title="Where interviewers agree" items={d.agreements} color={C.success} />
-              <DebriefList title="Where they differ" items={d.disagreements} color={C.warning} />
-              <DebriefList title="Concerns to weigh" items={d.concerns} color={C.danger} />
-
-              {d.suggestedNextStep && (
-                <div className="rounded-xl border p-3" style={{ borderColor: `${rec.color}55`, backgroundColor: `${rec.color}0D` }}>
-                  <p className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: rec.color }}>Suggested next step</p>
-                  <p className="text-xs leading-relaxed" style={{ color: C.text }}>{d.suggestedNextStep}</p>
-                </div>
-              )}
-
-              {d.guardrailNote && (
-                <p className="text-xs leading-relaxed p-3 rounded-xl" style={{ backgroundColor: "#F1F5F9", color: C.muted }}>
-                  <span className="font-semibold" style={{ color: C.text }}>Adjusted by a rule: </span>{d.guardrailNote}
-                </p>
-              )}
-
-              <p className="text-[11px]" style={{ color: C.muted }}>
-                AI-generated from the scorecards only, {formatFullDateTime(d.generatedAt)}{d.generatedBy ? ` by ${d.generatedBy}` : ""}.
-                It does not change the candidate's stage.
-              </p>
-            </>
-          )}
-
-          {genError && <p className="text-xs" style={{ color: C.danger }}>{genError}</p>}
-        </div>
-
-        <div className="flex justify-end gap-2 mt-5">
-          <Btn variant="secondary" onClick={onClose}>Close</Btn>
-          {d?.available && (
-            <Btn onClick={generate} disabled={generating}>
-              {generating ? "Generating…" : d.generated ? "Regenerate" : "Generate AI debrief"}
-            </Btn>
-          )}
-        </div>
-      </Card>
-    </div>
-  );
-}
 
 function ScorecardModal({ title, criteria, isPhone, form, setForm, onSubmit, onCancel, submitting, error }) {
   const complete = criteria.length > 0 && criteria.every(([k]) => form.ratings[k] > 0) && form.verdict;
@@ -760,10 +529,17 @@ function AssistantMessage({ content }) {
   });
 }
 
+function assistantConversation(messages) {
+  return messages
+    .map(message => `${message.role === "user" ? "User" : "Assistant"}: ${message.content}`)
+    .join("\n\n")
+    .slice(-12000);
+}
+
 const ASSISTANT_PAGE_NAMES = {
   dashboard: "the Dashboard", intelligence: "Intelligence", activity: "Agent Activity", roles: "Open Roles",
   pipeline: "the Pipeline", screening: "Screening", screeningQuality: "Screening Quality", calendar: "the Calendar",
-  referrals: "Referrals", integrations: "Integrations", cvInbox: "the Resume Drop Zone", candidate: "a candidate profile",
+  referrals: "Referrals", integrations: "Integrations", cvInbox: "the Resume Inbox", candidate: "a candidate profile",
 };
 
 function AssistantPanel({ active, open, onClose }) {
@@ -776,6 +552,37 @@ function AssistantPanel({ active, open, onClose }) {
   const [question, setQuestion] = useState("");
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    async function resumeApprovedRequest() {
+      const originalRequest = [...messages].reverse().find(message => message.role === "user")?.content;
+      if (!originalRequest) return;
+      setLoading(true);
+      try {
+        const result = await apiFetch("/assistant/chat", {
+          method: "POST",
+          body: JSON.stringify({
+            message: originalRequest,
+            currentPage: active,
+            conversation: assistantConversation(messages),
+          }),
+        });
+        setMessages(current => [...current, { role: "assistant", content: result.answer }]);
+        window.dispatchEvent(new Event("talentai:data-changed"));
+        window.dispatchEvent(new Event("talentai:approvals-changed"));
+      } catch (error) {
+        setMessages(current => [...current, {
+          role: "assistant",
+          content: error.message || "Unable to continue the approved request.",
+        }]);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    window.addEventListener("talentai:approval-approved", resumeApprovedRequest);
+    return () => window.removeEventListener("talentai:approval-approved", resumeApprovedRequest);
+  }, [active, messages]);
+
   async function ask(e) {
     e.preventDefault();
     const message = question.trim();
@@ -787,9 +594,14 @@ function AssistantPanel({ active, open, onClose }) {
     try {
       const result = await apiFetch("/assistant/chat", {
         method: "POST",
-        body: JSON.stringify({ message, currentPage: active }),
+        body: JSON.stringify({
+          message,
+          currentPage: active,
+          conversation: assistantConversation(messages),
+        }),
       });
       setMessages(current => [...current, { role: "assistant", content: result.answer }]);
+      window.dispatchEvent(new Event("talentai:approvals-changed"));
     } catch (error) {
       setMessages(current => [...current, {
         role: "assistant",
@@ -879,6 +691,75 @@ function AssistantPanel({ active, open, onClose }) {
         </form>
       </div>
     </aside>
+  );
+}
+
+function ApprovalNotification() {
+  const { data: approvals, reload } = useApi("/agent/approvals");
+  const [acting, setActing] = useState(null);
+
+  useEffect(() => {
+    const refresh = () => reload();
+    window.addEventListener("talentai:approvals-changed", refresh);
+    return () => window.removeEventListener("talentai:approvals-changed", refresh);
+  }, [reload]);
+
+  async function decide(approvalId, action) {
+    setActing(approvalId);
+    try {
+      await apiFetch(`/agent/approvals/${approvalId}/${action}`, { method: "POST" });
+      await reload();
+      if (action === "approve") {
+        window.dispatchEvent(new Event("talentai:approval-approved"));
+      }
+    } finally {
+      setActing(null);
+    }
+  }
+
+  if (!approvals?.length) return null;
+
+  return (
+    <div className="fixed bottom-5 right-5 z-50 w-96 max-w-[calc(100vw-2.5rem)] rounded-2xl border bg-white p-4 shadow-2xl"
+      style={{ borderColor: "#F59E0B" }}>
+      <div className="flex items-center gap-2 mb-3">
+        <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ backgroundColor: "#FEF3C7" }}>
+          <Clock size={16} style={{ color: "#D97706" }} />
+        </div>
+        <div>
+          <p className="text-sm font-bold" style={{ color: C.text }}>Approval required</p>
+          <p className="text-xs" style={{ color: C.muted }}>AI is waiting for recruiter approval</p>
+        </div>
+      </div>
+      <div className="space-y-3">
+        {approvals.map(approval => (
+          <div key={approval.approvalId} className="rounded-xl p-3" style={{ backgroundColor: "#FFFBEB" }}>
+            <p className="text-xs leading-relaxed" style={{ color: "#78350F" }}>{approval.description}</p>
+            <p className="mt-1 text-[10px] font-mono break-all" style={{ color: "#A16207" }}>
+              ID: {approval.approvalId}
+            </p>
+            <div className="flex gap-2 mt-3">
+              <button
+                disabled={acting === approval.approvalId}
+                onClick={() => decide(approval.approvalId, "approve")}
+                className="flex-1 rounded-lg px-3 py-2 text-xs font-bold text-white disabled:opacity-50"
+                style={{ backgroundColor: "#16A34A" }}
+              >
+                Approve
+              </button>
+              <button
+                disabled={acting === approval.approvalId}
+                onClick={() => decide(approval.approvalId, "deny")}
+                className="flex-1 rounded-lg px-3 py-2 text-xs font-bold text-white disabled:opacity-50"
+                style={{ backgroundColor: "#DC2626" }}
+              >
+                Decline
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -997,7 +878,7 @@ function CalendarWeekGrid({ data, weekStart, onSelect, selectedId }) {
                   backgroundColor: key === todayKey ? `${C.accent}08` : "transparent",
                 }}>
                 {windows.filter(w => w.start.slice(0, 10) === key).map(w => (
-                  <div key={`w${w.id}`} className="absolute left-0 right-0" title={`${w.interviewerName || "Everyone"} · open ${clockTime(w.start)}–${clockTime(w.end)}`}
+                  <div key={`w${w.id}`} className="absolute left-0 right-0" title={`Open ${clockTime(w.start)}–${clockTime(w.end)}`}
                     style={{ top: top(w.start), height: top(w.end) - top(w.start), backgroundColor: `${C.success}1f` }} />
                 ))}
                 {bookings.filter(b => b.start.slice(0, 10) === key).map(b => (
@@ -1034,8 +915,7 @@ function CalendarView() {
   const [data, setData] = useState(null);
   const [durations, setDurations] = useState({});
   const [selected, setSelected] = useState(null);
-  const [form, setForm] = useState({ fromDate: addDaysStr(today, 1), toDate: addDaysStr(today, 5), weekdaysOnly: true, startTime: "10:00", endTime: "17:00", interviewerId: "" });
-  const [interviewers, setInterviewers] = useState([]);
+  const [form, setForm] = useState({ fromDate: addDaysStr(today, 1), toDate: addDaysStr(today, 5), weekdaysOnly: true, startTime: "10:00", endTime: "17:00" });
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
 
@@ -1047,15 +927,11 @@ function CalendarView() {
   }, [range]);
   useEffect(() => { load(); }, [load]);
   useEffect(() => { apiFetch("/calendar/durations").then(setDurations).catch(() => {}); }, []);
-  useEffect(() => { apiFetch("/calendar/interviewers").then(setInterviewers).catch(() => {}); }, []);
 
   async function generate() {
     setBusy(true); setMsg(null);
     try {
-      const r = await apiFetch("/calendar/windows/generate", {
-        method: "POST",
-        body: JSON.stringify({ ...form, interviewerId: form.interviewerId ? Number(form.interviewerId) : null }),
-      });
+      const r = await apiFetch("/calendar/windows/generate", { method: "POST", body: JSON.stringify(form) });
       setMsg({ text: `${r.created} day${r.created === 1 ? "" : "s"} published.` });
       if (view === "week") setWeekStart(mondayOf(new Date(form.fromDate + "T00:00")));
       else if (form.toDate > range.to) setRange(rg => ({ ...rg, to: form.toDate }));
@@ -1068,20 +944,9 @@ function CalendarView() {
     if (window.confirm("Free this time and email the candidate to choose a new one?")) act(`/calendar/bookings/${id}/release`, "POST");
   }
 
-  // The "For" menu and the toolbar menu are one setting: whose calendar is shown and who a new publish is for.
-  // "" is everyone's calendar and an open-to-all publish; otherwise one interviewer's own availability plus the
-  // open windows, and only their bookings.
-  const filter = form.interviewerId;
-  const pickInterviewer = id => { setForm(f => ({ ...f, interviewerId: id })); setSelected(null); };
-  const shown = data && filter
-    ? {
-        windows: data.windows.filter(w => w.interviewerId == null || String(w.interviewerId) === filter),
-        bookings: data.bookings.filter(b => String(b.interviewerId) === filter),
-      }
-    : data;
   const days = {};
-  (shown?.windows || []).forEach(w => { (days[w.start.slice(0, 10)] ??= { windows: [], bookings: [] }).windows.push(w); });
-  (shown?.bookings || []).forEach(b => { (days[b.start.slice(0, 10)] ??= { windows: [], bookings: [] }).bookings.push(b); });
+  (data?.windows || []).forEach(w => { (days[w.start.slice(0, 10)] ??= { windows: [], bookings: [] }).windows.push(w); });
+  (data?.bookings || []).forEach(b => { (days[b.start.slice(0, 10)] ??= { windows: [], bookings: [] }).bookings.push(b); });
   const inputCls = "w-full px-3 py-2 rounded-xl border text-sm";
   const inputSty = { borderColor: C.border, color: C.text, backgroundColor: C.bg };
   const lbl = t => <label className="block text-xs font-semibold mb-1.5" style={{ color: C.muted }}>{t}</label>;
@@ -1097,18 +962,11 @@ function CalendarView() {
 
   return (
     <div>
-      <TopBar title="Interview Calendar" subtitle="Publish when each interviewer is free — candidates book a time that fits their interview length, and an interviewer is never double-booked" />
+      <TopBar title="Interview Calendar" subtitle="Publish when you are free — candidates book a time that fits their interview length, and bookings never overlap" />
       <div className="grid gap-6" style={{ gridTemplateColumns: "280px 1fr" }}>
         <div className="space-y-4 self-start">
           <Card className="p-5 space-y-3">
             <p className="text-xs font-bold uppercase tracking-wide" style={{ color: C.muted }}>Publish availability</p>
-            <div>
-              {lbl("For")}
-              <select className={inputCls} style={inputSty} value={form.interviewerId} onChange={e => pickInterviewer(e.target.value)}>
-                <option value="">Everyone (any interviewer)</option>
-                {interviewers.map(u => <option key={u.id} value={u.id}>{u.fullName}</option>)}
-              </select>
-            </div>
             <div className="grid grid-cols-2 gap-2">
               <div>{lbl("From")}<input type="date" className={inputCls} style={inputSty} value={form.fromDate} onChange={e => setForm(f => ({ ...f, fromDate: e.target.value }))} /></div>
               <div>{lbl("To")}<input type="date" className={inputCls} style={inputSty} value={form.toDate} onChange={e => setForm(f => ({ ...f, toDate: e.target.value }))} /></div>
@@ -1150,18 +1008,14 @@ function CalendarView() {
                 <input type="date" className="px-3 py-1.5 rounded-xl border text-xs" style={inputSty} value={range.to} onChange={e => setRange(r => ({ ...r, to: e.target.value }))} />
               </>
             )}
-            <select className="px-3 py-1.5 rounded-xl border text-xs ml-auto" style={inputSty} value={filter} onChange={e => pickInterviewer(e.target.value)}>
-              <option value="">All interviewers</option>
-              {interviewers.map(u => <option key={u.id} value={u.id}>{u.fullName}</option>)}
-            </select>
-            <span className="text-xs" style={{ color: C.muted }}>{shown ? `${shown.bookings.length} booked` : ""}</span>
+            <span className="text-xs ml-auto" style={{ color: C.muted }}>{data ? `${data.bookings.length} booked` : ""}</span>
           </div>
 
           {data === null && <div className="py-10 flex justify-center"><Spinner size={20} /></div>}
 
           {data && view === "week" && (
             <>
-              <CalendarWeekGrid data={shown} weekStart={weekStart} onSelect={setSelected} selectedId={selected?.id} />
+              <CalendarWeekGrid data={data} weekStart={weekStart} onSelect={setSelected} selectedId={selected?.id} />
               {selected && (
                 <Card className="p-4 flex items-center justify-between gap-4 flex-wrap">
                   <div className="text-xs space-y-0.5">
@@ -1198,7 +1052,7 @@ function CalendarView() {
                 {days[day].windows.map(w => (
                   <span key={w.id} className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold"
                     style={{ border: `1px solid ${C.success}66`, color: C.success }}>
-                    {w.interviewerName || "Everyone"} · open {clockTime(w.start)}–{clockTime(w.end)}
+                    Open {clockTime(w.start)}–{clockTime(w.end)}
                     <button onClick={() => act(`/calendar/windows/${w.id}`, "DELETE")} title="Remove availability"><X size={11} /></button>
                   </span>
                 ))}
@@ -1856,7 +1710,7 @@ function ScreeningQualityView() {
 // SIDEBAR
 // ============================================================
 function Sidebar({ active, setActive, user }) {
-  const fullNav = [
+  const nav = [
     { id: "dashboard",    label: "Dashboard",         icon: LayoutGrid },
     { id: "intelligence", label: "Intelligence",      icon: TrendingUp },
     { id: "roles",        label: "Open Roles",         icon: Briefcase  },
@@ -1866,14 +1720,8 @@ function Sidebar({ active, setActive, user }) {
     { id: "calendar",     label: "Calendar",           icon: Calendar   },
     { id: "referrals",    label: "Referral",           icon: UserPlus   },
     { id: "integrations", label: "Integrations",       icon: Globe      },
-    { id: "cvInbox",      label: "Resume Drop Zone", icon: Inbox      },
+    { id: "cvInbox",      label: "Resume Inbox",       icon: Inbox      },
   ];
-  // An interviewer sees one screen; an administrator also manages users.
-  const nav = user?.role === "INTERVIEWER"
-    ? [{ id: "myInterviews", label: "My Interviews", icon: ClipboardCheck }]
-    : user?.role === "ADMIN"
-      ? [...fullNav, { id: "users", label: "Users", icon: Users }]
-      : fullNav;
 
   return (
     <aside className="w-64 shrink-0 flex flex-col" style={{ backgroundColor: C.sidebar }}>
@@ -3125,13 +2973,6 @@ function AgentActivityPanel({ requisitionId }) {
   const [openRun, setOpenRun] = useState(null);
   const [steps, setSteps] = useState({});
   const [acting, setActing] = useState(null);
-  const [actionError, setActionError] = useState({});
-
-  // What the recruiter is shown for the text a paused action will send, by the tool that asked.
-  const PAYLOAD_LABEL = {
-    sendOutreach: "Email to be sent:",
-    sendCandidateStatusUpdate: "Message to be sent:",
-  };
 
   const RUN_STYLE = {
     RUNNING:             { bg: "#dbeafe", color: "#1d4ed8", label: "Running" },
@@ -3157,14 +2998,11 @@ function AgentActivityPanel({ requisitionId }) {
 
   async function decide(runId, action) {
     setActing(runId);
-    setActionError(prev => ({ ...prev, [runId]: null }));
     try {
       await apiFetch(`/agent/runs/${runId}/${action}`, { method: "POST" });
       setSteps(prev => ({ ...prev, [runId]: undefined }));
       setOpenRun(null);
       reload();
-    } catch (e) {
-      setActionError(prev => ({ ...prev, [runId]: e.message || "That didn't go through. Try again." }));
     } finally { setActing(null); }
   }
 
@@ -3204,15 +3042,15 @@ function AgentActivityPanel({ requisitionId }) {
               </button>
 
               {run.status === "PAUSED_FOR_APPROVAL" && (() => {
-                let approvals = [];
-                try { approvals = run.pendingInput ? (JSON.parse(run.pendingInput).approvals || []) : []; } catch {}
+                let pendingInput = null;
+                try { pendingInput = run.pendingInput ? JSON.parse(run.pendingInput) : null; } catch {}
+                const emailBody = run.pendingTool === "send_outreach_email" && pendingInput?.input?.emailBody;
+                const rejectReason = run.pendingTool === "reject_candidate" && pendingInput?.input?.reason;
                 return (
                   <div className="border-t" style={{ borderColor: C.border, backgroundColor: "#fefce8" }}>
                     <div className="px-4 py-3 flex items-center justify-between gap-3">
                       <p className="text-xs font-medium" style={{ color: "#854d0e" }}>
-                        {approvals.length > 0
-                          ? "The agent is waiting for your approval before it does this:"
-                          : "The agent is waiting for your approval."}
+                        Agent wants to run <span className="font-mono font-bold">{run.pendingTool}</span> — your approval is required.
                       </p>
                       <div className="flex gap-2 shrink-0">
                         <button disabled={acting === run.id} onClick={() => decide(run.id, "approve")}
@@ -3227,23 +3065,23 @@ function AgentActivityPanel({ requisitionId }) {
                         </button>
                       </div>
                     </div>
-                    {actionError[run.id] && (
-                      <p className="px-4 pb-3 text-xs font-medium" style={{ color: "#dc2626" }}>{actionError[run.id]}</p>
-                    )}
-                    {approvals.map((a, i) => (
-                      <div key={a.actionKey || i} className="px-4 pb-3">
-                        <p className="text-xs font-semibold mb-1" style={{ color: "#854d0e" }}>{a.description}</p>
-                        {a.payload && (
-                          <>
-                            <p className="text-xs mb-1" style={{ color: "#854d0e" }}>{PAYLOAD_LABEL[a.tool] || "Details:"}</p>
-                            <pre className="text-xs whitespace-pre-wrap rounded-lg p-3 leading-relaxed"
-                              style={{ backgroundColor: "#fef3c7", color: "#78350f", fontFamily: "inherit" }}>
-                              {a.payload}
-                            </pre>
-                          </>
-                        )}
+                    {emailBody && (
+                      <div className="px-4 pb-3">
+                        <p className="text-xs font-semibold mb-1" style={{ color: "#854d0e" }}>Email to be sent:</p>
+                        <pre className="text-xs whitespace-pre-wrap rounded-lg p-3 leading-relaxed"
+                          style={{ backgroundColor: "#fef3c7", color: "#78350f", fontFamily: "inherit" }}>
+                          {emailBody}
+                        </pre>
                       </div>
-                    ))}
+                    )}
+                    {rejectReason && (
+                      <div className="px-4 pb-3">
+                        <p className="text-xs font-semibold mb-1" style={{ color: "#854d0e" }}>Rejection reason:</p>
+                        <p className="text-xs rounded-lg p-3" style={{ backgroundColor: "#fef3c7", color: "#78350f" }}>
+                          {rejectReason}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 );
               })()}
@@ -3695,7 +3533,7 @@ function PipelineListView({
                   <td className="px-4 py-3">{score != null && <ScoreRing score={score} size={30} />}</td>
                   <td className="px-4 py-3 text-xs font-semibold"
                     style={{ color: AGENT_META[c.updatedByAgent]?.color || C.muted }}>
-                    {actorLabel(c.updatedByAgent) || "—"}
+                    {AGENT_META[c.updatedByAgent]?.label || c.updatedByAgent || "—"}
                   </td>
                   <td className="px-4 py-3 text-xs" style={{ color: C.muted }}>
                     {c.enteredAt ? new Date(c.enteredAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—"}
@@ -3776,7 +3614,6 @@ function PipelineView() {
   const { data: scorecardCriteria } = useApi("/orchestrator/scorecard-criteria");
   const emptyScorecard = { ratings: {}, verdict: "", notes: "", noticePeriod: "", expectedSalary: "" };
   const [scorecardModal, setScorecardModal] = useState(null); // { interviewId, title }
-  const [debriefModal, setDebriefModal] = useState(null); // { candidateId, candidateName, requisitionId }
   const [scorecardForm, setScorecardForm] = useState(emptyScorecard);
   const [scorecardSaving, setScorecardSaving] = useState(false);
   const [scorecardError, setScorecardError] = useState(null);
@@ -4065,7 +3902,6 @@ function PipelineView() {
 
   async function handleScheduleInterview() {
     setScheduling(true);
-    setScheduleModal(prev => ({ ...prev, error: null }));
     try {
       const result = await apiFetch(`/orchestrator/pipeline/${scheduleModal.requisitionId ?? reqId}/candidates/${scheduleModal.candidateId}/schedule-interview`, {
         method: "POST",
@@ -4076,8 +3912,6 @@ function PipelineView() {
       // Stay in modal to show the invitation email that was sent
       setScheduleModal(prev => ({ ...prev, confirmed: true, invitationEmail: result.invitationEmail, candidateEmail: result.candidateEmail }));
       reload();
-    } catch (e) {
-      setScheduleModal(prev => ({ ...prev, error: e.message }));
     } finally {
       setScheduling(false);
     }
@@ -4213,7 +4047,7 @@ function PipelineView() {
                         {c.updatedByAgent && (
                           <p className="text-[10px] font-semibold mt-1"
                             style={{ color: AGENT_META[c.updatedByAgent]?.color || C.muted }}>
-                            Moved by {actorLabel(c.updatedByAgent)}
+                            {AGENT_META[c.updatedByAgent]?.label || c.updatedByAgent}
                           </p>
                         )}
                         {/* Why/when a candidate was rejected or did not show */}
@@ -4224,14 +4058,6 @@ function PipelineView() {
                               {c.enteredAt && <span className="font-normal normal-case" style={{ color: C.muted }}> · {new Date(c.enteredAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</span>}
                             </p>
                             {c.notes && <p className="text-[10px] leading-snug" style={{ color: C.text }}>{c.notes}</p>}
-                          </div>
-                        )}
-
-                        {/* The debrief informs the offer decision: Interview cards carry the button and the Create Offer dialog shows it.
-                            Offer/Hired cards have already made that decision, so only closed-out cards keep it for the record. */}
-                        {["REJECTED", "NO_SHOW"].includes(stage) && c.interviewRounds?.some(r => r.status === "COMPLETED") && (
-                          <div className="mt-2">
-                            <DebriefButton onClick={() => setDebriefModal({ candidateId: c.candidateId, candidateName: c.candidateName, requisitionId: c.requisitionId })} />
                           </div>
                         )}
 
@@ -4568,9 +4394,6 @@ function PipelineView() {
 
                               {/* Action buttons */}
                               <div className="space-y-1">
-                                {rounds.some(r => r.status === "COMPLETED") && (
-                                  <DebriefButton onClick={() => setDebriefModal({ candidateId: c.candidateId, candidateName: c.candidateName, requisitionId: c.requisitionId })} />
-                                )}
                                 {/* Schedule next round — only if there's a round type left and no active round, OR no rounds yet */}
                                 {(!activeRound || rounds.length === 0) && !allCompleted && (
                                   <button
@@ -5067,9 +4890,6 @@ function PipelineView() {
               </button>
             </div>
 
-            <OfferDebriefPanel key={`${offerModal.requisitionId ?? reqId}-${offerModal.candidateId}`}
-              requisitionId={offerModal.requisitionId ?? reqId} candidateId={offerModal.candidateId} />
-
             <div className="space-y-4">
               {/* Salary */}
               <div className="flex gap-2">
@@ -5301,13 +5121,6 @@ function PipelineView() {
                   </div>
                 </div>
 
-                {scheduleModal.error && (
-                  <p className="mt-4 px-3 py-2 rounded-xl text-xs font-semibold"
-                    style={{ background: `${C.danger}10`, border: `1px solid ${C.danger}33`, color: C.danger }}>
-                    {scheduleModal.error}
-                  </p>
-                )}
-
                 <div className="flex gap-2 mt-5">
                   <Btn variant="primary" onClick={handleScheduleInterview} disabled={scheduling || !scheduleForm.interviewerId}>
                     {scheduling ? <><Spinner size={13} /> Sending…</> : <><Calendar size={13} /> Send Booking Link</>}
@@ -5327,10 +5140,6 @@ function PipelineView() {
           form={scorecardForm} setForm={setScorecardForm}
           onSubmit={submitScorecard} onCancel={() => setScorecardModal(null)}
           submitting={scorecardSaving} error={scorecardError} />
-      )}
-
-      {debriefModal && (
-        <DebriefModal {...debriefModal} onClose={() => setDebriefModal(null)} />
       )}
 
       {rejectModal && (
@@ -5374,11 +5183,9 @@ function PipelineView() {
                       const isStage = ev.type === "STAGE";
                       const isInterview = ev.type === "INTERVIEW";
                       const isNotification = ev.type === "NOTIFICATION";
-                      const isReferral = ev.type === "REFERRAL";
 
                       const dotColor = isStage
                         ? ({ REJECTED: C.danger, HIRED: C.success }[ev.stage] || C.accent)
-                        : isReferral ? "#8b5cf6"
                         : isInterview ? "#f59e0b"
                         : C.success;
 
@@ -5390,7 +5197,6 @@ function PipelineView() {
                           <div className="w-5 h-5 rounded-full border-2 border-white flex items-center justify-center flex-shrink-0 mt-0.5 z-10"
                             style={{ backgroundColor: dotColor }}>
                             {isStage && <Activity size={9} color="#fff" />}
-                            {isReferral && <UserPlus size={9} color="#fff" />}
                             {isInterview && <Calendar size={9} color="#fff" />}
                             {isNotification && <Mail size={9} color="#fff" />}
                           </div>
@@ -5401,15 +5207,7 @@ function PipelineView() {
                                 {isStage && (
                                   <>
                                     <p className="text-xs font-bold" style={{ color: dotColor }}>{STAGE_LABELS[ev.stage] || ev.stage}</p>
-                                    <p className="text-[10px]" style={{ color: C.muted }}>
-                                      {ev.requisitionTitle}{ev.fromStage ? ` · from ${STAGE_LABELS[ev.fromStage] || ev.fromStage}` : ""}
-                                    </p>
-                                  </>
-                                )}
-                                {isReferral && (
-                                  <>
-                                    <p className="text-xs font-bold" style={{ color: dotColor }}>Referral received</p>
-                                    {ev.requisitionTitle && <p className="text-[10px]" style={{ color: C.muted }}>{ev.requisitionTitle}</p>}
+                                    <p className="text-[10px]" style={{ color: C.muted }}>{ev.requisitionTitle}</p>
                                   </>
                                 )}
                                 {isInterview && (
@@ -5449,13 +5247,13 @@ function PipelineView() {
                             </div>
                             {isStage && ev.agent && (
                               <p className="text-[10px] font-semibold mt-0.5" style={{ color: AGENT_META[ev.agent]?.color || C.muted }}>
-                                {actorLabel(ev.agent)}
+                                {AGENT_META[ev.agent]?.label || ev.agent}
                               </p>
                             )}
                             {isInterview && ev.notes && (
                               <p className="text-[11px] mt-1 leading-relaxed" style={{ color: C.text }}>{ev.notes}</p>
                             )}
-                            {(isStage || isReferral) && ev.notes && (
+                            {isStage && ev.notes && (
                               <p className="text-[11px] mt-1 leading-relaxed" style={{ color: C.text }}>{ev.notes}</p>
                             )}
                             {isNotification && ev.message && (
@@ -6688,14 +6486,9 @@ function ScreeningView() {
   const allResultsPaths = isAllRoles && reqs ? reqs.map(r => `/screening/requisition/${r.id}`) : null;
   const allResultsApi = useApiMulti(allResultsPaths, [isAllRoles, reqs?.length]);
 
-  // Newest screened first by default, or highest score first; same for one role or all of them.
-  const [sortMode, setSortMode] = useState("newest"); // "newest" | "score"
-  const orderResults = list => !list ? null : [...list].sort(sortMode === "score"
-    ? (a, b) => b.overallScore - a.overallScore || new Date(b.createdAt) - new Date(a.createdAt)
-    : (a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   const results = isAllRoles
-    ? orderResults(allResultsApi.data?.flat())
-    : orderResults(singleResultsApi.data);
+    ? (allResultsApi.data ? allResultsApi.data.flat().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)) : null)
+    : singleResultsApi.data;
   const loading = isAllRoles ? allResultsApi.loading : singleResultsApi.loading;
   const error = isAllRoles ? allResultsApi.error : singleResultsApi.error;
   const reload = isAllRoles ? allResultsApi.reload : singleResultsApi.reload;
@@ -6806,7 +6599,7 @@ function ScreeningView() {
     }
   }
 
-  const sortedResults = results || [];
+  const sortedResults = [...(results || [])].sort((a, b) => b.overallScore - a.overallScore);
 
   return (
     <div>
@@ -6820,10 +6613,6 @@ function ScreeningView() {
                 {reqs.map(r => <option key={r.id} value={r.id}>{r.title}</option>)}
               </Select>
             )}
-            <Select value={sortMode} onChange={e => setSortMode(e.target.value)}>
-              <option value="newest">Newest first</option>
-              <option value="score">Highest score</option>
-            </Select>
             <Btn onClick={() => setShowUpload(true)}>
               <UploadCloud size={14} /> Screen Resume
             </Btn>
@@ -7146,7 +6935,7 @@ function ReferralsView({ currentUser = {} }) {
   return (
     <div>
       <TopBar title="Referral Agent"
-        subtitle="Submit referrals. Each goes to the role you pick, or the agent's best open role, and is then screened"
+        subtitle="Submit referrals and let the agent auto-match against open roles"
         action={
           <Btn onClick={() => {
             setForm({ candidateName:"", candidateEmail:"", resumeText:"", relationshipNotes:"", requisitionId:"", referrerName: currentUser.fullName || "", referrerPosition:"" });
@@ -7163,7 +6952,7 @@ function ReferralsView({ currentUser = {} }) {
         <table className="w-full text-sm">
           <thead>
             <tr style={{ backgroundColor: C.bg }}>
-              {["Candidate","Role","Screening","Referred By","Position / Email","Status","Submitted"].map(h => (
+              {["Candidate","Matched Role","Match Score","Referred By","Position / Email","Status","Submitted"].map(h => (
                 <th key={h} className="text-left px-5 py-3 font-semibold" style={{ color: C.muted }}>{h}</th>
               ))}
             </tr>
@@ -7191,12 +6980,7 @@ function ReferralsView({ currentUser = {} }) {
                       {r.matchedRequisitionTitle || r.requisitionTitle || "—"}
                     </td>
                     <td className="px-5 py-4">
-                      {r.screeningScore != null
-                        ? <div className="flex items-center gap-2">
-                            <ScoreRing score={r.screeningScore} size={36} />
-                            <span className="text-[11px] font-semibold" style={{ color: C.muted }}>{r.screeningRecommendation}</span>
-                          </div>
-                        : "—"}
+                      {r.matchScore != null ? <ScoreRing score={r.matchScore} size={36} /> : "—"}
                     </td>
                     <td className="px-5 py-4" style={{ color: C.text }}>
                       <div className="font-medium">{r.referrerName || r.referredByUsername || "—"}</div>
@@ -7226,7 +7010,7 @@ function ReferralsView({ currentUser = {} }) {
             <div className="flex items-center justify-between mb-5">
               <div>
                 <h2 className="font-bold text-lg" style={{ color: C.text }}>Submit a Referral</h2>
-                <p className="text-sm" style={{ color: C.muted }}>Pick a role, or let the agent route to the best open role</p>
+                <p className="text-sm" style={{ color: C.muted }}>Agent will auto-match to best open role</p>
               </div>
               <button onClick={() => setShowForm(false)}
                 className="w-8 h-8 rounded-xl flex items-center justify-center hover:bg-slate-100">
@@ -7288,8 +7072,8 @@ function ReferralsView({ currentUser = {} }) {
                 style={{ background: "linear-gradient(135deg,#E6F3FB,#EAF0F7)", border: "1px solid #B8DCF2" }}>
                 <Sparkles size={14} className="shrink-0 mt-0.5" style={{ color: C.accent }} />
                 <p className="text-xs" style={{ color: C.muted }}>
-                  With a target role the candidate goes straight to it. Without one, the Referral Agent
-                  picks the best-fitting open role. The Screening Agent then scores them against that role.
+                  The Referral Agent will auto-match this candidate against all open roles
+                  and route them to the best fit.
                 </p>
               </div>
               <Btn type="submit" variant="primary" className="w-full justify-center py-2.5" disabled={submitting}>
@@ -7560,7 +7344,7 @@ function PublicReferralPage() {
           </div>
           <h2 className="text-xl font-bold mb-2" style={{ color: C.text }}>Referral Submitted!</h2>
           <p className="text-sm mb-6" style={{ color: C.muted }}>
-            Thanks {form.referrerName}! {form.candidateName} is being routed to a role and screened.
+            Thanks {form.referrerName}! Our AI agent is matching {form.candidateName} against open roles.
             The recruiting team will be in touch.
           </p>
           <Btn variant="outline" onClick={() => { setSubmitted(false); setForm({ referrerName:"", referrerEmail:"", referrerPosition:"", candidateName:"", candidateEmail:"", resumeText:"", relationshipNotes:"", requisitionId:"" }); }}>
@@ -7588,7 +7372,7 @@ function PublicReferralPage() {
         <Card className="p-6">
           <h2 className="font-bold text-lg mb-1" style={{ color: C.text }}>Refer Someone</h2>
           <p className="text-sm mb-5" style={{ color: C.muted }}>
-            Know someone great? Submit a referral. They go to the role you pick, or our AI agent chooses the best open role.
+            Know someone great? Submit a referral and our AI agent will match them to the best open role.
           </p>
 
           {error && (
@@ -7659,7 +7443,7 @@ function PublicReferralPage() {
               style={{ background: "linear-gradient(135deg,#E6F3FB,#EAF0F7)", border: "1px solid #B8DCF2" }}>
               <Sparkles size={14} className="shrink-0 mt-0.5" style={{ color: C.accent }} />
               <p className="text-xs" style={{ color: C.muted }}>
-                The candidate is routed to the role you pick, or to the best open role if you leave it blank, then screened. The recruiting team reviews the result.
+                Our AI agent will automatically match this candidate to the best open role and notify the recruiting team.
               </p>
             </div>
 
@@ -7675,7 +7459,7 @@ function PublicReferralPage() {
 }
 
 // ============================================================
-// RESUME DROP ZONE (SFTP / Google Drive folder AI pre-screening dashboard)
+// CV INBOX (SFTP drop-folder AI pre-screening dashboard)
 // ============================================================
 function CvInboxView() {
   const [tab, setTab] = useState("considered");
@@ -7749,7 +7533,7 @@ function CvInboxView() {
 
   return (
     <div>
-      <TopBar title="Resume Drop Zone" subtitle="AI pre-screens resumes dropped via SFTP, a Google Drive folder or a SharePoint folder before they reach your pipeline"
+      <TopBar title="Resume Inbox" subtitle="AI pre-screens resumes dropped via SFTP before they reach your pipeline"
         action={
           <div className="flex gap-2">
             <Btn variant="secondary" onClick={() => setSettingsOpen(true)}>
@@ -7766,30 +7550,12 @@ function CvInboxView() {
       {connInfo && (
         <Card className="p-4 mb-5 flex items-center gap-3">
           <Globe size={16} style={{ color: C.accent }} />
-          {connInfo.mode === "SHAREPOINT" ? (
-            <div className="min-w-0">
-              <p className="text-xs font-bold uppercase tracking-wide" style={{ color: C.muted }}>SharePoint Folder</p>
-              <p className="text-sm break-all" style={{ color: C.text }}>
-                {connInfo.sharepointFolderLink || "Not set up yet. Open Settings to add the app registration and the folder link."}
-              </p>
-            </div>
-          ) : connInfo.mode === "GOOGLE_DRIVE" ? (
-            <div>
-              <p className="text-xs font-bold uppercase tracking-wide" style={{ color: C.muted }}>Google Drive Folder</p>
-              <p className="text-sm" style={{ color: C.text }}>
-                {connInfo.googleFolderId
-                  ? <>folder {connInfo.googleFolderId} &nbsp;·&nbsp; shared with {connInfo.googleServiceAccountEmail || "no service account key yet"}</>
-                  : "Not set up yet. Open Settings to add the folder and service account key."}
-              </p>
-            </div>
-          ) : (
-            <div>
-              <p className="text-xs font-bold uppercase tracking-wide" style={{ color: C.muted }}>SFTP Connection</p>
-              <p className="text-sm" style={{ color: C.text }}>
-                sftp://{connInfo.host}:{connInfo.port} &nbsp;·&nbsp; user: {connInfo.username}
-              </p>
-            </div>
-          )}
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wide" style={{ color: C.muted }}>SFTP Connection</p>
+            <p className="text-sm" style={{ color: C.text }}>
+              sftp://{connInfo.host}:{connInfo.port} &nbsp;·&nbsp; user: {connInfo.username}
+            </p>
+          </div>
         </Card>
       )}
 
@@ -7952,16 +7718,9 @@ function CvInboxSettingsDrawer({ onClose, onSaved }) {
     embeddedPort: 2222, embeddedUsername: "hr", embeddedPassword: "",
     externalHost: "", externalPort: 22, externalUsername: "", externalPassword: "", externalRootPath: "",
     proxyEnabled: false, proxyHost: "", proxyPort: 80,
-    googleFolderId: "", googleServiceAccountJson: "",
-    sharepointTenantId: "", sharepointClientId: "", sharepointClientSecret: "", sharepointFolderLink: "",
   });
   const [embeddedPasswordSet, setEmbeddedPasswordSet] = useState(false);
   const [externalPasswordSet, setExternalPasswordSet] = useState(false);
-  const [googleKeySet, setGoogleKeySet] = useState(false);
-  const [sharepointSecretSet, setSharepointSecretSet] = useState(false);
-  const [googleEmail, setGoogleEmail] = useState(""); // the address the Drive folder must be shared with
-  const [keyFileName, setKeyFileName] = useState("");
-  const [keyError, setKeyError] = useState("");
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -7982,16 +7741,9 @@ function CvInboxSettingsDrawer({ onClose, onSaved }) {
           proxyEnabled: !!s.proxyEnabled,
           proxyHost: s.proxyHost || "",
           proxyPort: s.proxyPort ?? f.proxyPort,
-          googleFolderId: s.googleFolderId || "",
-          sharepointTenantId: s.sharepointTenantId || "",
-          sharepointClientId: s.sharepointClientId || "",
-          sharepointFolderLink: s.sharepointFolderLink || "",
         }));
         setEmbeddedPasswordSet(!!s.embeddedPasswordSet);
         setExternalPasswordSet(!!s.externalPasswordSet);
-        setGoogleKeySet(!!s.googleKeySet);
-        setSharepointSecretSet(!!s.sharepointSecretSet);
-        setGoogleEmail(s.googleServiceAccountEmail || "");
       } finally {
         setLoading(false);
       }
@@ -8001,22 +7753,6 @@ function CvInboxSettingsDrawer({ onClose, onSaved }) {
   function set(field, value) {
     setForm(f => ({ ...f, [field]: value }));
     setTestResult(null);
-  }
-
-  // The key never leaves this machine except to be saved; read it here so the folder-sharing address can be shown straight away.
-  async function handleKeyFile(file) {
-    setKeyError("");
-    if (!file) return;
-    try {
-      const text = await file.text();
-      const parsed = JSON.parse(text);
-      if (!parsed.client_email || !parsed.private_key) throw new Error("not a service account key");
-      set("googleServiceAccountJson", text);
-      setGoogleEmail(parsed.client_email);
-      setKeyFileName(file.name);
-    } catch {
-      setKeyError("That file is not a Google service account key (JSON). Download it from Google Cloud: Service Accounts, Keys, Add key, JSON.");
-    }
   }
 
   async function handleTestConnection() {
@@ -8052,7 +7788,7 @@ function CvInboxSettingsDrawer({ onClose, onSaved }) {
       <div className="absolute inset-y-0 right-0 w-full max-w-md bg-white shadow-2xl overflow-y-auto">
         <div className="px-6 py-5 border-b flex items-center justify-between sticky top-0 bg-white z-10"
           style={{ borderColor: C.border }}>
-          <h2 className="text-lg font-bold" style={{ color: C.text }}>Resume Drop Zone Settings</h2>
+          <h2 className="text-lg font-bold" style={{ color: C.text }}>SFTP Settings</h2>
           <button onClick={onClose} className="w-8 h-8 rounded-xl flex items-center justify-center hover:bg-slate-100">
             <X size={16} />
           </button>
@@ -8064,10 +7800,10 @@ function CvInboxSettingsDrawer({ onClose, onSaved }) {
           <div className="p-6 space-y-5">
             <div>
               <label className="text-xs font-semibold block mb-1.5" style={{ color: C.muted }}>Source</label>
-              <div className="flex flex-wrap gap-1 p-1 rounded-xl w-fit" style={{ backgroundColor: C.surface }}>
-                {[["EMBEDDED", "Embedded Server"], ["EXTERNAL", "External SFTP"], ["GOOGLE_DRIVE", "Google Drive"], ["SHAREPOINT", "SharePoint"]].map(([id, label]) => (
+              <div className="flex gap-1 p-1 rounded-xl w-fit" style={{ backgroundColor: C.surface }}>
+                {[["EMBEDDED", "Embedded Server"], ["EXTERNAL", "External SFTP"]].map(([id, label]) => (
                   <button key={id} onClick={() => set("mode", id)}
-                    className="px-2 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap"
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors"
                     style={{ backgroundColor: form.mode === id ? C.accent : "transparent", color: form.mode === id ? "#fff" : C.muted }}>
                     {label}
                   </button>
@@ -8097,7 +7833,7 @@ function CvInboxSettingsDrawer({ onClose, onSaved }) {
                     value={form.embeddedPassword} onChange={e => set("embeddedPassword", e.target.value)} />
                 </div>
               </div>
-            ) : form.mode === "EXTERNAL" ? (
+            ) : (
               <div className="space-y-3">
                 <p className="text-xs" style={{ color: C.muted }}>
                   Connect out to an SFTP server HR already has. The embedded server is stopped while this mode is active.
@@ -8149,75 +7885,6 @@ function CvInboxSettingsDrawer({ onClose, onSaved }) {
                       </div>
                     </div>
                   </div>
-                </div>
-              </div>
-            ) : form.mode === "GOOGLE_DRIVE" ? (
-              <div className="space-y-3">
-                <p className="text-xs" style={{ color: C.muted }}>
-                  Drop CVs (PDF, Word or text) into a Google Drive folder and click Process now. Each one is screened;
-                  processed files move into .CONSIDERED or .REJECTED inside the folder. The embedded SFTP server is stopped while this mode is active.
-                </p>
-                <ol className="text-xs space-y-1 list-decimal pl-4" style={{ color: C.muted }}>
-                  <li>In Google Cloud, enable the <b>Google Drive API</b> and create a <b>service account</b>.</li>
-                  <li>On the service account, add a key (<b>Keys, Add key, JSON</b>) and upload that file below.</li>
-                  <li>Share your Drive folder with the service account's email as <b>Editor</b>.</li>
-                  <li>Paste the folder link below, then Test Connection.</li>
-                </ol>
-                <div>
-                  <label className="text-xs font-semibold block mb-1" style={{ color: C.muted }}>Service account key (JSON)</label>
-                  <input type="file" accept=".json,application/json" className={inputStyle} style={inputColors}
-                    onChange={e => handleKeyFile(e.target.files?.[0])} />
-                  {keyFileName && <p className="text-xs mt-1" style={{ color: C.success }}>✓ {keyFileName} ready to save</p>}
-                  {!keyFileName && googleKeySet && (
-                    <p className="text-xs mt-1" style={{ color: C.muted }}>A key is saved. Upload a new file only to replace it.</p>
-                  )}
-                  {keyError && <p className="text-xs mt-1" style={{ color: C.danger }}>{keyError}</p>}
-                </div>
-                {googleEmail && (
-                  <div className="p-3 rounded-xl text-xs" style={{ backgroundColor: C.surface, color: C.text }}>
-                    Share the Drive folder with this address (Editor):
-                    <p className="font-semibold mt-1 break-all select-all">{googleEmail}</p>
-                  </div>
-                )}
-                <div>
-                  <label className="text-xs font-semibold block mb-1" style={{ color: C.muted }}>Drive folder link or ID</label>
-                  <input className={inputStyle} style={inputColors} placeholder="https://drive.google.com/drive/folders/..."
-                    value={form.googleFolderId} onChange={e => set("googleFolderId", e.target.value)} />
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <p className="text-xs" style={{ color: C.muted }}>
-                  Drop CVs (PDF, Word or text) into a SharePoint folder and click Process now. Each one is screened;
-                  processed files move into Considered or Rejected folders inside it. The embedded SFTP server is stopped while this mode is active.
-                </p>
-                <ol className="text-xs space-y-1 list-decimal pl-4" style={{ color: C.muted }}>
-                  <li>In the Azure portal, open <b>Microsoft Entra ID, App registrations</b> and register an application.</li>
-                  <li>Under <b>Certificates &amp; secrets</b>, add a client secret and copy its <b>Value</b>.</li>
-                  <li>Under <b>API permissions</b>, add the Microsoft Graph <b>application</b> permission <b>Sites.Selected</b> (or <b>Sites.ReadWrite.All</b>) and have an admin <b>grant consent</b>. With Sites.Selected, also grant the app access to the site.</li>
-                  <li>Paste the tenant ID, the application (client) ID, the secret and the folder link below, then Test Connection.</li>
-                </ol>
-                <div>
-                  <label className="text-xs font-semibold block mb-1" style={{ color: C.muted }}>Tenant ID (or domain)</label>
-                  <input className={inputStyle} style={inputColors} placeholder="00000000-0000-0000-0000-000000000000"
-                    value={form.sharepointTenantId} onChange={e => set("sharepointTenantId", e.target.value)} />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold block mb-1" style={{ color: C.muted }}>Application (client) ID</label>
-                  <input className={inputStyle} style={inputColors} placeholder="00000000-0000-0000-0000-000000000000"
-                    value={form.sharepointClientId} onChange={e => set("sharepointClientId", e.target.value)} />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold block mb-1" style={{ color: C.muted }}>Client secret (Value)</label>
-                  <input type="password" className={inputStyle} style={inputColors} autoComplete="off"
-                    placeholder={sharepointSecretSet ? "Leave blank to keep unchanged" : ""}
-                    value={form.sharepointClientSecret} onChange={e => set("sharepointClientSecret", e.target.value)} />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold block mb-1" style={{ color: C.muted }}>SharePoint folder link</label>
-                  <input className={inputStyle} style={inputColors} placeholder="https://yourcompany.sharepoint.com/sites/HR/Shared Documents/CV Inbox"
-                    value={form.sharepointFolderLink} onChange={e => set("sharepointFolderLink", e.target.value)} />
-                  <p className="text-xs mt-1.5" style={{ color: C.muted }}>Open the folder in SharePoint and copy the address from the browser, or use Copy link.</p>
                 </div>
               </div>
             )}
@@ -8380,7 +8047,6 @@ function CandidateProfileView({ candidateId, onBack, onOpenCandidate }) {
   const { data: history } = useApi(`/candidates/${candidateId}/history`, [candidateId]);
   const [showCv, setShowCv] = useState(false);
   const [openEmail, setOpenEmail] = useState(null);
-  const [debrief, setDebrief] = useState(null); // { requisitionId, candidateName }
 
   const back = (
     <button onClick={onBack} className="inline-flex items-center gap-1 text-xs font-semibold mb-4 hover:underline"
@@ -8454,13 +8120,6 @@ function CandidateProfileView({ candidateId, onBack, onOpenCandidate }) {
                   <Badge color={a.stage === "REJECTED" ? C.danger : a.stage === "HIRED" ? C.success : C.accent}>
                     {STAGE_LABELS[a.stage] || a.stage}
                   </Badge>
-                  {p.interviews.some(i => i.requisitionId === a.requisitionId && i.status === "COMPLETED") && (
-                    <button onClick={() => setDebrief({ requisitionId: a.requisitionId })}
-                      className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-lg"
-                      style={{ color: C.accent, border: `1px solid ${C.accent}55`, background: `${C.accent}0D` }}>
-                      <Sparkles size={11} /> AI Debrief
-                    </button>
-                  )}
                 </div>
                 <p className="text-xs mt-1" style={{ color: C.muted }}>In this stage since {formatFullDateTime(a.stageEnteredAt)}</p>
                 {a.reviewerDecision && (
@@ -8571,10 +8230,9 @@ function CandidateProfileView({ candidateId, onBack, onOpenCandidate }) {
                 <span className="text-xs w-32 shrink-0 pt-0.5" style={{ color: C.muted }}>{formatFullDateTime(e.timestamp)}</span>
                 <span style={{ color: C.text }}>
                   {e.type === "STAGE" && <>Moved to <b>{STAGE_LABELS[e.stage] || e.stage}</b>{e.requisitionTitle && ` · ${e.requisitionTitle}`}{e.notes && <span style={{ color: C.muted }}> — {e.notes}</span>}</>}
-                  {e.type === "REFERRAL" && <>Referral received{e.requisitionTitle && ` · ${e.requisitionTitle}`}{e.notes && <span style={{ color: C.muted }}> — {e.notes}</span>}</>}
                   {e.type === "INTERVIEW" && <>{titleCase(e.interviewType)} interview · {titleCase(e.interviewStatus)}</>}
                   {e.type === "NOTIFICATION" && <>Email: {e.message || e.channel}</>}
-                  {!["STAGE", "REFERRAL", "INTERVIEW", "NOTIFICATION"].includes(e.type) && titleCase(e.type)}
+                  {!["STAGE", "INTERVIEW", "NOTIFICATION"].includes(e.type) && titleCase(e.type)}
                 </span>
               </div>
             ))}
@@ -8613,544 +8271,6 @@ function CandidateProfileView({ candidateId, onBack, onOpenCandidate }) {
           </ProfileSection>
         )}
       </div>
-      {debrief && (
-        <DebriefModal requisitionId={debrief.requisitionId} candidateId={p.id} candidateName={p.fullName}
-          onClose={() => setDebrief(null)} />
-      )}
-    </div>
-  );
-}
-
-// ============================================================
-// USERS — administrators create accounts, change roles, disable, reset passwords
-// ============================================================
-const USER_ROLES = [
-  ["ADMIN", "Administrator", "Everything, plus managing users"],
-  ["RECRUITER", "Recruiter", "The full recruiting app"],
-  ["HIRING_MANAGER", "Hiring manager", "The full recruiting app"],
-  ["INTERVIEWER", "Interviewer", "Only their own interviews and scorecards"],
-];
-const USER_ROLE_COLORS = { ADMIN: "#8B5CF6", RECRUITER: C.accent, HIRING_MANAGER: "#0EA5E9", INTERVIEWER: "#10B981" };
-const userRoleLabel = r => USER_ROLES.find(x => x[0] === r)?.[1] || r;
-
-function CopyButton({ text, label = "Copy" }) {
-  const [copied, setCopied] = useState(false);
-  async function copy() {
-    try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1500); }
-    catch { /* the text is selectable, so it can still be copied by hand */ }
-  }
-  return (
-    <button onClick={copy} className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-lg border"
-      style={{ borderColor: C.border, color: C.accent }}>
-      <Copy size={12} /> {copied ? "Copied" : label}
-    </button>
-  );
-}
-
-// Shown once, right after an account is created or its password is reset.
-function TemporaryPasswordNotice({ notice, onClose }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ backgroundColor: "rgba(15,23,42,0.5)", backdropFilter: "blur(4px)" }}>
-      <Card className="w-full max-w-md p-6">
-        <h2 className="font-bold text-base flex items-center gap-2" style={{ color: C.text }}>
-          <KeyRound size={16} style={{ color: C.accent }} /> {notice.title}
-        </h2>
-        <div className="mt-4 rounded-xl p-4 space-y-3" style={{ backgroundColor: C.surface }}>
-          <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>Username</p>
-              <p className="text-sm font-semibold select-all truncate" style={{ color: C.text }}>{notice.username}</p>
-            </div>
-            <CopyButton text={notice.username} />
-          </div>
-          <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>Temporary password</p>
-              <p className="text-base font-mono font-semibold select-all" style={{ color: C.text }}>{notice.password}</p>
-            </div>
-            <CopyButton text={notice.password} />
-          </div>
-        </div>
-        <p className="text-xs mt-3 leading-relaxed" style={{ color: C.muted }}>
-          This is the only time the password is shown. Pass it to {notice.name} through a secure channel, and ask them
-          to change it from the account menu after signing in.
-        </p>
-        <div className="flex justify-end mt-5"><Btn onClick={onClose}>Done</Btn></div>
-      </Card>
-    </div>
-  );
-}
-
-function UserFormModal({ user, onClose, onSaved }) {
-  const editing = !!user;
-  const [form, setForm] = useState({
-    fullName: user?.fullName || "", username: user?.username || "", email: user?.email || "",
-    role: user?.role || "INTERVIEWER", password: "",
-  });
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState(null);
-  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
-  const roleHint = USER_ROLES.find(r => r[0] === form.role)?.[2];
-  const ready = form.fullName.trim() && form.email.trim() && (editing || form.username.trim().length >= 3);
-
-  async function save() {
-    setSaving(true); setError(null);
-    try {
-      const result = editing
-        ? await apiFetch(`/users/${user.id}`, { method: "PATCH", body: JSON.stringify({ fullName: form.fullName, email: form.email, role: form.role }) })
-        : await apiFetch("/users", { method: "POST", body: JSON.stringify(form) });
-      onSaved(result);
-    } catch (e) { setError(e.message); }
-    finally { setSaving(false); }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ backgroundColor: "rgba(15,23,42,0.5)", backdropFilter: "blur(4px)" }}>
-      <Card className="w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
-        <h2 className="font-bold text-lg" style={{ color: C.text }}>{editing ? `Edit ${user.fullName}` : "Add user"}</h2>
-        <div className="mt-4 space-y-3">
-          <Input label="Full name" value={form.fullName} onChange={e => set("fullName", e.target.value)} placeholder="Priya Nair" autoFocus />
-          {!editing && (
-            <Input label="Username" value={form.username} onChange={e => set("username", e.target.value)} placeholder="priya.nair" />
-          )}
-          <Input label="Email" type="email" value={form.email} onChange={e => set("email", e.target.value)} placeholder="priya@company.com" />
-          <div>
-            <label className="text-xs font-semibold block mb-1.5" style={{ color: C.muted }}>Role</label>
-            <Select value={form.role} onChange={e => set("role", e.target.value)}>
-              {USER_ROLES.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
-            </Select>
-            {roleHint && <p className="text-xs mt-1.5" style={{ color: C.muted }}>{roleHint}</p>}
-          </div>
-          {!editing && (
-            <div>
-              <Input label="Password (optional)" type="text" value={form.password} onChange={e => set("password", e.target.value)}
-                placeholder="Leave blank to generate one" autoComplete="off" />
-              <p className="text-xs mt-1.5" style={{ color: C.muted }}>At least 8 characters. Interview invitations are emailed to this address, so use a mailbox they read.</p>
-            </div>
-          )}
-        </div>
-        {error && <p className="text-xs mt-3" style={{ color: C.danger }}>{error}</p>}
-        <div className="flex gap-2 mt-5">
-          <Btn onClick={save} disabled={!ready || saving}>{saving ? "Saving…" : editing ? "Save changes" : "Create user"}</Btn>
-          <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
-        </div>
-      </Card>
-    </div>
-  );
-}
-
-function UsersView({ currentUsername }) {
-  const { data, loading, error, reload } = useApi("/users");
-  const [formUser, setFormUser] = useState(undefined); // undefined = closed, null = adding, object = editing
-  const [notice, setNotice] = useState(null);
-  const [busyId, setBusyId] = useState(null);
-  const [actionError, setActionError] = useState(null);
-
-  async function run(id, fn) {
-    setBusyId(id); setActionError(null);
-    try { await fn(); reload(); }
-    catch (e) { setActionError(e.message); }
-    finally { setBusyId(null); }
-  }
-  const toggleActive = u => run(u.id, async () => {
-    if (u.active && !window.confirm(`Disable ${u.fullName}? They will be signed out and unable to sign in until you enable the account again.`)) return;
-    await apiFetch(`/users/${u.id}`, { method: "PATCH", body: JSON.stringify({ active: !u.active }) });
-  });
-  const resetPassword = u => run(u.id, async () => {
-    if (!window.confirm(`Reset the password for ${u.fullName}? Their current password stops working.`)) return;
-    const r = await apiFetch(`/users/${u.id}/reset-password`, { method: "POST" });
-    setNotice({ title: "Password reset", name: u.fullName, username: u.username, password: r.temporaryPassword });
-  });
-
-  function saved(result) {
-    const wasAdding = formUser === null;
-    setFormUser(undefined);
-    reload();
-    if (wasAdding && result.temporaryPassword) {
-      setNotice({ title: "User created", name: result.user.fullName, username: result.user.username, password: result.temporaryPassword });
-    }
-  }
-
-  return (
-    <div>
-      <TopBar title="Users" subtitle="Create accounts and decide what each person can see"
-        action={<Btn onClick={() => setFormUser(null)}><Plus size={14} /> Add user</Btn>} />
-
-      {error && <ErrorBanner message={error} onRetry={reload} />}
-      {actionError && <p className="text-sm mb-3" style={{ color: C.danger }}>{actionError}</p>}
-      {loading && <LoadingCard rows={4} />}
-
-      {data && (
-        <Card className="overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b" style={{ borderColor: C.border }}>
-                {["User", "Email", "Role", "Status", ""].map(h => (
-                  <th key={h} className="text-left px-4 py-3 font-semibold" style={{ color: C.muted }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {data.map(u => {
-                const me = u.username === currentUsername;
-                const busy = busyId === u.id;
-                return (
-                  <tr key={u.id} className="border-b" style={{ borderColor: C.border, opacity: u.active ? 1 : 0.6 }}>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2.5">
-                        <Avatar name={u.fullName} size={32} />
-                        <div className="min-w-0">
-                          <p className="font-semibold truncate" style={{ color: C.text }}>
-                            {u.fullName} {me && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md ml-1" style={{ backgroundColor: C.surface, color: C.muted }}>You</span>}
-                          </p>
-                          <p className="text-xs truncate" style={{ color: C.muted }}>@{u.username}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-xs" style={{ color: C.muted }}>{u.email}</td>
-                    <td className="px-4 py-3"><Badge color={USER_ROLE_COLORS[u.role] || C.muted}>{userRoleLabel(u.role)}</Badge></td>
-                    <td className="px-4 py-3"><Badge color={u.active ? C.success : C.muted}>{u.active ? "Active" : "Disabled"}</Badge></td>
-                    <td className="px-4 py-3">
-                      <div className="flex justify-end gap-1.5">
-                        <button disabled={busy} onClick={() => setFormUser(u)} className="text-xs font-semibold px-2.5 py-1 rounded-lg border"
-                          style={{ borderColor: C.border, color: C.text }}>Edit</button>
-                        <button disabled={busy} onClick={() => resetPassword(u)} className="text-xs font-semibold px-2.5 py-1 rounded-lg border"
-                          style={{ borderColor: C.border, color: C.text }}>Reset password</button>
-                        {!me && (
-                          <button disabled={busy} onClick={() => toggleActive(u)} className="text-xs font-semibold px-2.5 py-1 rounded-lg border"
-                            style={{ borderColor: u.active ? "#FECACA" : "#A7F3D0", color: u.active ? C.danger : C.success }}>
-                            {u.active ? "Disable" : "Enable"}
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </Card>
-      )}
-
-      {formUser !== undefined && <UserFormModal user={formUser} onClose={() => setFormUser(undefined)} onSaved={saved} />}
-      {notice && <TemporaryPasswordNotice notice={notice} onClose={() => setNotice(null)} />}
-    </div>
-  );
-}
-
-// Any signed-in user can change their own password from the account menu.
-function ChangePasswordModal({ onClose }) {
-  const [form, setForm] = useState({ current: "", next: "", again: "" });
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState(null);
-  const [done, setDone] = useState(false);
-  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
-  const mismatch = form.again && form.next !== form.again;
-  const ready = form.current && form.next.length >= 8 && form.next === form.again;
-
-  async function save() {
-    setSaving(true); setError(null);
-    try {
-      await apiFetch("/auth/change-password", { method: "POST", body: JSON.stringify({ currentPassword: form.current, newPassword: form.next }) });
-      setDone(true);
-    } catch (e) { setError(e.message); }
-    finally { setSaving(false); }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ backgroundColor: "rgba(15,23,42,0.5)", backdropFilter: "blur(4px)" }}>
-      <Card className="w-full max-w-sm p-6">
-        <h2 className="font-bold text-lg" style={{ color: C.text }}>Change password</h2>
-        {done ? (
-          <>
-            <p className="text-sm mt-3" style={{ color: C.success }}>Your password has been changed.</p>
-            <div className="flex justify-end mt-5"><Btn onClick={onClose}>Close</Btn></div>
-          </>
-        ) : (
-          <>
-            <div className="mt-4 space-y-3">
-              <Input label="Current password" type="password" value={form.current} onChange={e => set("current", e.target.value)} autoFocus />
-              <Input label="New password (at least 8 characters)" type="password" value={form.next} onChange={e => set("next", e.target.value)} />
-              <Input label="Repeat new password" type="password" value={form.again} onChange={e => set("again", e.target.value)} />
-              {mismatch && <p className="text-xs" style={{ color: C.danger }}>The two new passwords do not match.</p>}
-            </div>
-            {error && <p className="text-xs mt-3" style={{ color: C.danger }}>{error}</p>}
-            <div className="flex gap-2 mt-5">
-              <Btn onClick={save} disabled={!ready || saving}>{saving ? "Saving…" : "Change password"}</Btn>
-              <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
-            </div>
-          </>
-        )}
-      </Card>
-    </div>
-  );
-}
-
-// ============================================================
-// INTERVIEWER HOME — the only screen an Interviewer account sees
-// ============================================================
-function ScorecardReadOnly({ scorecard, criteria }) {
-  const label = k => criteria.find(c => c.key === k)?.label || k;
-  return (
-    <div className="rounded-xl border p-4 space-y-2" style={{ borderColor: C.border }}>
-      <div className="flex items-center gap-2 flex-wrap">
-        <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>Your scorecard</p>
-        <Badge color={verdictColor(scorecard.verdict)}>{VERDICT_LABELS[scorecard.verdict] || scorecard.verdict}</Badge>
-        <span className="text-xs" style={{ color: C.muted }}>average {scorecard.averageRating}/5</span>
-      </div>
-      <ul className="text-xs space-y-1">
-        {Object.entries(scorecard.ratings || {})
-          .sort(([a], [b]) => criteria.findIndex(c => c.key === a) - criteria.findIndex(c => c.key === b))
-          .map(([k, v]) => (
-          <li key={k} className="flex justify-between gap-3" style={{ color: C.text }}><span>{label(k)}</span><span className="font-semibold">{v}/5</span></li>
-        ))}
-      </ul>
-      {(scorecard.noticePeriod || scorecard.expectedSalary) && (
-        <p className="text-xs" style={{ color: C.muted }}>
-          {scorecard.noticePeriod && <>Notice period: {scorecard.noticePeriod}. </>}
-          {scorecard.expectedSalary && <>Expected salary: {scorecard.expectedSalary}.</>}
-        </p>
-      )}
-      {scorecard.notes && <p className="text-xs leading-relaxed whitespace-pre-wrap" style={{ color: C.text }}>{scorecard.notes}</p>}
-    </div>
-  );
-}
-
-function InterviewPrepModal({ interviewId, onClose, onChanged }) {
-  const path = `/interviewer/interviews/${interviewId}`;
-  const { data: d, loading, error, reload } = useApi(path, [interviewId]);
-  const emptyScorecard = { ratings: {}, verdict: "", notes: "", noticePeriod: "", expectedSalary: "" };
-  const [writing, setWriting] = useState(false);
-  const [form, setForm] = useState(emptyScorecard);
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState(null);
-
-  async function submit() {
-    setSaving(true); setSaveError(null);
-    try {
-      await apiFetch(`${path}/scorecard`, { method: "POST", body: JSON.stringify(form) });
-      setWriting(false);
-      reload();
-      onChanged();
-    } catch (e) { setSaveError(e.message); }
-    finally { setSaving(false); }
-  }
-
-  const field = (label, value) => value ? (
-    <div>
-      <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>{label}</p>
-      <p className="text-sm leading-relaxed" style={{ color: C.text }}>{value}</p>
-    </div>
-  ) : null;
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ backgroundColor: "rgba(15,23,42,0.5)", backdropFilter: "blur(4px)" }}>
-      <Card className="w-full max-w-3xl p-6 max-h-[92vh] overflow-y-auto">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h2 className="font-bold text-lg" style={{ color: C.text }}>{d ? d.candidateName : "Interview"}</h2>
-            {d && (
-              <p className="text-sm mt-0.5" style={{ color: C.muted }}>
-                {d.roleTitle} · Round {d.roundNumber} {ROUND_LABELS[d.interviewType] || d.interviewType}
-                {d.confirmedSlot && <> · {formatFullDateTime(d.confirmedSlot)}</>}
-              </p>
-            )}
-          </div>
-          <button onClick={onClose} className="shrink-0 p-1 rounded-lg hover:bg-slate-100" aria-label="Close"><X size={18} style={{ color: C.muted }} /></button>
-        </div>
-
-        {loading && !d && <div className="mt-4"><LoadingCard rows={3} /></div>}
-        {error && !d && <div className="mt-4"><ErrorBanner message={error} onRetry={reload} /></div>}
-
-        {d && (
-          <div className="mt-5 space-y-5">
-            <div className="grid md:grid-cols-2 gap-5">
-              <div className="space-y-3">
-                <p className="text-xs font-bold uppercase tracking-wide" style={{ color: C.accent }}>The role</p>
-                {field("Title", d.roleTitle)}
-                {field("Department and location", [d.department, d.location].filter(Boolean).join(" · "))}
-                {field("Level", d.experienceLevel)}
-                {field("Required skills", d.requiredSkills)}
-                {field("Description", d.roleDescription)}
-              </div>
-              <div className="space-y-3">
-                <p className="text-xs font-bold uppercase tracking-wide" style={{ color: C.accent }}>The candidate</p>
-                {field("Headline", d.candidateHeadline)}
-                {field("Skills", d.candidateSkills)}
-                {field("Years of experience", d.candidateYearsExperience != null ? String(d.candidateYearsExperience) : null)}
-                {!d.candidateHeadline && !d.candidateSkills && d.candidateYearsExperience == null && (
-                  <p className="text-sm" style={{ color: C.muted }}>No profile summary on file. See the CV below.</p>
-                )}
-              </div>
-            </div>
-
-            <div>
-              <p className="text-xs font-bold uppercase tracking-wide mb-1.5" style={{ color: C.accent }}>CV</p>
-              <div className="rounded-xl p-4 text-xs leading-relaxed whitespace-pre-wrap max-h-72 overflow-y-auto"
-                style={{ backgroundColor: C.surface, color: C.text }}>
-                {d.resumeText || "No CV text on file for this candidate."}
-              </div>
-            </div>
-
-            {d.submittedScorecard && <ScorecardReadOnly scorecard={d.submittedScorecard} criteria={d.criteria} />}
-
-            {!d.submittedScorecard && d.status === "CONFIRMED" && (
-              <div className="rounded-xl border p-4 flex items-center justify-between gap-3" style={{ borderColor: `${C.accent}55`, backgroundColor: `${C.accent}0D` }}>
-                <p className="text-sm" style={{ color: C.text }}>After the interview, record your ratings and verdict. Your scorecard goes to the recruiting team.</p>
-                <Btn onClick={() => { setForm(emptyScorecard); setSaveError(null); setWriting(true); }}>Write scorecard</Btn>
-              </div>
-            )}
-            {!d.submittedScorecard && d.status === "PROPOSED" && (
-              <p className="text-sm" style={{ color: C.muted }}>The candidate has not chosen a time yet. You can write your scorecard once the interview is booked.</p>
-            )}
-          </div>
-        )}
-      </Card>
-
-      {writing && d && (
-        <ScorecardModal title={`Scorecard · ${ROUND_LABELS[d.interviewType] || d.interviewType} — ${d.candidateName}`}
-          criteria={d.criteria.map(c => [c.key, c.label])}
-          isPhone={d.interviewType === "PHONE_SCREEN"}
-          form={form} setForm={setForm}
-          onSubmit={submit} onCancel={() => setWriting(false)}
-          submitting={saving} error={saveError} />
-      )}
-    </div>
-  );
-}
-
-// An interviewer publishes the days and hours they can interview; candidates only see times inside these.
-function MyAvailability() {
-  const today = ymdLocal(new Date());
-  const { data: windows, error, reload } = useApi("/interviewer/availability");
-  const [form, setForm] = useState({ fromDate: addDaysStr(today, 1), toDate: addDaysStr(today, 5), weekdaysOnly: true, startTime: "10:00", endTime: "17:00" });
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState(null);
-
-  async function publish() {
-    setBusy(true); setMsg(null);
-    try {
-      const r = await apiFetch("/interviewer/availability", { method: "POST", body: JSON.stringify(form) });
-      setMsg({ text: r.created === 0 ? "You already have availability on those days." : `${r.created} day${r.created === 1 ? "" : "s"} published.` });
-      reload();
-    } catch (e) { setMsg({ err: true, text: e.message }); }
-    finally { setBusy(false); }
-  }
-  async function remove(id) {
-    setMsg(null);
-    try { await apiFetch(`/interviewer/availability/${id}`, { method: "DELETE" }); reload(); }
-    catch (e) { setMsg({ err: true, text: e.message }); }
-  }
-
-  const inputCls = "w-full px-3 py-2 rounded-xl border text-sm";
-  const inputSty = { borderColor: C.border, color: C.text, backgroundColor: C.bg };
-  const lbl = t => <label className="block text-xs font-semibold mb-1.5" style={{ color: C.muted }}>{t}</label>;
-
-  return (
-    <div className="mb-6">
-      <div className="flex items-baseline gap-2 mb-2">
-        <h2 className="text-sm font-bold" style={{ color: C.text }}>My availability</h2>
-        <span className="text-xs" style={{ color: C.muted }}>candidates can only book you inside these hours</span>
-      </div>
-      <Card className="p-5 grid gap-5" style={{ gridTemplateColumns: "minmax(0, 280px) minmax(0, 1fr)" }}>
-        <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-2">
-            <div>{lbl("From")}<input type="date" className={inputCls} style={inputSty} value={form.fromDate} onChange={e => setForm(f => ({ ...f, fromDate: e.target.value }))} /></div>
-            <div>{lbl("To")}<input type="date" className={inputCls} style={inputSty} value={form.toDate} onChange={e => setForm(f => ({ ...f, toDate: e.target.value }))} /></div>
-            <div>{lbl("Day starts")}<input type="time" className={inputCls} style={inputSty} value={form.startTime} onChange={e => setForm(f => ({ ...f, startTime: e.target.value }))} /></div>
-            <div>{lbl("Day ends")}<input type="time" className={inputCls} style={inputSty} value={form.endTime} onChange={e => setForm(f => ({ ...f, endTime: e.target.value }))} /></div>
-          </div>
-          <label className="flex items-center gap-2 text-xs" style={{ color: C.text }}>
-            <input type="checkbox" checked={form.weekdaysOnly} onChange={e => setForm(f => ({ ...f, weekdaysOnly: e.target.checked }))} /> Weekdays only
-          </label>
-          <Btn variant="primary" onClick={publish} disabled={busy}>{busy ? <><Spinner size={13} /> Publishing…</> : <><Plus size={13} /> Publish availability</>}</Btn>
-          {msg && <p className="text-xs" style={{ color: msg.err ? C.danger : C.success }}>{msg.text}</p>}
-        </div>
-        <div className="min-w-0">
-          {error && <p className="text-xs" style={{ color: C.danger }}>{error}</p>}
-          {windows && windows.length === 0 && (
-            <p className="text-xs" style={{ color: C.muted }}>
-              You have not published any availability. Until you do, candidates cannot book an interview with you.
-            </p>
-          )}
-          <div className="flex flex-wrap gap-2 content-start">
-            {(windows || []).map(w => (
-              <span key={w.id} className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold"
-                style={{ border: `1px solid ${C.success}66`, color: C.success }}>
-                {new Date(w.start).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })} · {clockTime(w.start)}–{clockTime(w.end)}
-                <button onClick={() => remove(w.id)} title="Remove availability"><X size={11} /></button>
-              </span>
-            ))}
-          </div>
-        </div>
-      </Card>
-    </div>
-  );
-}
-
-function InterviewerHome() {
-  const { data, loading, error, reload } = useApi("/interviewer/interviews");
-  const [openId, setOpenId] = useState(null);
-
-  const byStatus = s => (data || []).filter(i => i.status === s);
-  const todo = byStatus("CONFIRMED");
-  const waiting = byStatus("PROPOSED");
-  const done = byStatus("COMPLETED").sort((a, b) => new Date(b.confirmedSlot || 0) - new Date(a.confirmedSlot || 0));
-
-  const row = i => (
-    <button key={i.id} onClick={() => setOpenId(i.id)}
-      className="w-full text-left flex items-center gap-3 px-4 py-3 border-b last:border-b-0 hover:bg-slate-50 transition-colors"
-      style={{ borderColor: C.border }}>
-      <Avatar name={i.candidateName} size={36} />
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-semibold truncate" style={{ color: C.text }}>{i.candidateName}</p>
-        <p className="text-xs truncate" style={{ color: C.muted }}>
-          {i.roleTitle} · Round {i.roundNumber} {ROUND_LABELS[i.interviewType] || i.interviewType}
-        </p>
-      </div>
-      <div className="text-right shrink-0">
-        <p className="text-xs font-semibold" style={{ color: C.text }}>{i.confirmedSlot ? formatFullDateTime(i.confirmedSlot) : "Time not chosen yet"}</p>
-        {i.status === "COMPLETED"
-          ? <span className="text-[11px] font-semibold" style={{ color: C.success }}>Scorecard submitted</span>
-          : i.status === "CONFIRMED"
-            ? <span className="text-[11px] font-semibold" style={{ color: C.warning }}>Scorecard needed</span>
-            : <span className="text-[11px]" style={{ color: C.muted }}>Waiting for the candidate</span>}
-      </div>
-      <ChevronRight size={16} style={{ color: C.muted }} />
-    </button>
-  );
-
-  const section = (title, hint, items) => items.length > 0 && (
-    <div className="mb-6">
-      <div className="flex items-baseline gap-2 mb-2">
-        <h2 className="text-sm font-bold" style={{ color: C.text }}>{title}</h2>
-        <span className="text-xs" style={{ color: C.muted }}>{items.length} · {hint}</span>
-      </div>
-      <Card className="overflow-hidden">{items.map(row)}</Card>
-    </div>
-  );
-
-  return (
-    <div>
-      <TopBar title="My Interviews" subtitle="Interviews assigned to you. Review the candidate, then submit your scorecard." />
-      {error && <ErrorBanner message={error} onRetry={reload} />}
-      {loading && !data && <LoadingCard rows={3} />}
-      {data && data.length === 0 && (
-        <Card className="p-12 text-center">
-          <ClipboardCheck size={28} className="mx-auto mb-3" style={{ color: C.muted }} />
-          <p className="text-sm font-semibold" style={{ color: C.text }}>No interviews assigned to you yet</p>
-          <p className="text-xs mt-1" style={{ color: C.muted }}>When the recruiting team books an interview with you, it will appear here.</p>
-        </Card>
-      )}
-      <MyAvailability />
-      {section("Ready for you", "booked, scorecard needed after the interview", todo)}
-      {section("Waiting for the candidate", "the candidate has not picked a time", waiting)}
-      {section("Completed", "your submitted scorecards", done)}
-      {openId && <InterviewPrepModal interviewId={openId} onClose={() => setOpenId(null)} onChanged={reload} />}
     </div>
   );
 }
@@ -9178,7 +8298,6 @@ export default function App() {
   const [cameFrom, setCameFrom] = useState("dashboard");
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
-  const [passwordModalOpen, setPasswordModalOpen] = useState(false);
   const accountMenuRef = useRef(null);
 
   useEffect(() => {
@@ -9192,14 +8311,6 @@ export default function App() {
     return () => document.removeEventListener("mousedown", closeAccountMenu);
   }, []);
 
-  // After a page reload only the token survives, so ask the server who this is (name and role).
-  useEffect(() => {
-    if (user && !userMeta) {
-      apiFetch("/auth/me").then(setUserMeta)
-        .catch(() => setUserMeta({ username: user.username, fullName: user.username, role: "" }));
-    }
-  }, [user, userMeta]);
-
   function handleLogin(userData) {
     setUserMeta(userData);
     setUser({ username: userData.username });
@@ -9212,16 +8323,8 @@ export default function App() {
   }
 
   if (!user) return <LoginScreen onLogin={handleLogin} />;
-  // Do not draw the full app for a moment before we know whether this is an interviewer.
-  if (!userMeta) return (
-    <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: C.bg }}><Spinner size={24} /></div>
-  );
 
-  const displayUser = userMeta;
-  const isInterviewer = displayUser.role === "INTERVIEWER";
-  const isAdmin = displayUser.role === "ADMIN";
-  // An interviewer only ever sees their own screen; the Users page is for administrators.
-  const page = isInterviewer ? "myInterviews" : (active === "users" && !isAdmin ? "dashboard" : active);
+  const displayUser = userMeta || { fullName: user.username, role: "" };
 
   function openCandidate(id) {
     if (active !== "candidate") setCameFrom(active);
@@ -9247,8 +8350,6 @@ export default function App() {
       </div>
     ),
     cvInbox: <CvInboxView />,
-    myInterviews: <InterviewerHome />,
-    users: isAdmin ? <UsersView currentUsername={displayUser.username} /> : null,
     candidate: candidateId && (
       <CandidateProfileView candidateId={candidateId} onBack={() => setActive(cameFrom)} onOpenCandidate={openCandidate} />
     ),
@@ -9257,27 +8358,25 @@ export default function App() {
   return (
     <div className="flex h-screen overflow-hidden"
       style={{ backgroundColor: C.bg, fontFamily: "'Inter',ui-sans-serif,system-ui,sans-serif" }}>
-      <Sidebar active={page} setActive={setActive} user={displayUser} />
+      <Sidebar active={active} setActive={setActive} user={displayUser} />
       <div className="flex-1 flex flex-col overflow-hidden">
         <div className="h-14 shrink-0 flex items-center px-8 border-b bg-white gap-3"
           style={{ borderColor: C.border }}>
-          {!isInterviewer && <CandidateSearchBox onOpen={openCandidate} />}
+          <CandidateSearchBox onOpen={openCandidate} />
           <div className="flex-1" />
-          {!isInterviewer && (
-            <button
-              onClick={() => setAssistantOpen(open => !open)}
-              className="h-8 px-3 rounded-xl flex items-center gap-1.5 hover:bg-indigo-50 transition-colors"
-              style={{
-                color: assistantOpen ? "#1479A8" : C.accent,
-                backgroundColor: assistantOpen ? "#DDF3FC" : "#EFF9FE",
-              }}
-              title="AI assistance"
-              aria-label="Open AI assistance"
-            >
-              <Sparkles size={16} />
-              <span className="text-xs font-semibold">AI Assistance</span>
-            </button>
-          )}
+          <button
+            onClick={() => setAssistantOpen(open => !open)}
+            className="h-8 px-3 rounded-xl flex items-center gap-1.5 hover:bg-indigo-50 transition-colors"
+            style={{
+              color: assistantOpen ? "#1479A8" : C.accent,
+              backgroundColor: assistantOpen ? "#DDF3FC" : "#EFF9FE",
+            }}
+            title="AI assistance"
+            aria-label="Open AI assistance"
+          >
+            <Sparkles size={16} />
+            <span className="text-xs font-semibold">AI Assistance</span>
+          </button>
           <button className="w-8 h-8 rounded-xl flex items-center justify-center hover:bg-slate-100 transition-colors relative">
             <Bell size={16} style={{ color: C.muted }} />
             <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full"
@@ -9299,13 +8398,6 @@ export default function App() {
                   <p className="text-xs truncate" style={{ color: C.muted }}>{displayUser.role}</p>
                 </div>
                 <button
-                  onClick={() => { setAccountMenuOpen(false); setPasswordModalOpen(true); }}
-                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-left hover:bg-slate-50"
-                  style={{ color: C.text }}
-                >
-                  <KeyRound size={14} /> Change password
-                </button>
-                <button
                   onClick={handleLogout}
                   className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-left hover:bg-red-50"
                   style={{ color: C.danger }}
@@ -9317,15 +8409,15 @@ export default function App() {
           </div>
         </div>
         <div className="flex-1 flex min-h-0 overflow-hidden">
-          <main className="flex-1 overflow-y-auto min-w-0" style={{ padding: page === "pipeline" ? "1.5rem" : "2rem" }}>
-            <div className={page === "pipeline" ? "" : "max-w-6xl mx-auto"}>
-              {views[page]}
+          <main className="flex-1 overflow-y-auto min-w-0" style={{ padding: active === "pipeline" ? "1.5rem" : "2rem" }}>
+            <div className={active === "pipeline" ? "" : "max-w-6xl mx-auto"}>
+              {views[active]}
             </div>
           </main>
-          {!isInterviewer && <AssistantPanel active={page} open={assistantOpen} onClose={() => setAssistantOpen(false)} />}
+          <AssistantPanel active={active} open={assistantOpen} onClose={() => setAssistantOpen(false)} />
         </div>
       </div>
-      {passwordModalOpen && <ChangePasswordModal onClose={() => setPasswordModalOpen(false)} />}
+      <ApprovalNotification />
     </div>
   );
 }

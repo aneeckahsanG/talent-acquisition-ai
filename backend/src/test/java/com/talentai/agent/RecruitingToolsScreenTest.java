@@ -5,6 +5,7 @@ import com.talentai.admin.service.AdminAgentService;
 import com.talentai.agent.service.HumanApprovalGate;
 import com.talentai.agent.tool.RecruitingTools;
 import com.talentai.common.repository.CandidateRepository;
+import com.talentai.directory.CandidateDirectoryService;
 import com.talentai.orchestrator.service.OrchestratorService;
 import com.talentai.screening.dto.ScreeningDtos.ScreeningResultResponse;
 import com.talentai.screening.service.ScreeningAgentService;
@@ -30,7 +31,8 @@ class RecruitingToolsScreenTest {
     void setUp() {
         screening = mock(ScreeningAgentService.class);
         tools = new RecruitingTools(screening, mock(SourcingAgentService.class), mock(AdminAgentService.class),
-                mock(OrchestratorService.class), new HumanApprovalGate(), mock(CandidateRepository.class), new ObjectMapper());
+                mock(OrchestratorService.class), new HumanApprovalGate(), mock(CandidateRepository.class),
+                mock(CandidateDirectoryService.class), new ObjectMapper());
     }
 
     @Test
