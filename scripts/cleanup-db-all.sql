@@ -1,7 +1,7 @@
 -- The rest of a full reset, run after cleanup-db.sql when cleanup-db.bat is given /all.
 --
--- REMOVED: users, job requisitions, resume sources, mock job-board roles, interviewer availability windows,
---   AI usage history and the AI spending limits.
+-- REMOVED: users, job requisitions, resume sources, mock job-board roles, AI usage history and the AI spending
+--   limits. (The interview calendar, including availability windows, is already cleared by cleanup-db.sql.)
 -- RESET to its defaults: the Resume Drop Zone connection settings (embedded SFTP, no Drive/SharePoint/SFTP details).
 --
 -- Nothing is left to sign in with, but the backend re-creates the four demo users (admin, recruiter1, hiringmgr1,
@@ -13,7 +13,6 @@ SET REFERENTIAL_INTEGRITY FALSE;
 TRUNCATE TABLE job_requisition RESTART IDENTITY;
 TRUNCATE TABLE resume_source RESTART IDENTITY;
 TRUNCATE TABLE mock_job_role RESTART IDENTITY;
-TRUNCATE TABLE availability_window RESTART IDENTITY;
 TRUNCATE TABLE ai_usage_log RESTART IDENTITY;
 TRUNCATE TABLE app_user RESTART IDENTITY;
 DELETE FROM ai_budget;

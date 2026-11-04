@@ -7,6 +7,7 @@ UNION ALL SELECT 'REMOVED', 'sourcing_match', COUNT(*) FROM sourcing_match
 UNION ALL SELECT 'REMOVED', 'referral', COUNT(*) FROM referral
 UNION ALL SELECT 'REMOVED', 'interview_schedule', COUNT(*) FROM interview_schedule
 UNION ALL SELECT 'REMOVED', 'interview_slot', COUNT(*) FROM interview_slot
+UNION ALL SELECT 'REMOVED', 'availability_window', COUNT(*) FROM availability_window
 UNION ALL SELECT 'REMOVED', 'interview_scorecard', COUNT(*) FROM interview_scorecard
 UNION ALL SELECT 'REMOVED', 'interview_debrief', COUNT(*) FROM interview_debrief
 UNION ALL SELECT 'REMOVED', 'interview_reminder', COUNT(*) FROM interview_reminder

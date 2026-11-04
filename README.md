@@ -101,9 +101,10 @@ scripts\cleanup-db.bat          candidate data only
 scripts\cleanup-db.bat /all     a full reset
 ```
 
-- **Default** clears every candidate and their history (applications, screenings, interviews, scorecards, offers,
-  Resume Drop Zone items, agent history) and keeps users, job requisitions, settings and AI usage.
-- **`/all`** also removes users, job requisitions, resume sources, mock job-board roles, interviewer availability,
+- **Default** clears every candidate and their history (applications, screenings, interviews, scorecards, the
+  interview calendar of availability windows and booked slots, offers, Resume Drop Zone items, agent history) and
+  keeps users, job requisitions, settings and AI usage.
+- **`/all`** also removes users, job requisitions, resume sources, mock job-board roles,
   AI usage and limits, resets the Resume Drop Zone settings to their defaults, and deletes the CV files in
   `backend\data\cv-inbox`. On the next start the backend recreates the four demo users (password `password123`)
   and three demo job requisitions.

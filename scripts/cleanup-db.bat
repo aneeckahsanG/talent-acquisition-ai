@@ -2,10 +2,11 @@
 REM Clears data from the local H2 database.
 REM
 REM   cleanup-db.bat              candidate data only: candidates, applications, screenings, interviews,
-REM                               scorecards, offers, Resume Drop Zone items, agent history. Keeps users,
-REM                               job requisitions, settings and AI usage. (cleanup-db.sql)
+REM                               scorecards, the interview calendar (availability windows and booked slots),
+REM                               offers, Resume Drop Zone items, agent history. Keeps users, job
+REM                               requisitions, settings and AI usage. (cleanup-db.sql)
 REM   cleanup-db.bat /all         a full reset: the above plus users, job requisitions, resume sources,
-REM                               mock job-board roles, interviewer availability, AI usage and limits,
+REM                               mock job-board roles, AI usage and limits,
 REM                               Resume Drop Zone settings (reset to defaults) and the CV files in
 REM                               backend\data\cv-inbox. (cleanup-db-all.sql)
 REM   cleanup-db.bat /dry-run     only show what would go; change nothing (combine with /all)

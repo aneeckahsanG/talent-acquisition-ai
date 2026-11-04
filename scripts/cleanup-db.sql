@@ -1,10 +1,11 @@
 -- Clears everything about candidates and their journey, and keeps the set-up data.
 --
 -- REMOVED: candidates and their profiles, applications, pipeline stages, screening results, sourcing matches,
---   referrals, interviews (schedules, bookings, scorecards, debriefs, reminders), offers (letters, negotiation
---   history, response links), Resume Drop Zone items, agent runs/steps/activity, notification and access logs.
+--   referrals, interviews (schedules, bookings, scorecards, debriefs, reminders), the interview calendar
+--   (published availability windows and booked slots), offers (letters, negotiation history, response links),
+--   Resume Drop Zone items, agent runs/steps/activity, notification and access logs.
 -- KEPT: users (app_user), job requisitions, resume sources, mock job-board roles, Resume Drop Zone settings,
---   interviewer availability windows, AI budget limits and AI usage history, and the schema history (Flyway).
+--   AI budget limits and AI usage history, and the schema history (Flyway).
 --
 -- Integrity checks are switched off for the clean-up so the order of the tables does not matter, then back on.
 -- RESTART IDENTITY makes the next candidate, interview, etc. start again from 1.
@@ -19,6 +20,7 @@ TRUNCATE TABLE interview_reminder RESTART IDENTITY;
 TRUNCATE TABLE interview_scorecard_rating RESTART IDENTITY;
 TRUNCATE TABLE interview_scorecard RESTART IDENTITY;
 TRUNCATE TABLE interview_slot RESTART IDENTITY;
+TRUNCATE TABLE availability_window RESTART IDENTITY;
 TRUNCATE TABLE interview_schedule RESTART IDENTITY;
 TRUNCATE TABLE offer_response_token RESTART IDENTITY;
 TRUNCATE TABLE offer_letter RESTART IDENTITY;
