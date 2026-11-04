@@ -209,14 +209,19 @@ public class OrchestratorService {
                     np.setRequisitionId(requisitionId);
                     return np;
                 });
-        ps.setStage(newStage);
-        ps.setUpdatedByAgent(actor);
-        ps.setEnteredAt(java.time.LocalDateTime.now());
-        if ("REJECTED".equals(newStage) || "NO_SHOW".equals(newStage)) {
-            // Replace any note left over from an earlier stage so it isn't mistaken for the reason
-            ps.setNotes(reason != null && !reason.isBlank() ? reason.trim() : null);
+        // Asking for the stage the candidate is already in changes nothing. Re-stamping it would credit the caller
+        // (e.g. the orchestrator agent confirming SCREENED) with a move another agent made, and restart the clock.
+        boolean unchanged = ps.getId() != null && newStage.equals(ps.getStage()) && (reason == null || reason.isBlank());
+        if (!unchanged) {
+            ps.setStage(newStage);
+            ps.setUpdatedByAgent(actor);
+            ps.setEnteredAt(java.time.LocalDateTime.now());
+            if ("REJECTED".equals(newStage) || "NO_SHOW".equals(newStage)) {
+                // Replace any note left over from an earlier stage so it isn't mistaken for the reason
+                ps.setNotes(reason != null && !reason.isBlank() ? reason.trim() : null);
+            }
+            pipelineStageRepository.save(ps);
         }
-        pipelineStageRepository.save(ps);
 
         Candidate candidate = candidateRepository.findById(candidateId).orElse(null);
         JobRequisition req = jobRequisitionRepository.findById(requisitionId).orElse(null);
@@ -228,7 +233,7 @@ public class OrchestratorService {
         // also re-exposes the Shortlist/Reject buttons on an already-decided
         // candidate, risking a second, contradictory action (e.g. rejecting +
         // emailing someone the pipeline still shows as SHORTLISTED).
-        if (("SHORTLISTED".equals(newStage) || "REJECTED".equals(newStage))) {
+        if (!unchanged && ("SHORTLISTED".equals(newStage) || "REJECTED".equals(newStage))) {
             sourcingMatchRepository.findByCandidateIdAndRequisitionId(candidateId, requisitionId)
                     .ifPresent(m -> {
                         m.setStatus(newStage);
@@ -240,7 +245,7 @@ public class OrchestratorService {
         // signal only — the candidate-facing "good news" moment is the
         // personalized outreach email, which is drafted separately and always
         // requires explicit recruiter approval before sending.
-        if (candidate != null && candidate.getEmail() != null && req != null && "REJECTED".equals(newStage)) {
+        if (!unchanged && candidate != null && candidate.getEmail() != null && req != null && "REJECTED".equals(newStage)) {
             boolean hadInterview = interviewScheduleRepository
                     .findByCandidateIdAndRequisitionIdOrderByCreatedAtAsc(candidateId, requisitionId)
                     .stream().anyMatch(i -> "COMPLETED".equals(i.getStatus()));
@@ -256,7 +261,7 @@ public class OrchestratorService {
                 .requisitionId(requisitionId)
                 .requisitionTitle(req != null ? req.getTitle() : null)
                 .stage(newStage)
-                .updatedByAgent(actor)
+                .updatedByAgent(ps.getUpdatedByAgent())
                 .enteredAt(ps.getEnteredAt())
                 .screeningScore(screening != null ? screening.getOverallScore() : null)
                 .screeningRecommendation(screening != null ? screening.getRecommendation() : null)
