@@ -222,6 +222,46 @@ public class ScreeningAgentService {
         return toResponse(result, candidate, requisition);
     }
 
+    /** An uploaded resume that passed the quick checks: the candidate, and the roles still to be screened for. */
+    public record PreparedUpload(Candidate candidate, List<JobRequisition> roles) {}
+
+    /**
+     * The fast part of screening an uploaded resume: read the file, find the role(s), find or create the
+     * candidate and refuse a duplicate. Everything that can be wrong with the request fails here, so the
+     * slow AI call that follows can run in the background.
+     *
+     * @param requisitionId one role, or null to screen against every open role
+     */
+    @Transactional
+    public PreparedUpload prepareUpload(String candidateName, String candidateEmail, Long requisitionId,
+                                        MultipartFile resumeFile) throws IOException {
+        List<JobRequisition> roles;
+        if (requisitionId != null) {
+            roles = List.of(jobRequisitionRepository.findById(requisitionId)
+                    .orElseThrow(() -> new IllegalArgumentException("Job requisition not found: " + requisitionId)));
+        } else {
+            roles = jobRequisitionRepository.findAll().stream().filter(r -> "OPEN".equalsIgnoreCase(r.getStatus())).toList();
+            if (roles.isEmpty()) throw new IllegalStateException("No open requisitions found to screen against.");
+        }
+        String resumeText = pdfTextExtractor.extractText(resumeFile);
+        if (resumeText == null || resumeText.isBlank()) {
+            throw new IllegalArgumentException("Could not extract any text from the uploaded resume file.");
+        }
+        Candidate candidate = findOrCreateCandidate(
+                candidateName, candidateEmail, resumeText, resumeFile.getOriginalFilename(), "UPLOAD");
+        if (requisitionId != null
+                && screeningResultRepository.findByCandidateIdAndRequisitionId(candidate.getId(), requisitionId).isPresent()) {
+            throw new IllegalArgumentException(
+                    "This candidate has already been screened for this role. Duplicate upload is not allowed.");
+        }
+        return new PreparedUpload(candidate, roles);
+    }
+
+    /** The slow part: one AI screening of a prepared candidate for one role. */
+    public ScreeningResult screenPrepared(Candidate candidate, JobRequisition requisition) {
+        return runScreening(candidate, requisition);
+    }
+
     private Candidate findOrCreateCandidate(String name, String email, String resumeText, String filename, String sourceChannel) {
         Candidate candidate = null;
         // Several records can share an email, so take the earliest; in demo mode skip the lookup so

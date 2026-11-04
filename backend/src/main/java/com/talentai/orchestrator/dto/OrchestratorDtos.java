@@ -40,6 +40,9 @@ public class OrchestratorDtos {
         // Interview rounds (populated when candidate has been in INTERVIEW stage)
         private List<InterviewRoundResponse> interviewRounds;
 
+        // How many interview rounds the role needs completed before an offer (the board uses it to gate "Advance to Offer")
+        private Integer requiredInterviewRounds;
+
         // Offer details (populated when stage = OFFER or HIRED)
         private OfferResponse offer;
     }

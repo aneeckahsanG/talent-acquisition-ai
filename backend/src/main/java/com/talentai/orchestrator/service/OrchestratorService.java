@@ -157,6 +157,7 @@ public class OrchestratorService {
                     .screeningRecommendation(screening != null ? screening.getRecommendation() : null)
                     .sourcingMatchScore(sourcingMatch != null ? sourcingMatch.getMatchScore() : null)
                     .interviewRounds(rounds)
+                    .requiredInterviewRounds(requiredRounds(requisition))
                     .offer(offerResp)
                     .build();
 
@@ -174,6 +175,23 @@ public class OrchestratorService {
         return moveStage(requisitionId, candidateId, newStage, "HUMAN");
     }
 
+    /** Completed interview rounds a role needs before an offer; roles that never set it need two. */
+    private static int requiredRounds(JobRequisition requisition) {
+        return requisition.getRequiredInterviewRounds() != null ? requisition.getRequiredInterviewRounds() : 2;
+    }
+
+    private void assertInterviewRoundsComplete(Long requisitionId, Long candidateId) {
+        JobRequisition req = jobRequisitionRepository.findById(requisitionId).orElse(null);
+        if (req == null) return;
+        int required = requiredRounds(req);
+        long completed = interviewScheduleRepository
+                .findByCandidateIdAndRequisitionIdOrderByCreatedAtAsc(candidateId, requisitionId)
+                .stream().filter(i -> "COMPLETED".equals(i.getStatus())).count();
+        if (completed < required) {
+            throw new IllegalStateException("Cannot advance to OFFER: " + completed + " of " + required + " required interview rounds completed.");
+        }
+    }
+
     /**
      * Moves a candidate to a new pipeline stage, sending the standard candidate
      * notification email on SHORTLISTED/REJECTED. Creates the pipeline entry if
@@ -183,18 +201,6 @@ public class OrchestratorService {
      * @param actor who initiated this change — "HUMAN" (recruiter, via the
      *              pipeline board) or "ORCHESTRATOR" (the agentic orchestrator).
      */
-    private void assertInterviewRoundsComplete(Long requisitionId, Long candidateId) {
-        JobRequisition req = jobRequisitionRepository.findById(requisitionId).orElse(null);
-        if (req == null) return;
-        int required = req.getRequiredInterviewRounds() != null ? req.getRequiredInterviewRounds() : 2;
-        long completed = interviewScheduleRepository
-                .findByCandidateIdAndRequisitionIdOrderByCreatedAtAsc(candidateId, requisitionId)
-                .stream().filter(i -> "COMPLETED".equals(i.getStatus())).count();
-        if (completed < required) {
-            throw new IllegalStateException("Cannot advance to OFFER: " + completed + " of " + required + " required interview rounds completed.");
-        }
-    }
-
     public PipelineCandidateResponse moveStage(Long requisitionId, Long candidateId, String newStage, String actor) {
         return moveStage(requisitionId, candidateId, newStage, actor, null);
     }

@@ -4645,6 +4645,8 @@ function PipelineView() {
                           const rounds = c.interviewRounds || [];
                           const activeRound = rounds.find(r => r.status === "CONFIRMED" || r.status === "PROPOSED");
                           const allCompleted = rounds.length > 0 && rounds.every(r => r.status === "COMPLETED");
+                          const requiredRounds = c.requiredInterviewRounds ?? 2;
+                          const completedRounds = rounds.filter(r => r.status === "COMPLETED").length;
                           const usedTypes = rounds.map(r => r.interviewType);
                           const nextType = INTERVIEW_ROUND_TYPES.find(t => !usedTypes.includes(t)) || "FINAL";
 
@@ -4782,12 +4784,18 @@ function PipelineView() {
                                         + Add Round {rounds.length + 1}
                                       </button>
                                     )}
-                                    <button
-                                      onClick={() => setOfferModal({ candidateId: c.candidateId, candidateName: c.candidateName, requisitionId: c.requisitionId })}
-                                      className="w-full text-[10px] font-semibold py-1 rounded-lg text-white"
-                                      style={{ backgroundColor: C.success }}>
-                                      Advance to Offer
-                                    </button>
+                                    {completedRounds >= requiredRounds ? (
+                                      <button
+                                        onClick={() => setOfferModal({ candidateId: c.candidateId, candidateName: c.candidateName, requisitionId: c.requisitionId })}
+                                        className="w-full text-[10px] font-semibold py-1 rounded-lg text-white"
+                                        style={{ backgroundColor: C.success }}>
+                                        Advance to Offer
+                                      </button>
+                                    ) : (
+                                      <p className="text-[9px] text-center" style={{ color: C.muted }}>
+                                        {completedRounds} of {requiredRounds} required rounds completed. Complete {requiredRounds - completedRounds} more before an offer.
+                                      </p>
+                                    )}
                                   </>
                                 )}
                                 <button disabled={isMoving}
@@ -6980,11 +6988,12 @@ function ScreeningView() {
     if (!isAllRoles) fd.append("requisitionId", String(reqId));
     fd.append("resume", uploadFile);
     try {
+      // 202: the request is accepted and the AI screens in the background; the row appears below as in progress
       await apiFetch("/screening/evaluate-upload", { method: "POST", body: fd });
       setShowUpload(false);
       setUploadForm({ candidateName:"", candidateEmail:"" });
       setUploadFile(null);
-      reload();
+      try { setInProgress(await apiFetch("/screening/in-progress")); } catch { /* the poll will catch up */ }
     } catch (e) {
       setUploadError(e.message);
     } finally {
@@ -7049,9 +7058,15 @@ function ScreeningView() {
                   </div>
                 </td>
                 <td className="px-5 py-4" colSpan={4}>
-                  <span className="inline-flex items-center gap-2 text-xs font-semibold" style={{ color: C.accent }}>
-                    <Spinner size={13} /> Screening in progress — the AI is reading the resume…
-                  </span>
+                  {p.error ? (
+                    <span className="text-xs font-semibold" style={{ color: C.danger }}>
+                      Screening failed: {p.error}
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-2 text-xs font-semibold" style={{ color: C.accent }}>
+                      <Spinner size={13} /> Screening in progress — the AI is reading the resume…
+                    </span>
+                  )}
                 </td>
               </tr>
             ))}

@@ -6,6 +6,7 @@ import com.talentai.common.repository.AppUserRepository;
 import com.talentai.screening.dto.ScreeningDtos.*;
 import com.talentai.screening.service.ScreeningAgentService;
 import com.talentai.screening.service.ScreeningProgressTracker;
+import com.talentai.screening.service.UploadScreeningService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -15,6 +16,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/screening")
@@ -24,6 +26,7 @@ public class ScreeningController {
     private final ScreeningAgentService screeningAgentService;
     private final AppUserRepository appUserRepository;
     private final ScreeningProgressTracker progressTracker;
+    private final UploadScreeningService uploadScreeningService;
 
     /** Screen a candidate by providing resume text directly (e.g., pasted text). */
     @PostMapping("/evaluate")
@@ -42,22 +45,22 @@ public class ScreeningController {
     /**
      * Screen a candidate by uploading a resume file (PDF or text). If
      * requisitionId is omitted (the "All Roles" case), screens against every
-     * currently open requisition instead of one specific role. Always
-     * returns a list, so callers don't need to branch on the shape.
+     * currently open requisition instead of one specific role.
+     * <p>
+     * Answers 202 Accepted as soon as the request is checked (a bad file, an unknown role or a
+     * duplicate is still a 4xx straight away). The AI screening then runs in the background and
+     * shows under {@link #inProgress()} until its result exists, or until it fails.
      */
     @PostMapping(value = "/evaluate-upload", consumes = "multipart/form-data")
-    public ResponseEntity<List<ScreeningResultResponse>> screenCandidateFromFile(
+    public ResponseEntity<Map<String, Object>> screenCandidateFromFile(
             @RequestParam("candidateName") String candidateName,
             @RequestParam(value = "candidateEmail", required = false) String candidateEmail,
             @RequestParam(value = "requisitionId", required = false) Long requisitionId,
             @RequestParam("resume") MultipartFile resume
     ) throws IOException {
-        if (requisitionId != null) {
-            return ResponseEntity.ok(List.of(
-                    screeningAgentService.screenCandidateFromFile(candidateName, candidateEmail, requisitionId, resume)));
-        }
-        return ResponseEntity.ok(
-                screeningAgentService.screenCandidateFromFileAllOpenRoles(candidateName, candidateEmail, resume));
+        // The request is checked now; the slow AI screening runs in the background (see /in-progress).
+        int started = uploadScreeningService.start(candidateName, candidateEmail, requisitionId, resume);
+        return ResponseEntity.accepted().body(Map.of("status", "ACCEPTED", "screenings", started));
     }
 
     /** Applications currently being matched and screened (no result row exists yet). */
