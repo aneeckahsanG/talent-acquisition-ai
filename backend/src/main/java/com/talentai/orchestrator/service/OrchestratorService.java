@@ -69,6 +69,7 @@ public class OrchestratorService {
     private final ReferralRepository referralRepository;
     private final InterviewScheduleRepository interviewScheduleRepository;
     private final com.talentai.admin.service.InterviewBookingService interviewBookingService;
+    private final org.springframework.context.ApplicationEventPublisher events;
     private final OfferRepository offerRepository;
     private final OfferNegotiationHistoryRepository negotiationHistoryRepository;
     private final AgentActivityLogRepository activityLogRepository;
@@ -221,6 +222,10 @@ public class OrchestratorService {
                 ps.setNotes(reason != null && !reason.isBlank() ? reason.trim() : null);
             }
             pipelineStageRepository.save(ps);
+            // A recruiter's shortlist is the cue for the orchestrator agent to pick the next step
+            if ("SHORTLISTED".equals(newStage) && "HUMAN".equals(actor)) {
+                events.publishEvent(new com.talentai.orchestrator.event.CandidateShortlistedEvent(requisitionId, candidateId));
+            }
         }
 
         Candidate candidate = candidateRepository.findById(candidateId).orElse(null);
@@ -599,6 +604,11 @@ public class OrchestratorService {
     }
 
     public InterviewScheduledResponse scheduleInterview(Long requisitionId, Long candidateId, ScheduleInterviewRequest req) {
+        return scheduleInterview(requisitionId, candidateId, req, "HUMAN");
+    }
+
+    /** @param actor who sent the link: "HUMAN" for a recruiter, "ORCHESTRATOR" for the agent after approval. */
+    public InterviewScheduledResponse scheduleInterview(Long requisitionId, Long candidateId, ScheduleInterviewRequest req, String actor) {
         Candidate candidate = candidateRepository.findById(candidateId)
                 .orElseThrow(() -> new IllegalArgumentException("Candidate not found: " + candidateId));
         JobRequisition requisition = jobRequisitionRepository.findById(requisitionId)
@@ -631,9 +641,7 @@ public class OrchestratorService {
         String bookUrl = (appBaseUrl.endsWith("/") ? appBaseUrl.substring(0, appBaseUrl.length() - 1) : appBaseUrl)
                 + "/interview-book?interviewId=" + interviewId;
 
-        String bodyText = "Dear " + firstName + ",\n\nThank you for your interest in the " + requisition.getTitle()
-                + " position. We would like to invite you for a " + interviewType.replace("_", " ").toLowerCase()
-                + " interview.\n\nPlease choose a time that suits you from our available calendar:";
+        String bodyText = bookingInvitationText(firstName, requisition.getTitle(), interviewType);
         String extraHtml = "<div style='margin:16px 0;'><a href='" + bookUrl + "' "
                 + "style='display:inline-block;padding:12px 24px;background:#6366F1;color:#fff;border-radius:8px;text-decoration:none;font-size:14px;font-weight:600;'>"
                 + "Choose Your Interview Time</a></div>"
@@ -656,7 +664,7 @@ public class OrchestratorService {
                 .orElseGet(() -> PipelineStage.builder()
                         .candidateId(candidateId).requisitionId(requisitionId).build());
         ps.setStage("INTERVIEW_SCHEDULED");
-        ps.setUpdatedByAgent("HUMAN");
+        ps.setUpdatedByAgent(actor);
         ps.setNotes("Booking link sent for the " + interviewType.replace("_", " ").toLowerCase() + " interview");
         ps.setEnteredAt(LocalDateTime.now());
         pipelineStageRepository.save(ps);
@@ -672,6 +680,57 @@ public class OrchestratorService {
                 .pipelineStage("INTERVIEW_SCHEDULED")
                 .invitationEmail(interview.getInvitationEmail())
                 .build();
+    }
+
+    /** Outcome of {@link #checkBookingLink}: either a reason the link should not be sent, or the email text. */
+    public record BookingLinkCheck(String problem, String emailText) {}
+
+    /**
+     * Whether a booking link can sensibly be sent to this candidate now, checked before anyone is asked to
+     * approve it: the candidate is shortlisted, has no live invitation for this interview already, has an
+     * email address, and there are free times for them to pick. Only open windows count, since the agent
+     * does not choose an interviewer.
+     */
+    public BookingLinkCheck checkBookingLink(Long requisitionId, Long candidateId, String interviewType) {
+        if (!ScorecardCriteria.BY_TYPE.containsKey(interviewType)) {
+            return new BookingLinkCheck("Unknown interview type '" + interviewType + "'. Use PHONE_SCREEN, TECHNICAL or FINAL.", null);
+        }
+        Candidate candidate = candidateRepository.findById(candidateId).orElse(null);
+        JobRequisition requisition = jobRequisitionRepository.findById(requisitionId).orElse(null);
+        if (candidate == null || requisition == null) {
+            return new BookingLinkCheck("Candidate or requisition not found.", null);
+        }
+        if (candidate.getEmail() == null || candidate.getEmail().isBlank()) {
+            return new BookingLinkCheck(candidate.getFullName() + " has no email address, so a link cannot be sent.", null);
+        }
+        PipelineStage stage = pipelineStageRepository.findByCandidateIdAndRequisitionId(candidateId, requisitionId).orElse(null);
+        if (stage == null || !"SHORTLISTED".equals(stage.getStage())) {
+            return new BookingLinkCheck(candidate.getFullName() + " is "
+                    + (stage == null ? "not in this pipeline" : "at stage " + stage.getStage())
+                    + ", not SHORTLISTED, so no booking link is sent.", null);
+        }
+        boolean alreadyInvited = interviewScheduleRepository
+                .findByCandidateIdAndRequisitionIdOrderByCreatedAtAsc(candidateId, requisitionId).stream()
+                .anyMatch(i -> interviewType.equals(i.getInterviewType())
+                        && ("PROPOSED".equals(i.getStatus()) || "CONFIRMED".equals(i.getStatus())));
+        if (alreadyInvited) {
+            return new BookingLinkCheck(candidate.getFullName() + " already has a " + interviewType
+                    + " interview invitation. Nothing to send.", null);
+        }
+        if (interviewBookingService.availableStarts(interviewType, null, null).isEmpty()) {
+            return new BookingLinkCheck("No free interview times are published, so " + candidate.getFullName()
+                    + " would have nothing to choose from. A recruiter needs to publish availability on the Calendar "
+                    + "first. Do not retry; say so in your final answer.", null);
+        }
+        String firstName = candidate.getFullName().trim().split("\\s+")[0];
+        return new BookingLinkCheck(null, bookingInvitationText(firstName, requisition.getTitle(), interviewType));
+    }
+
+    /** The wording of the booking-link email. Shared so an approval screen can show exactly what will be sent. */
+    public String bookingInvitationText(String firstName, String roleTitle, String interviewType) {
+        return "Dear " + firstName + ",\n\nThank you for your interest in the " + roleTitle
+                + " position. We would like to invite you for a " + interviewType.replace("_", " ").toLowerCase()
+                + " interview.\n\nPlease choose a time that suits you from our available calendar:";
     }
 
     public InterviewScheduledResponse rescheduleInterview(Long interviewId, String newSlot) {

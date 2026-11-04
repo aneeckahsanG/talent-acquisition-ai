@@ -1,5 +1,6 @@
 package com.talentai.orchestrator;
 
+import com.talentai.admin.repository.InterviewScheduleRepository;
 import com.talentai.common.entity.Candidate;
 import com.talentai.common.entity.JobRequisition;
 import com.talentai.common.entity.PipelineStage;
@@ -8,6 +9,7 @@ import com.talentai.common.repository.JobRequisitionRepository;
 import com.talentai.common.repository.PipelineStageRepository;
 import com.talentai.common.service.EmailService;
 import com.talentai.orchestrator.dto.OrchestratorDtos.PipelineCandidateResponse;
+import com.talentai.orchestrator.event.CandidateShortlistedEvent;
 import com.talentai.orchestrator.service.OrchestratorService;
 import com.talentai.screening.repository.ScreeningResultRepository;
 import com.talentai.sourcing.repository.SourcingMatchRepository;
@@ -20,6 +22,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.time.LocalDateTime;
 import java.util.Optional;
@@ -41,6 +45,8 @@ class MoveStageSameStageTest {
     @Mock private EmailService emailService;
     @Mock private SourcingMatchRepository sourcingMatchRepository;
     @Mock private ScreeningResultRepository screeningResultRepository;
+    @Mock private ApplicationEventPublisher events;
+    @Mock private InterviewScheduleRepository interviewScheduleRepository;
     @InjectMocks private OrchestratorService service;
 
     private final LocalDateTime screenedAt = LocalDateTime.of(2026, 11, 3, 10, 0);
@@ -76,5 +82,24 @@ class MoveStageSameStageTest {
         assertEquals("ORCHESTRATOR", row.getUpdatedByAgent());
         assertEquals("ORCHESTRATOR", r.getUpdatedByAgent());
         verify(pipelineStageRepository).save(row);
+    }
+
+    @Test
+    @DisplayName("a recruiter shortlisting a candidate tells the orchestrator agent")
+    void aRecruitersShortlistPublishesAnEvent() {
+        service.moveStage(3L, 5L, "SHORTLISTED", "HUMAN");
+
+        verify(events).publishEvent(new CandidateShortlistedEvent(3L, 5L));
+    }
+
+    @Test
+    @DisplayName("the agent's own shortlist, a move that changes nothing, and other stages do not")
+    void otherMovesPublishNothing() {
+        service.moveStage(3L, 5L, "SHORTLISTED", "ORCHESTRATOR");
+        service.moveStage(3L, 5L, "REJECTED", "HUMAN");
+        row.setStage("SHORTLISTED");
+        service.moveStage(3L, 5L, "SHORTLISTED", "HUMAN");
+
+        verify(events, never()).publishEvent(any(Object.class));
     }
 }

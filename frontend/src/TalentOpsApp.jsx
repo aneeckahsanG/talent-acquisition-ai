@@ -3130,6 +3130,7 @@ function AgentActivityPanel({ requisitionId }) {
   // What the recruiter is shown for the text a paused action will send, by the tool that asked.
   const PAYLOAD_LABEL = {
     sendOutreach: "Email to be sent:",
+    sendBookingLink: "Email to be sent:",
     sendCandidateStatusUpdate: "Message to be sent:",
   };
 

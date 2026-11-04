@@ -72,14 +72,23 @@ is logged. The application cannot merge duplicates, delete a candidate or export
   **Rejected** automatically; Advance and Review leave the candidate at **Screened**, waiting for a recruiter.
 - **AI agent (Orchestrator).** Applications that candidates submit themselves, on the public careers page or
   through a job-board webhook, also start an AI agent run, and HR is notified by email. For a recommendation of Advance with a score of 75 or more,
-  the agent **shortlists the candidate by itself** and drafts an outreach email, which still needs a recruiter's
-  approval before it is sent. For Review it leaves the candidate at Screened for a recruiter. For a clear Reject
+  the agent **shortlists the candidate by itself** and queues a **booking link** email (a phone screen) that
+  still needs a recruiter's approval before it is sent; when it is sent the candidate moves to Interview
+  Scheduled. If no interview times are published the agent cannot queue the link: the candidate stays
+  Shortlisted and its run says a recruiter needs to publish availability on the Calendar. For Review it leaves the candidate at Screened for a recruiter. For a clear Reject
   it queues the rejection and waits: **rejecting, and any move to Offer or Hired, always needs a recruiter's
   approval**. Open the role in Open Roles and look at its **Agent Activity** panel to see each run, what the
   agent did, and to approve or deny what it is waiting on. On the Pipeline, a card moved by the agent says
   "Moved by AI agent"; a recruiter's moves say "Moved by Recruiter" and an accepted offer says "Moved by
   Candidate". Candidates who arrive another way (a referral, the Resume Drop Zone, the Talent Pool or a CV
   upload) do not start an agent run and stay at Screened until a recruiter acts.
+- **Shortlisting by a recruiter also starts an agent run.** When a recruiter shortlists a candidate (the
+  Shortlist button on a card), the agent prepares the first interview: it queues a **booking link** email
+  (a phone screen) for the recruiter's approval in Agent Activity, and the email is only sent once approved.
+  The candidate moves to Interview Scheduled when it is sent, shown as "Moved by AI agent". If no interview
+  times are published, the agent does not queue anything and its run says a recruiter needs to publish
+  availability on the Calendar first (only availability open to everyone counts, because the agent does not
+  pick an interviewer). A candidate who already has that invitation is not sent a second one.
 - Applications from the job board are screened automatically; their rows show "Screening in progress". If the
   AI is unavailable or paused (see AI usage limits), the application is still saved and is screened
   automatically later.

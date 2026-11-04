@@ -173,6 +173,37 @@ public class RecruitingTools {
         }
     }
 
+    @Tool(description = "Email a shortlisted candidate a link to book an interview time from the published calendar. "
+            + "interviewType is PHONE_SCREEN, TECHNICAL or FINAL. Always requires recruiter approval: the tool queues it and "
+            + "returns PENDING_APPROVAL, so stop and report that it is waiting. If it returns an ERROR (no times published, "
+            + "not shortlisted, already invited) do not retry; explain it in your final answer.")
+    public String sendBookingLink(Long requisitionId, Long candidateId, String interviewType, ToolContext toolContext) {
+        String type = interviewType == null || interviewType.isBlank() ? "PHONE_SCREEN" : interviewType.trim().toUpperCase();
+        var check = orchestratorService.checkBookingLink(requisitionId, candidateId, type);
+        if (check.problem() != null) {
+            return "ERROR in sendBookingLink: " + check.problem();
+        }
+        String actionKey = "bookingLink:" + requisitionId + ":" + candidateId + ":" + type;
+        if (!approvalGate.isApproved(actionKey)) {
+            String pendingId = approvalGate.requestApproval(actionKey,
+                    "Send " + candidateLabel(candidateId) + " a link to book a " + type.replace("_", " ").toLowerCase()
+                            + " interview (requisition " + requisitionId + ")",
+                    "sendBookingLink", check.emailText() + "\n\n[A personal link to the available calendar follows]",
+                    runIdOf(toolContext));
+            return "PENDING_APPROVAL — booking link queued for recruiter review. Approval ID: " + pendingId
+                    + ". Retry this tool call once the recruiter approves.";
+        }
+        try {
+            var request = new com.talentai.orchestrator.dto.OrchestratorDtos.ScheduleInterviewRequest();
+            request.setInterviewType(type);
+            String result = toJson(orchestratorService.scheduleInterview(requisitionId, candidateId, request, AGENT_ACTOR));
+            approvalGate.consume(actionKey);
+            return result;
+        } catch (Exception e) {
+            return error("sendBookingLink", e);
+        }
+    }
+
     @Tool(description = "Send a status notification to a candidate via EMAIL or SMS. Always requires human approval. "
             + "Call requestApproval first if not yet approved.")
     public String sendCandidateStatusUpdate(Long candidateId, String message, String channel, ToolContext toolContext) {

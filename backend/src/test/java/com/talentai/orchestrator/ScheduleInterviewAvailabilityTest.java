@@ -49,6 +49,7 @@ class ScheduleInterviewAvailabilityTest {
     @Mock private PipelineStageRepository pipelineStageRepository;
     @Mock private InterviewBookingService interviewBookingService;
     @Mock private EmailService emailService;
+    @Mock private org.springframework.context.ApplicationEventPublisher events;
     @InjectMocks private OrchestratorService service;
 
     private ScheduleInterviewRequest request;

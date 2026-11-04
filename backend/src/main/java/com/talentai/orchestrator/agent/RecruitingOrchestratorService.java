@@ -54,7 +54,17 @@ public class RecruitingOrchestratorService {
     public AgentRun startRunAsync(Long matchId, Long candidateId, Long requisitionId, String candidateName) {
         String goal = "A new application from '%s' (candidateId=%d) arrived for requisition %d (matchId=%d). Handle it."
                 .formatted(candidateName, candidateId, requisitionId, matchId);
+        return startRun(matchId, candidateId, requisitionId, goal);
+    }
 
+    /** Start a run for a candidate a recruiter has just shortlisted; the agent decides what happens next. */
+    public AgentRun startShortlistRun(Long candidateId, Long requisitionId, String candidateName) {
+        String goal = "A recruiter shortlisted '%s' (candidateId=%d) for requisition %d. Decide the next step."
+                .formatted(candidateName, candidateId, requisitionId);
+        return startRun(null, candidateId, requisitionId, goal);
+    }
+
+    private AgentRun startRun(Long matchId, Long candidateId, Long requisitionId, String goal) {
         AgentRun run = runRepository.save(AgentRun.builder()
                 .matchId(matchId)
                 .candidateId(candidateId)
