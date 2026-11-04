@@ -143,6 +143,67 @@ public class AdminAgentService {
         }
     }
 
+    @Transactional
+    public InterviewScheduleResponse scheduleInterviewAt(Long candidateId, Long requisitionId,
+                                                          String interviewType, LocalDateTime confirmedSlot) {
+        Candidate candidate = candidateRepository.findById(candidateId)
+                .orElseThrow(() -> new IllegalArgumentException("Candidate not found: " + candidateId));
+        JobRequisition requisition = jobRequisitionRepository.findById(requisitionId)
+                .orElseThrow(() -> new IllegalArgumentException("Job requisition not found: " + requisitionId));
+        if (confirmedSlot == null || !confirmedSlot.isAfter(LocalDateTime.now())) {
+            throw new IllegalArgumentException("Interview time must be in the future.");
+        }
+
+        String type = (interviewType == null || interviewType.isBlank())
+                ? "SCREENING" : interviewType.toUpperCase();
+        if (!List.of("SCREENING", "TECHNICAL", "FINAL").contains(type)) {
+            throw new IllegalArgumentException("Interview type must be SCREENING, TECHNICAL, or FINAL.");
+        }
+
+        InterviewSchedule existing = interviewScheduleRepository
+                .findByCandidateIdAndRequisitionIdOrderByCreatedAtAsc(candidateId, requisitionId).stream()
+                .filter(s -> type.equals(s.getInterviewType())
+                        && confirmedSlot.equals(s.getConfirmedSlot())
+                        && "CONFIRMED".equals(s.getStatus()))
+                .findFirst()
+                .orElse(null);
+        if (existing != null) {
+            return toResponse(existing, candidate, requisition);
+        }
+
+        InterviewSchedule schedule = InterviewSchedule.builder()
+                .candidateId(candidateId)
+                .requisitionId(requisitionId)
+                .interviewType(type)
+                .proposedSlots(toJsonArray(List.of(confirmedSlot.toString())))
+                .confirmedSlot(confirmedSlot)
+                .status("CONFIRMED")
+                .notes("Scheduled by AI assistant")
+                .build();
+        schedule = interviewScheduleRepository.save(schedule);
+
+        PipelineStage stage = pipelineStageRepository
+                .findByCandidateIdAndRequisitionId(candidateId, requisitionId)
+                .orElse(PipelineStage.builder()
+                        .candidateId(candidateId)
+                        .requisitionId(requisitionId)
+                        .build());
+        stage.setStage("INTERVIEW_SCHEDULED");
+        stage.setUpdatedByAgent(AGENT_NAME);
+        stage.setNotes("Interview scheduled (" + type + ")");
+        pipelineStageRepository.save(stage);
+
+        activityLogRepository.save(AgentActivityLog.builder()
+                .agentName(AGENT_NAME)
+                .candidateId(candidateId)
+                .requisitionId(requisitionId)
+                .action("INTERVIEW_CONFIRMED")
+                .details("Scheduled " + type + " interview for " + confirmedSlot)
+                .build());
+
+        return toResponse(schedule, candidate, requisition);
+    }
+
     private List<String> generateDefaultAvailability() {
         // Generate 3 business-hour slots (10:00, 14:00) over the next 5 business days
         List<String> slots = new ArrayList<>();

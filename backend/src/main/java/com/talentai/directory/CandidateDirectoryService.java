@@ -105,6 +105,17 @@ public class CandidateDirectoryService {
         return hits;
     }
 
+    public List<SearchHit> list(String username) {
+        List<SearchHit> hits = candidateRepository.findAll().stream()
+                .sorted(Comparator.comparing(Candidate::getCreatedAt,
+                        Comparator.nullsLast(Comparator.reverseOrder())))
+                .limit(MAX_RESULTS)
+                .map(c -> toHit(c, ""))
+                .toList();
+        log("LIST", null, null, hits.size(), username);
+        return hits;
+    }
+
     public Profile profile(Long id, String username, boolean admin) {
         Candidate c = candidateRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Candidate not found: " + id));
