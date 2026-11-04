@@ -8,6 +8,7 @@ import com.talentai.common.repository.CandidateRepository;
 import com.talentai.orchestrator.dto.OrchestratorDtos.ScheduleInterviewRequest;
 import com.talentai.orchestrator.service.OrchestratorService;
 import com.talentai.orchestrator.service.OrchestratorService.BookingLinkCheck;
+import com.talentai.orchestrator.agent.AgentTrace;
 import com.talentai.screening.service.ScreeningAgentService;
 import com.talentai.sourcing.service.SourcingAgentService;
 import org.junit.jupiter.api.BeforeEach;
@@ -42,7 +43,15 @@ class RecruitingToolsBookingLinkTest {
         orchestrator = mock(OrchestratorService.class);
         gate = new HumanApprovalGate();
         tools = new RecruitingTools(mock(ScreeningAgentService.class), mock(SourcingAgentService.class),
-                mock(AdminAgentService.class), orchestrator, gate, mock(CandidateRepository.class), new ObjectMapper());
+                mock(AdminAgentService.class), orchestrator, gate, mock(CandidateRepository.class),
+                mock(com.talentai.common.repository.JobRequisitionRepository.class),
+                mock(com.talentai.sourcing.repository.MockJobRoleRepository.class),
+                mock(com.talentai.directory.CandidateDirectoryService.class),
+                mock(com.talentai.common.service.RequisitionService.class),
+                mock(com.talentai.referral.service.ReferralAgentService.class),
+                mock(com.talentai.cvinbox.service.CvInboxProcessingService.class),
+                mock(com.talentai.admin.repository.AvailabilityWindowRepository.class),
+                new ObjectMapper(), mock(AgentTrace.class));
         when(orchestrator.checkBookingLink(1L, 9L, "PHONE_SCREEN"))
                 .thenReturn(new BookingLinkCheck(null, "Dear Priya, we would like to invite you"));
     }

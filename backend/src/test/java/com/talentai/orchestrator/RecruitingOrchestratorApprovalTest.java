@@ -8,6 +8,7 @@ import com.talentai.orchestrator.agent.AgentRun;
 import com.talentai.orchestrator.agent.AgentRunRepository;
 import com.talentai.orchestrator.agent.AgentStepRepository;
 import com.talentai.orchestrator.agent.RecruitingOrchestratorService;
+import com.talentai.orchestrator.agent.AgentTrace;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -38,7 +39,8 @@ class RecruitingOrchestratorApprovalTest {
         runs = mock(AgentRunRepository.class);
         service = new RecruitingOrchestratorService(
                 mock(ChatClient.class, Answers.RETURNS_DEEP_STUBS), mock(RecruitingTools.class), gate,
-                mock(PromptLoader.class), runs, mock(AgentStepRepository.class), new ObjectMapper());
+                mock(PromptLoader.class), runs, mock(AgentStepRepository.class), mock(AgentTrace.class),
+                new ObjectMapper());
     }
 
     private AgentRun pausedRun(String pendingInput) {
